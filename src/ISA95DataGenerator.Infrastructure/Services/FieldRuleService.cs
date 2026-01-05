@@ -1,0 +1,373 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using ISA95DataGenerator.Application.Interfaces;
+using ISA95DataGenerator.Domain.Entities;
+using ISA95DataGenerator.Domain.Rules;
+using Microsoft.Extensions.Logging;
+
+namespace ISA95DataGenerator.Infrastructure.Services;
+
+public class FieldRuleService : IFieldRuleService
+{
+    private readonly Dictionary<string, Dictionary<string, FieldRule>> _rules = new();
+    private readonly Dictionary<string, int> _sequenceCounters = new();
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly string _rulesFilePath;
+    private readonly ILogger<FieldRuleService> _logger;
+
+    public FieldRuleService(ILogger<FieldRuleService> logger)
+    {
+        _logger = logger;
+        var dataDir = Path.Combine(Directory.GetCurrentDirectory(), "Data");
+        Directory.CreateDirectory(dataDir);
+        _rulesFilePath = Path.Combine(dataDir, "field-rules.json");
+        LoadRulesFromFile();
+    }
+
+    private void LoadRulesFromFile()
+    {
+        if (!File.Exists(_rulesFilePath))
+            return;
+
+        try
+        {
+            var json = File.ReadAllText(_rulesFilePath);
+            var rulesList = JsonSerializer.Deserialize<List<FieldRule>>(json);
+            if (rulesList != null)
+            {
+                foreach (var rule in rulesList)
+                {
+                    if (!_rules.ContainsKey(rule.EntityName))
+                    {
+                        _rules[rule.EntityName] = new Dictionary<string, FieldRule>();
+                    }
+                    _rules[rule.EntityName][rule.FieldName] = rule;
+                }
+            }
+        }
+        catch
+        {
+            // If file is corrupted, start with empty rules
+        }
+    }
+
+    private async Task SaveRulesToFileAsync()
+    {
+        var allRules = _rules.Values.SelectMany(x => x.Values).ToList();
+        var json = JsonSerializer.Serialize(allRules, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(_rulesFilePath, json);
+    }
+
+    public async Task SaveRuleAsync(FieldRule rule)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            if (!_rules.ContainsKey(rule.EntityName))
+            {
+                _rules[rule.EntityName] = new Dictionary<string, FieldRule>();
+            }
+            _rules[rule.EntityName][rule.FieldName] = rule;
+
+            if (rule.RuleType == FieldRuleType.Sequence)
+            {
+                var key = $"{rule.EntityName}_{rule.FieldName}";
+                var seqParams = DeserializeParameters<SequenceParameters>(rule.Parameters);
+                _sequenceCounters[key] = seqParams?.Start ?? 1;
+            }
+
+            await SaveRulesToFileAsync();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<FieldRule?> GetRuleAsync(string entityName, string fieldName)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            if (_rules.TryGetValue(entityName, out var entityRules) &&
+                entityRules.TryGetValue(fieldName, out var rule))
+            {
+                return rule;
+            }
+            return null;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<List<FieldRule>> GetRulesForEntityAsync(string entityName)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            if (_rules.TryGetValue(entityName, out var entityRules))
+            {
+                return entityRules.Values.ToList();
+            }
+            return new List<FieldRule>();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<List<FieldRule>> GetAllRulesAsync()
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            return _rules.Values.SelectMany(x => x.Values).ToList();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public object GenerateFieldValue(FieldRule rule, AttributeDefinition attribute, Random random)
+    {
+        switch (rule.RuleType)
+        {
+            case FieldRuleType.Static:
+                var staticParams = DeserializeParameters<StaticParameters>(rule.Parameters);
+                return staticParams?.Value ?? GetDefaultValue(attribute.Schema);
+
+            case FieldRuleType.Range:
+                return GenerateRangeValue(rule, attribute, random);
+
+            case FieldRuleType.Examples:
+                var exampleParams = DeserializeParameters<ExamplesParameters>(rule.Parameters);
+                if (exampleParams?.Values != null && exampleParams.Values.Count > 0)
+                {
+                    return exampleParams.Values[random.Next(exampleParams.Values.Count)];
+                }
+                return GetDefaultValue(attribute.Schema);
+
+            case FieldRuleType.Pattern:
+                var patternParams = DeserializeParameters<PatternParameters>(rule.Parameters);
+                return GenerateFromPattern(patternParams?.Regex ?? ".*", random);
+
+            case FieldRuleType.Sequence:
+                return GenerateSequenceValue(rule);
+
+            case FieldRuleType.PrefixSequence:
+                return GeneratePrefixSequenceValue(rule);
+
+            case FieldRuleType.Enumeration:
+                _logger.LogInformation("DIAGNOSTIC FieldRuleService: Enumeration case for {EntityName}.{FieldName}", 
+                    rule.EntityName, rule.FieldName);
+                _logger.LogInformation("DIAGNOSTIC FieldRuleService: Raw Parameters = {Params}", rule.Parameters);
+                
+                var enumParams = DeserializeParameters<EnumerationParameters>(rule.Parameters);
+                
+                _logger.LogInformation("DIAGNOSTIC FieldRuleService: Deserialized enumParams is null? {IsNull}", enumParams == null);
+                if (enumParams != null)
+                {
+                    _logger.LogInformation("DIAGNOSTIC FieldRuleService: enumParams.Values is null? {IsNull}, Count = {Count}", 
+                        enumParams.Values == null, enumParams.Values?.Count ?? 0);
+                    if (enumParams.Values != null && enumParams.Values.Count > 0)
+                    {
+                        _logger.LogInformation("DIAGNOSTIC FieldRuleService: enumParams.Values[0] = '{Value}' (Length: {Length})",
+                            enumParams.Values[0], enumParams.Values[0]?.Length ?? 0);
+                    }
+                }
+                
+                if (enumParams?.Values != null && enumParams.Values.Count > 0)
+                {
+                    // Use the first value (user-selected specific enum value)
+                    var returnValue = enumParams.Values[0];
+                    _logger.LogInformation("DIAGNOSTIC FieldRuleService: Returning '{Value}' (Length: {Length})", 
+                        returnValue, returnValue?.Length ?? 0);
+                    return returnValue;
+                }
+                
+                var defaultValue = GetDefaultValue(attribute.Schema);
+                _logger.LogInformation("DIAGNOSTIC FieldRuleService: Returning default value '{Value}'", defaultValue);
+                return defaultValue;
+
+            default:
+                return GetDefaultValue(attribute.Schema);
+        }
+    }
+
+    public async Task DeleteRuleAsync(string entityName, string fieldName)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            if (_rules.TryGetValue(entityName, out var entityRules))
+            {
+                entityRules.Remove(fieldName);
+                var key = $"{entityName}_{fieldName}";
+                _sequenceCounters.Remove(key);
+                await SaveRulesToFileAsync();
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private object GenerateRangeValue(FieldRule rule, AttributeDefinition attribute, Random random)
+    {
+        var rangeParams = DeserializeParameters<RangeParameters>(rule.Parameters);
+        
+        switch (attribute.Schema.ToLower())
+        {
+            case "integer":
+            case "int":
+                var minInt = Convert.ToInt32(rangeParams?.Min ?? 0);
+                var maxInt = Convert.ToInt32(rangeParams?.Max ?? 100);
+                return random.Next(minInt, maxInt + 1);
+
+            case "double":
+            case "float":
+                var minDouble = Convert.ToDouble(rangeParams?.Min ?? 0.0);
+                var maxDouble = Convert.ToDouble(rangeParams?.Max ?? 100.0);
+                return minDouble + (random.NextDouble() * (maxDouble - minDouble));
+
+            case "datetime":
+                var minDate = rangeParams?.Min != null ? Convert.ToDateTime(rangeParams.Min) : DateTime.Now.AddYears(-1);
+                var maxDate = rangeParams?.Max != null ? Convert.ToDateTime(rangeParams.Max) : DateTime.Now;
+                var range = (maxDate - minDate).TotalSeconds;
+                return minDate.AddSeconds(random.NextDouble() * range);
+
+            default:
+                return GetDefaultValue(attribute.Schema);
+        }
+    }
+
+    private object GenerateSequenceValue(FieldRule rule)
+    {
+        var key = $"{rule.EntityName}_{rule.FieldName}";
+        var seqParams = DeserializeParameters<SequenceParameters>(rule.Parameters);
+        
+        if (!_sequenceCounters.ContainsKey(key))
+        {
+            _sequenceCounters[key] = seqParams?.Start ?? 1;
+        }
+
+        var value = _sequenceCounters[key];
+        var increment = seqParams?.Increment ?? 1;
+        var max = seqParams?.Max;
+
+        _sequenceCounters[key] += increment;
+        
+        if (max.HasValue && _sequenceCounters[key] > max.Value)
+        {
+            _sequenceCounters[key] = seqParams?.Start ?? 1;
+        }
+
+        return value;
+    }
+
+    private object GeneratePrefixSequenceValue(FieldRule rule)
+    {
+        var key = $"{rule.EntityName}_{rule.FieldName}";
+        var seqParams = DeserializeParameters<PrefixSequenceParameters>(rule.Parameters);
+        
+        if (!_sequenceCounters.ContainsKey(key))
+        {
+            _sequenceCounters[key] = seqParams?.Start ?? 1;
+        }
+
+        var value = _sequenceCounters[key];
+        var start = seqParams?.Start ?? 1;
+        var end = seqParams?.End ?? 100;
+        var prefix = seqParams?.Prefix ?? "";
+        var suffix = seqParams?.Suffix ?? "";
+        var padding = seqParams?.Padding ?? 0;
+
+        // Format the number with padding if specified
+        var numberStr = padding > 0 ? value.ToString($"D{padding}") : value.ToString();
+        
+        // Construct the final value
+        var result = $"{prefix}{numberStr}{suffix}";
+
+        // Increment for next call
+        _sequenceCounters[key]++;
+        
+        // Reset to start if we exceed the end
+        if (_sequenceCounters[key] > end)
+        {
+            _sequenceCounters[key] = start;
+        }
+
+        return result;
+    }
+
+    private string GenerateFromPattern(string pattern, Random random)
+    {
+        if (pattern == ".*" || string.IsNullOrEmpty(pattern))
+        {
+            return GenerateRandomString(random, 10);
+        }
+
+        var result = pattern;
+        result = Regex.Replace(result, @"\[A-Z\]\{(\d+)\}", m =>
+        {
+            var count = int.Parse(m.Groups[1].Value);
+            return GenerateRandomString(random, count, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        });
+        result = Regex.Replace(result, @"\[0-9\]\{(\d+)\}", m =>
+        {
+            var count = int.Parse(m.Groups[1].Value);
+            return GenerateRandomString(random, count, "0123456789");
+        });
+
+        return result;
+    }
+
+    private string GenerateRandomString(Random random, int length, string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+    {
+        return new string(Enumerable.Range(0, length)
+            .Select(_ => chars[random.Next(chars.Length)])
+            .ToArray());
+    }
+
+    private object GetDefaultValue(string schema)
+    {
+        return schema.ToLower() switch
+        {
+            "integer" or "int" => 0,
+            "double" or "float" => 0.0,
+            "boolean" or "bool" => false,
+            "datetime" => DateTime.Now,
+            _ => string.Empty
+        };
+    }
+
+    private T? DeserializeParameters<T>(object? parameters) where T : class
+    {
+        if (parameters == null) return null;
+
+        try
+        {
+            var options = new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            };
+            
+            if (parameters is JsonElement jsonElement)
+            {
+                return JsonSerializer.Deserialize<T>(jsonElement.GetRawText(), options);
+            }
+
+            var json = JsonSerializer.Serialize(parameters);
+            return JsonSerializer.Deserialize<T>(json, options);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}

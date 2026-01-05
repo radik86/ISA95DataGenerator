@@ -1,0 +1,555 @@
+[
+  {
+    "Id": "229ddd7b-fbbc-47eb-8084-064e96348493",
+    "Name": "Equipment and equipment properties",
+    "Description": "",
+    "CreatedAt": "2025-12-10T20:33:13.7557754Z",
+    "UpdatedAt": "2025-12-10T20:33:13.7914178Z",
+    "RootEntityName": "Equipment",
+    "IncludedRelatedEntities": [
+      "Equipment Property"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      }
+    ]
+  },
+  {
+    "Id": "fd4fa0b2-44de-46e0-beee-a5cfa20bac66",
+    "Name": "equipment class and entity",
+    "Description": "",
+    "CreatedAt": "2025-12-19T13:28:34.0618308Z",
+    "UpdatedAt": "2025-12-19T13:28:34.084867Z",
+    "RootEntityName": "Equipment",
+    "IncludedRelatedEntities": [
+      "Equipment Class",
+      "Equipment Property"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      }
+    ]
+  },
+  {
+    "Id": "ce264775-c7fb-45a5-8947-c397123fca17",
+    "Name": "Equipment to Equipment, Property, Class",
+    "Description": "",
+    "CreatedAt": "2025-12-19T14:05:49.8941023Z",
+    "UpdatedAt": "2025-12-19T14:05:49.8957103Z",
+    "RootEntityName": "Equipment",
+    "IncludedRelatedEntities": [
+      "Equipment Class",
+      "Equipment Property",
+      "Equipment"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      }
+    ]
+  },
+  {
+    "Id": "16d4bbe9-9f15-4547-8deb-ac9b19e0ead1",
+    "Name": "Operations Request",
+    "Description": "",
+    "CreatedAt": "2026-01-05T12:46:50.2771257Z",
+    "UpdatedAt": "2026-01-05T12:46:50.2974537Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment requirement"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      }
+    ]
+  },
+  {
+    "Id": "699e8ee5-9f3d-4e3e-8b3c-3be9750547a7",
+    "Name": "Operations Request",
+    "Description": "",
+    "CreatedAt": "2026-01-05T13:12:55.8022673Z",
+    "UpdatedAt": "2026-01-05T13:12:55.8027643Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment requirement",
+      "Segment response"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      }
+    ]
+  },
+  {
+    "Id": "93297b57-35ea-43b6-aa4b-ac99688b1d6d",
+    "Name": "Operations 3",
+    "Description": "{\u0022edges\u0022:[{\u0022source\u0022:\u0022Operations Request\u0022,\u0022target\u0022:\u0022Segment Requirement\u0022,\u0022relationshipName\u0022:\u0022Is made up of\u0022,\u0022relationshipType\u0022:\u0022isMadeUpOfRequirement\u0022,\u0022sourceToTarget\u0022:true},{\u0022source\u0022:\u0022Segment Response\u0022,\u0022target\u0022:\u0022Segment Requirement\u0022,\u0022relationshipName\u0022:\u0022Corresponds To\u0022,\u0022relationshipType\u0022:\u0022correspondsToRequirement\u0022,\u0022sourceToTarget\u0022:false}],\u0022positions\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022x\u0022:155.17601062569852,\u0022y\u0022:121.60380503707302},{\u0022entityName\u0022:\u0022Segment Requirement\u0022,\u0022x\u0022:602.4747551072948,\u0022y\u0022:287.6028193763616},{\u0022entityName\u0022:\u0022Segment Response\u0022,\u0022x\u0022:661.8097847462648,\u0022y\u0022:382.1105863258589}],\u0022userDescription\u0022:\u0022\u0022}",
+    "CreatedAt": "2026-01-05T13:47:45.2549506Z",
+    "UpdatedAt": "2026-01-05T13:47:45.2554747Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment requirement",
+      "Segment response"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      }
+    ]
+  },
+  {
+    "Id": "a22e42f8-ece1-4940-98a2-324cf33a2c5f",
+    "Name": "OR_SR",
+    "Description": "{\u0022edges\u0022:[{\u0022source\u0022:\u0022Operations Request\u0022,\u0022target\u0022:\u0022Segment Requirement\u0022,\u0022relationshipName\u0022:\u0022Is made up of\u0022,\u0022relationshipType\u0022:\u0022isMadeUpOfRequirement\u0022,\u0022sourceToTarget\u0022:true,\u0022cardinality\u0022:2}],\u0022positions\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022x\u0022:473.0426568303284,\u0022y\u0022:107.43916513005935},{\u0022entityName\u0022:\u0022Segment Requirement\u0022,\u0022x\u0022:266.30864935842584,\u0022y\u0022:358.5025662736972}],\u0022entityRules\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022instanceCount\u0022:2},{\u0022entityName\u0022:\u0022Segment Requirement\u0022}],\u0022userDescription\u0022:\u0022\u0022}",
+    "CreatedAt": "2026-01-05T14:54:05.2557353Z",
+    "UpdatedAt": "2026-01-05T14:54:05.2561989Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment requirement"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      },
+      {
+        "EntityName": "Segment Requirement",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022SR\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:100}"
+      }
+    ]
+  },
+  {
+    "Id": "f4ab7118-437c-442b-aa3d-f1ad608a05e5",
+    "Name": "OR 3",
+    "Description": "{\u0022edges\u0022:[{\u0022source\u0022:\u0022Operations Request\u0022,\u0022target\u0022:\u0022Segment Requirement\u0022,\u0022relationshipName\u0022:\u0022Is made up of\u0022,\u0022relationshipType\u0022:\u0022isMadeUpOfRequirement\u0022,\u0022sourceToTarget\u0022:true,\u0022cardinality\u0022:2}],\u0022positions\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022x\u0022:216.00155407846432,\u0022y\u0022:83.21938185523156},{\u0022entityName\u0022:\u0022Segment Requirement\u0022,\u0022x\u0022:551.2477041830583,\u0022y\u0022:382.43185363356605}],\u0022entityRules\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022instanceCount\u0022:2},{\u0022entityName\u0022:\u0022Segment Requirement\u0022}],\u0022userDescription\u0022:\u0022\u0022}",
+    "CreatedAt": "2026-01-05T14:57:03.5256652Z",
+    "UpdatedAt": "2026-01-05T14:57:03.5260532Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment requirement"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      },
+      {
+        "EntityName": "Segment Requirement",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022SR\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:100}"
+      }
+    ]
+  },
+  {
+    "Id": "cb50d8da-4adb-402f-a441-d1852809566e",
+    "Name": "OR 4",
+    "Description": "{\u0022rootEntity\u0022:\u0022Operations Request\u0022,\u0022edges\u0022:[{\u0022source\u0022:\u0022Operations Request\u0022,\u0022target\u0022:\u0022Segment Requirement\u0022,\u0022relationshipName\u0022:\u0022Is made up of\u0022,\u0022relationshipType\u0022:\u0022isMadeUpOfRequirement\u0022,\u0022sourceToTarget\u0022:true,\u0022cardinality\u0022:2}],\u0022positions\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022x\u0022:216.00155407846432,\u0022y\u0022:83.21938185523156},{\u0022entityName\u0022:\u0022Segment Requirement\u0022,\u0022x\u0022:551.2477041830583,\u0022y\u0022:382.43185363356605}],\u0022entityRules\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022instanceCount\u0022:2},{\u0022entityName\u0022:\u0022Segment Requirement\u0022}],\u0022userDescription\u0022:\u0022\u0022}",
+    "CreatedAt": "2026-01-05T16:33:44.0892099Z",
+    "UpdatedAt": "2026-01-05T16:33:44.1015623Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment Requirement"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      },
+      {
+        "EntityName": "Segment Requirement",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022SR\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:100}"
+      }
+    ]
+  },
+  {
+    "Id": "d38a9516-cd83-4adf-bcb5-965fa6f48d36",
+    "Name": "OR 5",
+    "Description": "{\u0022rootEntity\u0022:\u0022Operations Request\u0022,\u0022edges\u0022:[{\u0022source\u0022:\u0022Operations Request\u0022,\u0022target\u0022:\u0022Segment Requirement\u0022,\u0022relationshipName\u0022:\u0022Is made up of\u0022,\u0022relationshipType\u0022:\u0022isMadeUpOfRequirement\u0022,\u0022sourceToTarget\u0022:true,\u0022cardinality\u0022:2}],\u0022positions\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022x\u0022:216.00155407846432,\u0022y\u0022:83.21938185523156},{\u0022entityName\u0022:\u0022Segment Requirement\u0022,\u0022x\u0022:551.2477041830583,\u0022y\u0022:382.43185363356605}],\u0022entityRules\u0022:[{\u0022entityName\u0022:\u0022Operations Request\u0022,\u0022instanceCount\u0022:2},{\u0022entityName\u0022:\u0022Segment Requirement\u0022}],\u0022userDescription\u0022:\u0022\u0022}",
+    "CreatedAt": "2026-01-05T20:14:12.1607031Z",
+    "UpdatedAt": "2026-01-05T20:14:12.1789799Z",
+    "RootEntityName": "Operations Request",
+    "IncludedRelatedEntities": [
+      "Segment Requirement"
+    ],
+    "InstanceCount": 10,
+    "Seed": 42,
+    "MaxDepth": 2,
+    "PrimaryKeyRules": [],
+    "FieldRules": [
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022breadmachine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:3}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022bread machine of bla bla\u0022}"
+      },
+      {
+        "EntityName": "Equipment Property",
+        "FieldName": "value",
+        "RuleType": "Range",
+        "Parameters": "{\u0022min\u0022:1,\u0022max\u0022:100}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022machine\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:8}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "description",
+        "RuleType": "Static",
+        "Parameters": "{\u0022value\u0022:\u0022test\u0022}"
+      },
+      {
+        "EntityName": "Equipment",
+        "FieldName": "equipmentLevel",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022efsf\u0022,\u0022suffix\u0022:\u0022ghgh\u0022,\u0022start\u0022:1,\u0022end\u0022:98}"
+      },
+      {
+        "EntityName": "Segment Requirement",
+        "FieldName": "id",
+        "RuleType": "PrefixSequence",
+        "Parameters": "{\u0022prefix\u0022:\u0022SR\u0022,\u0022suffix\u0022:\u0022\u0022,\u0022start\u0022:1,\u0022end\u0022:100}"
+      },
+      {
+        "EntityName": "Segment Requirement",
+        "FieldName": "operationsType",
+        "RuleType": "Enumeration",
+        "Parameters": "{\u0022values\u0022:[\u0022Mixed\u0022]}"
+      },
+      {
+        "EntityName": "Operations Request",
+        "FieldName": "operationsType",
+        "RuleType": "Enumeration",
+        "Parameters": "{\u0022values\u0022:[\u0022Quality\u0022]}"
+      }
+    ]
+  }
+]

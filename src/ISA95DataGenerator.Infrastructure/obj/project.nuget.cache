@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "dgSpecHash": "MeWYRL1xFWg=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Infrastructure\\ISA95DataGenerator.Infrastructure.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\radion.badanjuk\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\9.0.0\\microsoft.extensions.configuration.abstractions.9.0.0.nupkg.sha512",
+    "C:\\Users\\radion.badanjuk\\.nuget\\packages\\microsoft.extensions.configuration.binder\\9.0.0\\microsoft.extensions.configuration.binder.9.0.0.nupkg.sha512",
+    "C:\\Users\\radion.badanjuk\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\10.0.0\\microsoft.extensions.dependencyinjection.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\radion.badanjuk\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\10.0.0\\microsoft.extensions.logging.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\radion.badanjuk\\.nuget\\packages\\microsoft.extensions.primitives\\9.0.0\\microsoft.extensions.primitives.9.0.0.nupkg.sha512",
+    "C:\\Users\\radion.badanjuk\\.nuget\\packages\\system.diagnostics.diagnosticsource\\10.0.0\\system.diagnostics.diagnosticsource.10.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

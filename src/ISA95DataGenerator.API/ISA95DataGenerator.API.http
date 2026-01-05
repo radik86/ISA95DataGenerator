@@ -1,0 +1,6 @@
+@ISA95DataGenerator.API_HostAddress = http://localhost:5237
+
+GET {{ISA95DataGenerator.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
