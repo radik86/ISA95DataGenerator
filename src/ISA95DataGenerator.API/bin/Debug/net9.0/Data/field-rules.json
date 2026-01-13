@@ -87,5 +87,15 @@
         "Maintenance"
       ]
     }
+  },
+  {
+    "EntityName": "Operations Request",
+    "FieldName": "requestState",
+    "RuleType": 6,
+    "Parameters": {
+      "values": [
+        "running"
+      ]
+    }
   }
 ]

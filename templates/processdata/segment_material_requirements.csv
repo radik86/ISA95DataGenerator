@@ -1,0 +1,6 @@
+SegmentMaterialReqID,SegmentRequirementID,MaterialID,RequiredQty,QtyUoM,RequirementType
+SMR-001,SR-20260112-001-MIX,Flour_Type_550,600,kg,Consumable
+SMR-002,SR-20260112-001-MIX,Water,360,l,Consumable
+SMR-003,SR-20260112-001-MIX,Yeast,12,kg,Consumable
+SMR-004,SR-20260112-001-MIX,Salt,6,kg,Consumable
+SMR-005,SR-20260112-001-BAKE,Dough,800,EA,Input

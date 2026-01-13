@@ -1,0 +1,3 @@
+EquipmentID,EquipmentName,EquipmentClassID,EquipmentClass,EquipmentDescription
+EQ-MIX-01,Mixer #1,MIXER,Mixer,Primary dough mixer
+EQ-OVEN-01,Oven #1,OVEN,Oven,Main baking oven

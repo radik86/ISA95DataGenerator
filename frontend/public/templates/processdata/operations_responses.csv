@@ -1,0 +1,2 @@
+OperationsResponseID,OperationsRequestID,ActualStartDateTime,ActualEndDateTime,GoodQuantity,ScrapQuantity,QuantityUoM,Status,Comments
+ORSP-20260112-001,OR-20260112-001,2026-01-12 06:00:00,2026-01-12 14:00:00,800,0,EA,Completed,Plan matched actual

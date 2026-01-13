@@ -1,0 +1,21 @@
+ProductID,ProductName,ProcessSegmentID,ProcessSegmentName,Seq,MaterialClass,MaterialID,MaterialQtyPerUnit,MaterialUoM,MaterialLotID,EquipmentClass,EquipmentID,EquipmentRole,CapacityPerRunEA,SegmentDurationHours
+BREAD-750G,Wheat Bread 750g,BREAD-750G-MIX,Dough Mixing,10,RawMaterial,Flour_Type_550,0.75,kg,FLOUR-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+BREAD-750G,Wheat Bread 750g,BREAD-750G-MIX,Dough Mixing,10,RawMaterial,Water,0.45,l,WATER-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+BREAD-750G,Wheat Bread 750g,BREAD-750G-MIX,Dough Mixing,10,RawMaterial,Yeast,0.018,kg,YEAST-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+BREAD-750G,Wheat Bread 750g,BREAD-750G-MIX,Dough Mixing,10,RawMaterial,Salt,0.0075,kg,SALT-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+BREAD-750G,Wheat Bread 750g,BREAD-750G-BAKE,Baking,20,InProcessMaterial,Dough,1,EA,DOUGH-LOT-BREAD-A,Oven,EQ-OVEN-01,Primary,400,2.0
+LOAF-750G,Wheat Loaf 750g,LOAF-750G-MIX,Dough Mixing,10,RawMaterial,Flour_Type_550,0.75,kg,FLOUR-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+LOAF-750G,Wheat Loaf 750g,LOAF-750G-MIX,Dough Mixing,10,RawMaterial,Water,0.45,l,WATER-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+LOAF-750G,Wheat Loaf 750g,LOAF-750G-MIX,Dough Mixing,10,RawMaterial,Yeast,0.018,kg,YEAST-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+LOAF-750G,Wheat Loaf 750g,LOAF-750G-MIX,Dough Mixing,10,RawMaterial,Salt,0.0075,kg,SALT-LOT-A,Mixer,EQ-MIX-01,Primary,400,2.0
+LOAF-750G,Wheat Loaf 750g,LOAF-750G-BAKE,Baking,20,InProcessMaterial,Dough,1,EA,DOUGH-LOT-LOAF-A,Oven,EQ-OVEN-01,Primary,400,2.0
+BAGUETTE-250G,Baguette 250g,BAGUETTE-250G-MIX,Dough Mixing,10,RawMaterial,Flour_Type_550,0.23,kg,FLOUR-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.8
+BAGUETTE-250G,Baguette 250g,BAGUETTE-250G-MIX,Dough Mixing,10,RawMaterial,Water,0.15,l,WATER-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.8
+BAGUETTE-250G,Baguette 250g,BAGUETTE-250G-MIX,Dough Mixing,10,RawMaterial,Yeast,0.0046,kg,YEAST-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.8
+BAGUETTE-250G,Baguette 250g,BAGUETTE-250G-MIX,Dough Mixing,10,RawMaterial,Salt,0.0023,kg,SALT-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.8
+BAGUETTE-250G,Baguette 250g,BAGUETTE-250G-BAKE,Baking,20,InProcessMaterial,Dough,1,EA,DOUGH-LOT-BAG-A,Oven,EQ-OVEN-01,Primary,400,1.6
+PITA-200G,Pita 200g,PITA-200G-MIX,Dough Mixing,10,RawMaterial,Flour_Type_550,0.18,kg,FLOUR-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.5
+PITA-200G,Pita 200g,PITA-200G-MIX,Dough Mixing,10,RawMaterial,Water,0.11,l,WATER-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.5
+PITA-200G,Pita 200g,PITA-200G-MIX,Dough Mixing,10,RawMaterial,Yeast,0.0036,kg,YEAST-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.5
+PITA-200G,Pita 200g,PITA-200G-MIX,Dough Mixing,10,RawMaterial,Salt,0.0018,kg,SALT-LOT-A,Mixer,EQ-MIX-01,Primary,400,1.5
+PITA-200G,Pita 200g,PITA-200G-BAKE,Baking,20,InProcessMaterial,Dough,1,EA,DOUGH-LOT-PITA-A,Oven,EQ-OVEN-01,Primary,400,1.0

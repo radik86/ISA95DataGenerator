@@ -15,7 +15,7 @@ public class AttributeDefinition
     public int? MinLength { get; set; }
     public int? MaxLength { get; set; }
     public string? Pattern { get; set; }
-    public List<string>? EnumValues { get; set; }
+    public List<EnumValueDefinition>? EnumValues { get; set; }
     public bool CanBePrimaryKey { get; set; } = true; // Whether this field can be used as PK
     public bool IsPrimaryKey { get; set; } = false; // Whether this field is defined as PK in JSON
 }

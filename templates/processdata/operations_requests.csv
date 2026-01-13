@@ -1,0 +1,2 @@
+OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,Status
+OR-20260112-001,Produce Wheat Bread (750g),PLANT-01,LINE-01,BREAD-750G,800,EA,2026-01-12 06:00:00,2026-01-12 14:00:00,2,Planned

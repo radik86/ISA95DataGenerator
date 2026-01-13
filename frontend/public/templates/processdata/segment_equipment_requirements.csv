@@ -1,0 +1,3 @@
+SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedDurationHours
+SER-001,SR-20260112-001-MIX,LINE-01,MIXER,EQ-MIX-01,SpecificAsset,2.0
+SER-002,SR-20260112-001-BAKE,LINE-01,OVEN,EQ-OVEN-01,SpecificAsset,2.0

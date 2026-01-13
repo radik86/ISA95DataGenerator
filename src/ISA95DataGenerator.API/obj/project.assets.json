@@ -867,11 +867,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.API\\ISA95DataGenerator.API.csproj",
+      "projectUniqueName": "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.API\\ISA95DataGenerator.API.csproj",
       "projectName": "ISA95DataGenerator.API",
-      "projectPath": "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.API\\ISA95DataGenerator.API.csproj",
+      "projectPath": "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.API\\ISA95DataGenerator.API.csproj",
       "packagesPath": "C:\\Users\\radion.badanjuk\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.API\\obj\\",
+      "outputPath": "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.API\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -893,11 +893,11 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Application\\ISA95DataGenerator.Application.csproj": {
-              "projectPath": "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Application\\ISA95DataGenerator.Application.csproj"
+            "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Application\\ISA95DataGenerator.Application.csproj": {
+              "projectPath": "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Application\\ISA95DataGenerator.Application.csproj"
             },
-            "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Infrastructure\\ISA95DataGenerator.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Infrastructure\\ISA95DataGenerator.Infrastructure.csproj"
+            "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Infrastructure\\ISA95DataGenerator.Infrastructure.csproj": {
+              "projectPath": "c:\\Users\\radion.badanjuk\\Documents\\Avanade\\MDS\\MDS Tools\\ISA95DataGenerator\\src\\ISA95DataGenerator.Infrastructure\\ISA95DataGenerator.Infrastructure.csproj"
             }
           }
         }

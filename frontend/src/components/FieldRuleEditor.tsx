@@ -376,11 +376,15 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
                 onChange={(e) => setSelectedEnumValue(e.target.value)}
                 label="Select Enumeration Value"
               >
-                {enumValues.map((value, index) => (
-                  <MenuItem key={index} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
+                {enumValues.map((value, index) => {
+                  const displayValue = typeof value === 'object' ? (value.displayName || value.enumValue || value.name) : value;
+                  const actualValue = typeof value === 'object' ? value.enumValue : value;
+                  return (
+                    <MenuItem key={index} value={actualValue}>
+                      {displayValue}
+                    </MenuItem>
+                  );
+                })}
               </Select>
             </FormControl>
             {enumValues.length === 0 && (

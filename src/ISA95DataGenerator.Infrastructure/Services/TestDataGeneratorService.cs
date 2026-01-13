@@ -592,11 +592,11 @@ public class TestDataGeneratorService : ITestDataGeneratorService
                 _logger.LogInformation("DIAGNOSTIC GenerateDefaultValue: operationsType EnumValues.Count = {Count}", 
                     attribute.EnumValues.Count);
                 _logger.LogInformation("DIAGNOSTIC GenerateDefaultValue: EnumValues = [{Values}]", 
-                    string.Join(", ", attribute.EnumValues.Select((v, i) => $"[{i}]='{v}' (len:{v?.Length ?? 0})")));
+                    string.Join(", ", attribute.EnumValues.Select((v, i) => $"[{i}]='{v.EnumValue}' (len:{v.EnumValue?.Length ?? 0})")));
             }
             
             var selectedIndex = random.Next(attribute.EnumValues.Count);
-            var selectedValue = attribute.EnumValues[selectedIndex];
+            var selectedValue = attribute.EnumValues[selectedIndex].EnumValue;
             
             if (attribute.Name == "operationsType")
             {

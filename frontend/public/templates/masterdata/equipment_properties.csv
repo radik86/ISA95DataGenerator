@@ -1,0 +1,9 @@
+EquipmentPropertyID,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue
+EP-MIX-CUR,MixerMotorCurrentA,Mixer motor electrical current,DECIMAL,A,12.0,45.0
+EP-MIX-VISC,DoughViscosityIndex,Estimated dough viscosity index,DECIMAL,index,0.6,1.4
+EP-MIX-TORQ,MixerTorqueNm,Mixer shaft torque,DECIMAL,Nm,200.0,900.0
+EP-OVEN-TEMP,OvenChamberTempC,Oven chamber temperature,DECIMAL,C,180.0,260.0
+EP-OVEN-HUM,OvenHumidityPct,Oven chamber humidity,DECIMAL,%,5.0,80.0
+EP-OVEN-PWR,OvenPowerKW,Oven power consumption,DECIMAL,kW,20.0,120.0
+EP-VIB,EquipmentVibrationRMS,Equipment vibration RMS,DECIMAL,mm/s,0.2,6.0
+EP-CTRL,ControlOutputPct,Controller output signal,DECIMAL,%,0.0,100.0

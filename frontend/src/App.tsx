@@ -8,6 +8,10 @@ import PrimaryKeyRuleBuilder from './components/PrimaryKeyRuleBuilder';
 import FieldRuleEditor from './components/FieldRuleEditor';
 import DataGeneration from './components/DataGeneration';
 import GraphDataGeneration from './components/GraphDataGeneration';
+import MasterDataManager from './components/MasterDataManager';
+import ProcessDataGenerator from './components/ProcessDataGenerator';
+import DataMigration from './components/DataMigration';
+import EnumerationEvaluations from './components/EnumerationEvaluations';
 
 const theme = createTheme({
   palette: {
@@ -44,6 +48,10 @@ function App() {
               <Route path="field-rules" element={<FieldRuleEditor />} />
               <Route path="generate" element={<DataGeneration />} />
               <Route path="graph-generate" element={<GraphDataGeneration />} />
+              <Route path="master-data" element={<MasterDataManager />} />
+              <Route path="process-data" element={<ProcessDataGenerator />} />
+              <Route path="data-migration" element={<DataMigration />} />
+              <Route path="enumeration-evaluations" element={<EnumerationEvaluations />} />
             </Route>
           </Routes>
         </BrowserRouter>

@@ -151,6 +151,16 @@
             "groupBy": "false",
             "primaryKey": "false",
             "isProperNoun": "false"
+        },
+        {
+            "name": "materialLotId",
+            "description": "Reference to the parent Material Lot that this sublot belongs to",
+            "type": "String",
+            "mandatory": "true",
+            "semanticRelevantFlag": "true",
+            "groupBy": "false",
+            "primaryKey": "false",
+            "isProperNoun": "false"
         }
     ],
     "tags": {

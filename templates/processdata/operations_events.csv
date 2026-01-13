@@ -1,0 +1,2 @@
+OperationsEventID,SegmentResponseID,EventType,EventReason,StartDateTime,EndDateTime,Severity,Comments
+EVT-001,SRESP-20260112-001-BAKE-R2,UnplannedDowntime,TemperatureDeviation,2026-01-12 11:00:00,2026-01-12 12:00:00,High,Oven over-temp alarm

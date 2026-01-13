@@ -1,0 +1,4 @@
+MaterialClassID,MaterialClassName,Description
+FINISHEDPRODUCT,FinishedProduct,Final product ready for sale or shipment
+INPROCESSMATERIAL,InProcessMaterial,Semi-finished material produced and consumed within production
+RAWMATERIAL,RawMaterial,Externally supplied raw material used for production

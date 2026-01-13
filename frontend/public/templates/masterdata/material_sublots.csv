@@ -1,0 +1,4 @@
+id,materialLotId,quantity,quantityUnitOfMeasure,storageLocation,status,disposition
+SUBLOT_001,LOT_001,100,kg,Warehouse A - Aisle 1,Active,Unrestricted
+SUBLOT_002,LOT_001,150,kg,Warehouse A - Aisle 2,Active,Unrestricted
+SUBLOT_003,LOT_002,75,kg,Warehouse B - Zone 3,Active,In process

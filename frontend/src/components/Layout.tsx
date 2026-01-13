@@ -19,6 +19,10 @@ import {
   Rule as RuleIcon,
   DataObject as DataIcon,
   AccountTreeOutlined as GraphOutlineIcon,
+  Inventory as InventoryIcon,
+  Assignment as ProcessIcon,
+  Transform as TransformIcon,
+  Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 
 const DRAWER_WIDTH = 240;
@@ -29,6 +33,10 @@ const menuItems = [
   { path: '/field-rules', label: 'Field Rules', icon: <RuleIcon /> },
   { path: '/generate', label: 'Generate Data', icon: <DataIcon /> },
   { path: '/graph-generate', label: 'Graph Generator', icon: <GraphOutlineIcon /> },
+  { path: '/master-data', label: 'Master Data', icon: <InventoryIcon /> },
+  { path: '/process-data', label: 'Process Data Generator', icon: <ProcessIcon /> },
+  { path: '/data-migration', label: 'Data Migration', icon: <TransformIcon /> },
+  { path: '/enumeration-evaluations', label: 'Enumeration Evaluations', icon: <AssessmentIcon /> },
 ];
 
 const Layout: React.FC = () => {

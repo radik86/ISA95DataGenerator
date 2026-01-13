@@ -213,7 +213,7 @@ const EntityNode: React.FC<NodeProps> = ({ data }) => {
                             <Box sx={{ display: 'none', pl: 1, mt: 0.5, maxHeight: 150, overflowY: 'auto' }}>
                               {attr.enumValues.map((val, idx) => (
                                 <Typography key={idx} variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
-                                  • {val}
+                                  • {typeof val === 'object' ? (val.displayName || val.enumValue || val.name) : val}
                                 </Typography>
                               ))}
                             </Box>

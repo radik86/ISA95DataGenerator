@@ -1,0 +1,3 @@
+LineEquipmentID,LineID,EquipmentID,Role,Sequence
+LE-001,LINE-01,EQ-MIX-01,Primary,10
+LE-002,LINE-01,EQ-OVEN-01,Primary,20
