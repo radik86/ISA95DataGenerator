@@ -19,6 +19,13 @@ export class TemplateDataLoader {
       { name: 'plants.csv', parser: 'plants' },
       { name: 'production_lines.csv', parser: 'productionLines' },
       { name: 'line_equipment.csv', parser: 'lineEquipment' },
+      { name: 'operation_event_definitions.csv', parser: 'operationEventDefinitions' },
+      { name: 'operations_event_definition_segment_assignments.csv', parser: 'operationEventDefSegmentAssignments' },
+      { name: 'hierarchy_scope.csv', parser: 'hierarchyScopes' },
+      { name: 'hierarchy_scope_flat.csv', parser: 'hierarchyScopesFlat' },
+      { name: 'shifts.csv', parser: 'shifts' },
+      { name: 'crews.csv', parser: 'crews' },
+      { name: 'shift_crew_assignments.csv', parser: 'shiftCrewAssignments' },
     ];
 
     const result: ParsedCSVData = {};
@@ -66,6 +73,27 @@ export class TemplateDataLoader {
           case 'lineEquipment':
             result.lineEquipment = csvParser.parseLineEquipment(csvText);
             break;
+          case 'operationEventDefinitions':
+            result.operationEventDefinitions = csvParser.parseOperationEventDefinitions(csvText);
+            break;
+          case 'operationEventDefSegmentAssignments':
+            result.operationEventDefSegmentAssignments = csvParser.parseOperationEventDefSegmentAssignments(csvText);
+            break;
+          case 'hierarchyScopes':
+            result.hierarchyScopes = csvParser.parseHierarchyScopes(csvText);
+            break;
+          case 'hierarchyScopesFlat':
+            result.hierarchyScopesFlat = csvParser.parseHierarchyScopesFlat(csvText);
+            break;
+          case 'shifts':
+            result.shifts = csvParser.parseShifts(csvText);
+            break;
+          case 'crews':
+            result.crews = csvParser.parseCrews(csvText);
+            break;
+          case 'shiftCrewAssignments':
+            result.shiftCrewAssignments = csvParser.parseShiftCrewAssignments(csvText);
+            break;
         }
       } catch (error) {
         console.error(`Failed to load ${file.name}:`, error);
@@ -88,7 +116,9 @@ export class TemplateDataLoader {
     console.log('Template data loaded:', {
       equipmentProperties: data.equipmentProperties?.length || 0,
       equipmentPropertyAssignments: data.equipmentPropertyAssignments?.length || 0,
-      equipment: data.equipment?.length || 0
+      equipment: data.equipment?.length || 0,
+      operationEventDefinitions: data.operationEventDefinitions?.length || 0,
+      operationEventDefSegmentAssignments: data.operationEventDefSegmentAssignments?.length || 0
     });
     await masterDataDB.importFromCSV(data);
   }

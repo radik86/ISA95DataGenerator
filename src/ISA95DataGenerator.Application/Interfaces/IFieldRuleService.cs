@@ -13,5 +13,6 @@ public interface IFieldRuleService
     Task<List<FieldRule>> GetRulesForEntityAsync(string entityName);
     Task<List<FieldRule>> GetAllRulesAsync();
     object GenerateFieldValue(FieldRule rule, AttributeDefinition attribute, Random random);
+    object GenerateFieldValue(FieldRule rule, AttributeDefinition attribute, Random random, Dictionary<string, object>? sourceData);
     Task DeleteRuleAsync(string entityName, string fieldName);
 }

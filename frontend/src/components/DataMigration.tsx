@@ -88,7 +88,6 @@ interface ISA95Field {
 interface ColumnMapping {
   sourceColumn: string;
   targetField: string;
-  transformation?: string;
   fieldRule?: FieldRuleConfig;
 }
 
@@ -101,7 +100,6 @@ interface FieldMapping {
   fieldName: string;
   sourceColumn?: string;
   generate: boolean;
-  transformation?: string;
   fieldRule?: FieldRuleConfig;
 }
 
@@ -160,6 +158,7 @@ const DataMigration: React.FC = () => {
   const [fieldRuleType, setFieldRuleType] = useState<RuleType>(RuleType.Examples);
   const [importDialog, setImportDialog] = useState(false);
   const [importedTables, setImportedTables] = useState<SourceTable[]>([]);
+  const [importedTablesData, setImportedTablesData] = useState<{ [tableName: string]: any[] }>({});
   const [bridgeDialog, setBridgeDialog] = useState(false);
   const [isBridgeMode, setIsBridgeMode] = useState(false);
   const [bridgeEntity1, setBridgeEntity1] = useState('');
@@ -189,6 +188,17 @@ const DataMigration: React.FC = () => {
   const [seqEnd, setSeqEnd] = useState(100);
   const [seqPadding, setSeqPadding] = useState(0);
   const [enumValues, setEnumValues] = useState<string[]>([]);
+  
+  // IfThen rule parameters
+  const [ifThenSourceField, setIfThenSourceField] = useState('');
+  const [ifThenCondition, setIfThenCondition] = useState('');
+  const [ifThenTrueValue, setIfThenTrueValue] = useState('');
+  const [ifThenFalseValue, setIfThenFalseValue] = useState('');
+  
+  // Case rule parameters
+  const [caseSourceField, setCaseSourceField] = useState('');
+  const [caseCases, setCaseCases] = useState<Array<{ case: string; value: string }>>([{ case: '', value: '' }]);
+  const [caseDefaultValue, setCaseDefaultValue] = useState('');
 
   // Primary Key rule dialog states
   const [pkRuleDialog, setPkRuleDialog] = useState(false);
@@ -320,30 +330,69 @@ const DataMigration: React.FC = () => {
   const loadCurrentDataAsSource = async () => {
     try {
       setLoading(true);
-      // Load current application data as example data source (Master Data)
-      const materialClasses = await masterDataDB.getAll('materialClasses');
-      const materials = await masterDataDB.getAll('materials');
-      const materialLots = await masterDataDB.getAll('materialLots');
-      const materialSublots = await masterDataDB.getAll('materialSublots');
-      const equipmentClasses = await masterDataDB.getAll('equipmentClasses');
-      const equipment = await masterDataDB.getAll('equipment');
-      const equipmentProperties = await masterDataDB.getAll('equipmentProperties');
-      const equipmentPropertyAssignments = await masterDataDB.getAll('equipmentPropertyAssignments');
-      const plants = await masterDataDB.getAll('plants');
-      const productionLines = await masterDataDB.getAll('productionLines');
-      const processSegments = await masterDataDB.getAll('processSegments');
-
-      // Load Process Data
-      const operationsRequests = await processDataDB.getAll('operationsRequests');
-      const segmentRequirements = await processDataDB.getAll('segmentRequirements');
-      const segmentMaterialRequirements = await processDataDB.getAll('segmentMaterialRequirements');
-      const segmentEquipmentRequirements = await processDataDB.getAll('segmentEquipmentRequirements');
-      const operationsResponses = await processDataDB.getAll('operationsResponses');
-      const segmentResponses = await processDataDB.getAll('segmentResponses');
-      const segmentMaterialActuals = await processDataDB.getAll('segmentMaterialActuals');
-      const segmentEquipmentActuals = await processDataDB.getAll('segmentEquipmentActuals');
-      const equipmentPropertyTracking = await processDataDB.getAll('equipmentPropertyTracking');
-      const testResults = await processDataDB.getAll('testResults');
+      console.log('[DataMigration] Loading all tables from Master Data and Process Data databases...');
+      
+      // Get all available stores dynamically from both databases
+      const masterDataStores = [
+        'materialClasses', 'materials', 'materialLots', 'materialSublots',
+        'equipmentClasses', 'equipment', 'equipmentProperties', 
+        'equipmentPropertyAssignments', 'plants', 'productionLines',
+        'lineEquipment', 'processSegments', 'segmentBOMs', 'equipmentUsages',
+        'operationEventDefinitions', 'operationEventDefSegmentAssignments',
+        'hierarchyScopes', 'hierarchyScopesFlat', 'hierarchyScopeParentChild'
+      ];
+      
+      const processDataStores = [
+        'operationsRequests', 'segmentRequirements', 
+        'segmentMaterialRequirements', 'segmentEquipmentRequirements',
+        'operationsResponses', 'segmentResponses', 
+        'segmentMaterialActuals', 'segmentEquipmentActuals',
+        'equipmentPropertyTracking', 'testResults', 'operationsEvents'
+      ];
+      
+      // Load all data dynamically
+      const masterDataResults: { [key: string]: any[] } = {};
+      for (const storeName of masterDataStores) {
+        try {
+          masterDataResults[storeName] = await masterDataDB.getAll(storeName as any);
+        } catch (error) {
+          console.warn(`[DataMigration] Store ${storeName} not found in master-data-db, skipping`);
+          masterDataResults[storeName] = [];
+        }
+      }
+      
+      const processDataResults: { [key: string]: any[] } = {};
+      for (const storeName of processDataStores) {
+        try {
+          processDataResults[storeName] = await processDataDB.getAll(storeName as any);
+        } catch (error) {
+          console.warn(`[DataMigration] Store ${storeName} not found in process-data-db, skipping`);
+          processDataResults[storeName] = [];
+        }
+      }
+      
+      // For backwards compatibility, keep these variables
+      const materialClasses = masterDataResults['materialClasses'];
+      const materials = masterDataResults['materials'];
+      const materialLots = masterDataResults['materialLots'];
+      const materialSublots = masterDataResults['materialSublots'];
+      const equipmentClasses = masterDataResults['equipmentClasses'];
+      const equipment = masterDataResults['equipment'];
+      const equipmentProperties = masterDataResults['equipmentProperties'];
+      const equipmentPropertyAssignments = masterDataResults['equipmentPropertyAssignments'];
+      const plants = masterDataResults['plants'];
+      const productionLines = masterDataResults['productionLines'];
+      const processSegments = masterDataResults['processSegments'];
+      const operationsRequests = processDataResults['operationsRequests'];
+      const segmentRequirements = processDataResults['segmentRequirements'];
+      const segmentMaterialRequirements = processDataResults['segmentMaterialRequirements'];
+      const segmentEquipmentRequirements = processDataResults['segmentEquipmentRequirements'];
+      const operationsResponses = processDataResults['operationsResponses'];
+      const segmentResponses = processDataResults['segmentResponses'];
+      const segmentMaterialActuals = processDataResults['segmentMaterialActuals'];
+      const segmentEquipmentActuals = processDataResults['segmentEquipmentActuals'];
+      const equipmentPropertyTracking = processDataResults['equipmentPropertyTracking'];
+      const testResults = processDataResults['testResults'];
 
       const tables: SourceTable[] = [
         // Master Data Tables
@@ -572,14 +621,170 @@ const DataMigration: React.FC = () => {
           ],
         },
       ];
+      
+      // Add additional tables from newly loaded stores
+      const additionalTables: SourceTable[] = [];
+      
+      // Add lineEquipment if available
+      if (masterDataResults['lineEquipment']?.length > 0) {
+        const lineEquipment = masterDataResults['lineEquipment'];
+        additionalTables.push({
+          name: 'line_equipment',
+          rowCount: lineEquipment.length,
+          columns: [
+            { name: 'id', type: 'string', sample: lineEquipment[0]?.id },
+            { name: 'productionLineId', type: 'string', sample: lineEquipment[0]?.productionLineId },
+            { name: 'equipmentId', type: 'string', sample: lineEquipment[0]?.equipmentId },
+          ],
+        });
+      }
+      
+      // Add segmentBOMs if available
+      if (masterDataResults['segmentBOMs']?.length > 0) {
+        const segmentBOMs = masterDataResults['segmentBOMs'];
+        additionalTables.push({
+          name: 'segment_boms',
+          rowCount: segmentBOMs.length,
+          columns: [
+            { name: 'id', type: 'string', sample: segmentBOMs[0]?.id },
+            { name: 'processSegmentId', type: 'string', sample: segmentBOMs[0]?.processSegmentId },
+            { name: 'materialId', type: 'string', sample: segmentBOMs[0]?.materialId },
+            { name: 'quantity', type: 'number', sample: segmentBOMs[0]?.quantity?.toString() },
+            { name: 'quantityUoM', type: 'string', sample: segmentBOMs[0]?.quantityUoM },
+            { name: 'materialUse', type: 'string', sample: segmentBOMs[0]?.materialUse },
+          ],
+        });
+      }
+      
+      // Add equipmentUsages if available
+      if (masterDataResults['equipmentUsages']?.length > 0) {
+        const equipmentUsages = masterDataResults['equipmentUsages'];
+        additionalTables.push({
+          name: 'equipment_usages',
+          rowCount: equipmentUsages.length,
+          columns: [
+            { name: 'id', type: 'string', sample: equipmentUsages[0]?.id },
+            { name: 'processSegmentId', type: 'string', sample: equipmentUsages[0]?.processSegmentId },
+            { name: 'equipmentId', type: 'string', sample: equipmentUsages[0]?.equipmentId },
+            { name: 'durationHours', type: 'number', sample: equipmentUsages[0]?.durationHours?.toString() },
+          ],
+        });
+      }
+      
+      // Add operationEventDefinitions if available
+      if (masterDataResults['operationEventDefinitions']?.length > 0) {
+        const operationEventDefinitions = masterDataResults['operationEventDefinitions'];
+        additionalTables.push({
+          name: 'operation_event_definitions',
+          rowCount: operationEventDefinitions.length,
+          columns: [
+            { name: 'id', type: 'string', sample: operationEventDefinitions[0]?.id },
+            { name: 'code', type: 'string', sample: operationEventDefinitions[0]?.code },
+            { name: 'description', type: 'string', sample: operationEventDefinitions[0]?.description },
+            { name: 'category', type: 'string', sample: operationEventDefinitions[0]?.category },
+            { name: 'causeCategory', type: 'string', sample: operationEventDefinitions[0]?.causeCategory },
+            { name: 'causesDowntime', type: 'boolean', sample: String(operationEventDefinitions[0]?.causesDowntime) },
+            { name: 'causesScrap', type: 'boolean', sample: String(operationEventDefinitions[0]?.causesScrap) },
+          ],
+        });
+      }
+      
+      // Add operationEventDefSegmentAssignments if available
+      if (masterDataResults['operationEventDefSegmentAssignments']?.length > 0) {
+        const assignments = masterDataResults['operationEventDefSegmentAssignments'];
+        additionalTables.push({
+          name: 'operation_event_def_segment_assignments',
+          rowCount: assignments.length,
+          columns: [
+            { name: 'id', type: 'string', sample: assignments[0]?.id },
+            { name: 'operationEventDefinitionId', type: 'string', sample: assignments[0]?.operationEventDefinitionId },
+            { name: 'processSegmentId', type: 'string', sample: assignments[0]?.processSegmentId },
+          ],
+        });
+      }
+      
+      // Add operationsEvents if available
+      if (processDataResults['operationsEvents']?.length > 0) {
+        const operationsEvents = processDataResults['operationsEvents'];
+        additionalTables.push({
+          name: 'operations_events',
+          rowCount: operationsEvents.length,
+          columns: [
+            { name: 'id', type: 'string', sample: operationsEvents[0]?.id },
+            { name: 'segmentResponseId', type: 'string', sample: operationsEvents[0]?.segmentResponseId },
+            { name: 'operationEventDefinitionId', type: 'string', sample: operationsEvents[0]?.operationEventDefinitionId },
+            { name: 'startDateTime', type: 'datetime', sample: operationsEvents[0]?.startDateTime },
+            { name: 'endDateTime', type: 'datetime', sample: operationsEvents[0]?.endDateTime },
+            { name: 'durationMinutes', type: 'number', sample: operationsEvents[0]?.durationMinutes?.toString() },
+            { name: 'comment', type: 'string', sample: operationsEvents[0]?.comment },
+          ],
+        });
+      }
+
+      // Add hierarchyScopes if available
+      if (masterDataResults['hierarchyScopes']?.length > 0) {
+        const hierarchyScopes = masterDataResults['hierarchyScopes'];
+        additionalTables.push({
+          name: 'hierarchy_scopes',
+          rowCount: hierarchyScopes.length,
+          columns: [
+            { name: 'id', type: 'string', sample: hierarchyScopes[0]?.id },
+            { name: 'equipmentID', type: 'string', sample: hierarchyScopes[0]?.equipmentID },
+            { name: 'equipmentLevel', type: 'string', sample: hierarchyScopes[0]?.equipmentLevel },
+          ],
+        });
+      }
+
+      // Add hierarchyScopesFlat if available
+      if (masterDataResults['hierarchyScopesFlat']?.length > 0) {
+        const hierarchyScopesFlat = masterDataResults['hierarchyScopesFlat'];
+        additionalTables.push({
+          name: 'hierarchy_scopes_flat',
+          rowCount: hierarchyScopesFlat.length,
+          columns: [
+            { name: 'id', type: 'string', sample: hierarchyScopesFlat[0]?.id },
+            { name: 'Enterprise', type: 'string', sample: hierarchyScopesFlat[0]?.Enterprise },
+            { name: 'Site', type: 'string', sample: hierarchyScopesFlat[0]?.Site },
+            { name: 'Area', type: 'string', sample: hierarchyScopesFlat[0]?.Area },
+            { name: 'Work Center', type: 'string', sample: hierarchyScopesFlat[0]?.['Work Center'] },
+            { name: 'Work Unit', type: 'string', sample: hierarchyScopesFlat[0]?.['Work Unit'] },
+            { name: 'Process Cell', type: 'string', sample: hierarchyScopesFlat[0]?.['Process Cell'] },
+            { name: 'Unit', type: 'string', sample: hierarchyScopesFlat[0]?.Unit },
+            { name: 'Production Line', type: 'string', sample: hierarchyScopesFlat[0]?.['Production Line'] },
+            { name: 'Production Unit', type: 'string', sample: hierarchyScopesFlat[0]?.['Production Unit'] },
+            { name: 'Work Cell', type: 'string', sample: hierarchyScopesFlat[0]?.['Work Cell'] },
+            { name: 'Storage Zone', type: 'string', sample: hierarchyScopesFlat[0]?.['Storage Zone'] },
+            { name: 'Storage Unit', type: 'string', sample: hierarchyScopesFlat[0]?.['Storage Unit'] },
+          ],
+        });
+      }
+
+      // Add hierarchyScopeParentChild if available
+      if (masterDataResults['hierarchyScopeParentChild']?.length > 0) {
+        const hierarchyScopeParentChild = masterDataResults['hierarchyScopeParentChild'];
+        additionalTables.push({
+          name: 'hierarchy_scope_parent_child',
+          rowCount: hierarchyScopeParentChild.length,
+          columns: [
+            { name: 'id', type: 'string', sample: hierarchyScopeParentChild[0]?.id },
+            { name: 'parentEquipmentLevel', type: 'string', sample: hierarchyScopeParentChild[0]?.parentEquipmentLevel },
+            { name: 'parentEquipmentID', type: 'string', sample: hierarchyScopeParentChild[0]?.parentEquipmentID },
+            { name: 'childEquipmentLevel', type: 'string', sample: hierarchyScopeParentChild[0]?.childEquipmentLevel },
+            { name: 'childEquipmentID', type: 'string', sample: hierarchyScopeParentChild[0]?.childEquipmentID },
+          ],
+        });
+      }
+      
+      console.log(`[DataMigration] Loaded ${tables.length} base tables + ${additionalTables.length} additional tables`);
 
       const source: DataSource = {
         name: 'Current Application Data (Master + Process)',
-        tables: [...tables, ...importedTables],
+        tables: [...tables, ...additionalTables, ...importedTables],
       };
 
       setDataSource(source);
       setLoading(false);
+      console.log(`[DataMigration] Data source refreshed with ${source.tables.length} total tables`);
     } catch (error) {
       console.error('Failed to load data source:', error);
       showSnackbar('Failed to load data source', 'error');
@@ -667,6 +872,7 @@ const DataMigration: React.FC = () => {
       };
 
       setImportedTables(prev => [...prev, newTable]);
+      setImportedTablesData(prev => ({ ...prev, [tableName]: parsedData }));
       showSnackbar(`Imported table "${tableName}" with ${parsedData.length} rows`, 'success');
       setImportDialog(false);
       setLoading(false);
@@ -684,6 +890,11 @@ const DataMigration: React.FC = () => {
 
   const handleRemoveImportedTable = (tableName: string) => {
     setImportedTables(prev => prev.filter(t => t.name !== tableName));
+    setImportedTablesData(prev => {
+      const newData = { ...prev };
+      delete newData[tableName];
+      return newData;
+    });
     if (dataSource) {
       setDataSource({
         ...dataSource,
@@ -757,7 +968,6 @@ const DataMigration: React.FC = () => {
         fieldName: field.name,
         sourceColumn: autoMappedColumn?.sourceColumn,
         generate: field.required || !!autoMappedColumn, // Auto-enable required fields or auto-mapped fields
-        transformation: autoMappedColumn?.transformation,
       };
     });
 
@@ -766,7 +976,6 @@ const DataMigration: React.FC = () => {
       fieldName: 'PrimaryKey',
       sourceColumn: undefined,
       generate: false, // Will be generated by PK rule
-      transformation: undefined,
     });
 
     const newMapping: TableMapping = {
@@ -804,40 +1013,34 @@ const DataMigration: React.FC = () => {
         fieldName: 'Source type',
         sourceColumn: undefined,
         generate: true,
-        transformation: undefined,
         fieldRule: { ruleType: RuleType.Static, parameters: { value: entity1.name } }
       },
       {
         fieldName: 'Source PrimaryKey',
         sourceColumn: bridgeEntity1Column, // Lookup column from source
         generate: true,
-        transformation: undefined,
       },
       {
         fieldName: 'Target Type',
         sourceColumn: undefined,
         generate: true,
-        transformation: undefined,
         fieldRule: { ruleType: RuleType.Static, parameters: { value: entity2.name } }
       },
       {
         fieldName: 'Target PrimaryKey',
         sourceColumn: bridgeEntity2Column, // Lookup column from source
         generate: true,
-        transformation: undefined,
       },
       {
         fieldName: 'Relationship Type',
         sourceColumn: undefined,
         generate: true,
-        transformation: undefined,
         fieldRule: { ruleType: RuleType.Static, parameters: { value: relationshipType || 'related' } }
       },
       {
         fieldName: 'PrimaryKey',
         sourceColumn: undefined,
         generate: false,
-        transformation: undefined,
       }
     ];
 
@@ -1030,6 +1233,12 @@ const DataMigration: React.FC = () => {
       setEnumValues([]);
     }
     
+    // Pre-populate source field from source column if available
+    if (fieldMapping?.sourceColumn) {
+      setIfThenSourceField(fieldMapping.sourceColumn);
+      setCaseSourceField(fieldMapping.sourceColumn);
+    }
+    
     if (fieldMapping?.fieldRule) {
       const ruleType = fieldMapping.fieldRule.ruleType as RuleType;
       setFieldRuleType(ruleType);
@@ -1063,6 +1272,17 @@ const DataMigration: React.FC = () => {
         case RuleType.Enumeration:
           // Load selected enum value from saved rule
           setStaticValue(params?.value || '');
+          break;
+        case RuleType.IfThen:
+          setIfThenSourceField(params?.sourceField || fieldMapping?.sourceColumn || '');
+          setIfThenCondition(params?.condition || '');
+          setIfThenTrueValue(params?.trueValue || '');
+          setIfThenFalseValue(params?.falseValue || '');
+          break;
+        case RuleType.Case:
+          setCaseSourceField(params?.sourceField || fieldMapping?.sourceColumn || '');
+          setCaseCases(params?.cases || [{ case: '', value: '' }]);
+          setCaseDefaultValue(params?.defaultValue || '');
           break;
       }
     } else {
@@ -1098,6 +1318,13 @@ const DataMigration: React.FC = () => {
     setSeqEnd(100);
     setSeqPadding(0);
     setEnumValues([]);
+    setIfThenSourceField('');
+    setIfThenCondition('');
+    setIfThenTrueValue('');
+    setIfThenFalseValue('');
+    setCaseSourceField('');
+    setCaseCases([{ case: '', value: '' }]);
+    setCaseDefaultValue('');
   };
 
   const handleSaveFieldRule = () => {
@@ -1148,6 +1375,34 @@ const DataMigration: React.FC = () => {
         }
         parameters = { value: staticValue };
         break;
+      case RuleType.IfThen:
+        if (!ifThenSourceField || !ifThenCondition.trim() || !ifThenTrueValue.trim() || !ifThenFalseValue.trim()) {
+          showSnackbar('Please fill in all If-Then fields including source field', 'error');
+          return;
+        }
+        parameters = { 
+          sourceField: ifThenSourceField,
+          condition: ifThenCondition, 
+          trueValue: ifThenTrueValue, 
+          falseValue: ifThenFalseValue 
+        };
+        break;
+      case RuleType.Case:
+        if (!caseSourceField) {
+          showSnackbar('Please select a source field', 'error');
+          return;
+        }
+        const validCases = caseCases.filter(c => c.case.trim() && c.value.trim());
+        if (validCases.length === 0) {
+          showSnackbar('Please add at least one valid case', 'error');
+          return;
+        }
+        parameters = { 
+          sourceField: caseSourceField,
+          cases: validCases,
+          defaultValue: caseDefaultValue || undefined
+        };
+        break;
       default:
         showSnackbar('Invalid rule type', 'error');
         return;
@@ -1163,6 +1418,15 @@ const DataMigration: React.FC = () => {
         ruleType: fieldRuleType as string,
         parameters: parameters,
       };
+      
+      // If IfThen or Case rule and sourceColumn is not set, set it from the rule's sourceField
+      if ((fieldRuleType === RuleType.IfThen || fieldRuleType === RuleType.Case) && !fieldMapping.sourceColumn) {
+        const sourceField = fieldRuleType === RuleType.IfThen ? ifThenSourceField : caseSourceField;
+        if (sourceField) {
+          fieldMapping.sourceColumn = sourceField;
+        }
+      }
+      
       setTableMappings(updated);
       setFieldRuleDialog(false);
       showSnackbar('Field rule configured', 'success');
@@ -1423,6 +1687,13 @@ const DataMigration: React.FC = () => {
         return `${params?.prefix || ''}[${params?.start || 1}-${params?.end || 100}]${params?.suffix || ''}`;
       case RuleType.Enumeration:
         return params?.value || 'Enum';
+      case RuleType.IfThen:
+        const ifThenSource = params?.sourceField ? `[${params.sourceField}] ` : '';
+        return `${ifThenSource}If(${params?.condition}) ? ${params?.trueValue} : ${params?.falseValue}`;
+      case RuleType.Case:
+        const caseCount = params?.cases?.length || 0;
+        const caseSource = params?.sourceField ? `[${params.sourceField}] ` : '';
+        return `${caseSource}${caseCount} case${caseCount !== 1 ? 's' : ''}${params?.defaultValue ? ' + default' : ''}`;
       default:
         return fieldRule.ruleType;
     }
@@ -1509,22 +1780,23 @@ const DataMigration: React.FC = () => {
             // Process each field mapping normally
             mapping.fieldMappings.forEach(fm => {
               if (fm.generate) {
-                if (fm.sourceColumn && record[fm.sourceColumn] !== undefined) {
+                console.log(`[${mapping.targetEntity}] Processing field mapping:`, {
+                  fieldName: fm.fieldName,
+                  hasSourceColumn: !!fm.sourceColumn,
+                  sourceColumn: fm.sourceColumn,
+                  hasFieldRule: !!fm.fieldRule,
+                  fieldRuleType: fm.fieldRule?.ruleType
+                });
+                
+                // Priority: Field rule first, then direct mapping
+                if (fm.fieldRule) {
+                  // Generate value using field rule, passing source record for conditional rules
+                  console.log(`[${mapping.targetEntity}] Using field rule for ${fm.fieldName}:`, fm.fieldRule);
+                  transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, record);
+                } else if (fm.sourceColumn && record[fm.sourceColumn] !== undefined) {
                   let value = record[fm.sourceColumn];
-                  
-                  // Apply transformation if specified
-                  if (fm.transformation) {
-                    try {
-                      value = eval(fm.transformation)(value);
-                    } catch (error) {
-                      log(`Warning: Transformation failed for ${fm.fieldName}: ${error}`);
-                    }
-                  }
-                  
+                  console.log(`[${mapping.targetEntity}] Direct mapping: ${fm.fieldName} = ${value} (from ${fm.sourceColumn})`);
                   transformed[fm.fieldName] = value;
-                } else if (fm.fieldRule) {
-                  // Generate value using field rule
-                  transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule);
                 }
               }
             });
@@ -1586,7 +1858,7 @@ const DataMigration: React.FC = () => {
 
         // Save to ISA95 format as CSV
         log(`Exporting to CSV: ${entityDisplayName}...`);
-        await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle);
+        await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge);
         
         log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
 
@@ -1604,7 +1876,7 @@ const DataMigration: React.FC = () => {
     }
   };
 
-  const generateValueFromRule = (fieldRule: FieldRuleConfig): any => {
+  const generateValueFromRule = (fieldRule: FieldRuleConfig, sourceRecord?: any): any => {
     const params = fieldRule.parameters as any;
     switch (fieldRule.ruleType) {
       case RuleType.Static:
@@ -1629,18 +1901,102 @@ const DataMigration: React.FC = () => {
         const padding = params?.padding || 0;
         const numStr = padding > 0 ? String(start).padStart(padding, '0') : String(start);
         return `${params?.prefix || ''}${numStr}${params?.suffix || ''}`;
+      case RuleType.IfThen:
+        // Evaluate condition using source field value
+        if (!sourceRecord || !params?.sourceField) {
+          return params?.falseValue || '';
+        }
+        const sourceValue = sourceRecord[params.sourceField];
+        if (sourceValue === undefined) {
+          return params?.falseValue || '';
+        }
+        const conditionMet = evaluateCondition(String(sourceValue), params?.condition || '');
+        return conditionMet ? (params?.trueValue || '') : (params?.falseValue || '');
+      case RuleType.Case:
+        // Match source field value against cases
+        if (!sourceRecord || !params?.sourceField) {
+          console.warn('Case rule: missing sourceRecord or sourceField', { sourceRecord, sourceField: params?.sourceField });
+          return params?.defaultValue || '';
+        }
+        const caseSourceValue = String(sourceRecord[params.sourceField] || '');
+        const cases = params?.cases || [];
+        
+        console.log('Case rule evaluation:', {
+          sourceField: params.sourceField,
+          sourceValue: caseSourceValue,
+          cases: cases,
+          availableFields: Object.keys(sourceRecord)
+        });
+        
+        // Find matching case (case-insensitive)
+        for (const caseItem of cases) {
+          if (caseItem.case && caseSourceValue.toLowerCase() === String(caseItem.case).toLowerCase()) {
+            console.log('Case matched:', { condition: caseItem.case, result: caseItem.value });
+            return caseItem.value || '';
+          }
+        }
+        
+        // No match found, return default
+        console.log('No case matched, using default:', params?.defaultValue);
+        return params?.defaultValue || '';
       default:
         return '';
     }
   };
 
+  const evaluateCondition = (sourceValue: string, condition: string): boolean => {
+    if (!condition) return false;
+    
+    condition = condition.trim();
+    
+    // Check for comparison operators
+    if (condition.startsWith('==')) {
+      const compareValue = condition.substring(2).trim();
+      return sourceValue.toLowerCase() === compareValue.toLowerCase();
+    }
+    
+    if (condition.startsWith('!=')) {
+      const compareValue = condition.substring(2).trim();
+      return sourceValue.toLowerCase() !== compareValue.toLowerCase();
+    }
+    
+    if (condition.toLowerCase().startsWith('contains')) {
+      const searchValue = condition.substring(8).trim();
+      return sourceValue.toLowerCase().includes(searchValue.toLowerCase());
+    }
+    
+    // Try numeric comparisons
+    const numericValue = parseFloat(sourceValue);
+    if (!isNaN(numericValue)) {
+      if (condition.startsWith('>=')) {
+        const compareValue = parseFloat(condition.substring(2).trim());
+        return !isNaN(compareValue) && numericValue >= compareValue;
+      }
+      
+      if (condition.startsWith('<=')) {
+        const compareValue = parseFloat(condition.substring(2).trim());
+        return !isNaN(compareValue) && numericValue <= compareValue;
+      }
+      
+      if (condition.startsWith('>')) {
+        const compareValue = parseFloat(condition.substring(1).trim());
+        return !isNaN(compareValue) && numericValue > compareValue;
+      }
+      
+      if (condition.startsWith('<')) {
+        const compareValue = parseFloat(condition.substring(1).trim());
+        return !isNaN(compareValue) && numericValue < compareValue;
+      }
+    }
+    
+    // Default: exact match (case-insensitive)
+    return sourceValue.toLowerCase() === condition.toLowerCase();
+  };
+
   const loadSourceData = async (tableName: string): Promise<any[]> => {
     // Check if it's an imported table first
-    const importedTable = importedTables.find(t => t.name === tableName);
-    if (importedTable) {
-      // For imported tables, we need to load the actual data
-      // This is a simplified version - in reality, you'd store the imported data
-      return [];
+    if (importedTablesData[tableName]) {
+      return importedTablesData[tableName];
     }
 
     // Map table names to IndexedDB stores
@@ -1656,6 +2012,8 @@ const DataMigration: React.FC = () => {
       'plants': 'plants',
       'production_lines': 'productionLines',
       'process_segments': 'processSegments',
+      'operation_event_definitions': 'operationEventDefinitions',
+      'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
     };
 
     const processStoreMap: { [key: string]: string } = {
@@ -1684,7 +2042,7 @@ const DataMigration: React.FC = () => {
     throw new Error(`Unknown table: ${tableName}`);
   };
 
-  const saveToISA95CSV = async (entityName: string, data: any[], directoryHandle: any): Promise<void> => {
+  const saveToISA95CSV = async (entityName: string, data: any[], directoryHandle: any, isBridge: boolean = false): Promise<void> => {
     if (data.length === 0) {
       return;
     }
@@ -1721,11 +2079,24 @@ const DataMigration: React.FC = () => {
     });
 
     const csvContent = csvRows.join('\n');
-    const fileName = `${entityName}.csv`;
+    // Capitalize first letter of each word in entity name for file naming
+    const capitalizedEntityName = entityName.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+    // Add timestamp to filename
+    const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
+    const fileName = `${capitalizedEntityName}_${timestamp}.csv`;
 
     try {
+      // Get the target directory handle (create mapping subfolder if bridge table)
+      let targetDirectoryHandle = directoryHandle;
+      if (isBridge) {
+        // @ts-ignore - File System Access API
+        targetDirectoryHandle = await directoryHandle.getDirectoryHandle('mapping', { create: true });
+      }
+      
       // @ts-ignore - File System Access API
-      const fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
+      const fileHandle = await targetDirectoryHandle.getFileHandle(fileName, { create: true });
       // @ts-ignore
       const writable = await fileHandle.createWritable();
       await writable.write(csvContent);
@@ -1796,7 +2167,7 @@ const DataMigration: React.FC = () => {
       if (type === 'source-to-entity' || (type === 'all' && sourceMappings.length > 0)) {
         // Source to entity format
         if (csvRows.length > 0) csvRows.push(''); // Empty line separator
-        csvRows.push('Source Table,Target Entity,Target Field,Generate,Source Column,Transformation,Field Rule Type,Field Rule Params,Primary Key Rule Type,Primary Key Rule Params,Enabled');
+        csvRows.push('Source Table,Target Entity,Target Field,Generate,Source Column,Field Rule Type,Field Rule Params,Primary Key Rule Type,Primary Key Rule Params,Enabled');
         
         sourceMappings.forEach(mapping => {
           const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
@@ -1805,7 +2176,7 @@ const DataMigration: React.FC = () => {
           
           mapping.fieldMappings.forEach(fieldMapping => {
             csvRows.push(
-              `"${mapping.sourceTable}","${targetEntity?.name || mapping.targetEntity}","${fieldMapping.fieldName}","${fieldMapping.generate}","${fieldMapping.sourceColumn || ''}","${fieldMapping.transformation || ''}","${fieldMapping.fieldRule?.ruleType || ''}","${fieldMapping.fieldRule ? JSON.stringify(fieldMapping.fieldRule.parameters).replace(/"/g, '""') : ''}","${pkRuleType}","${pkRuleParams}","${mapping.enabled}"`
+              `"${mapping.sourceTable}","${targetEntity?.name || mapping.targetEntity}","${fieldMapping.fieldName}","${fieldMapping.generate}","${fieldMapping.sourceColumn || ''}","${fieldMapping.fieldRule?.ruleType || ''}","${fieldMapping.fieldRule ? JSON.stringify(fieldMapping.fieldRule.parameters).replace(/"/g, '""') : ''}","${pkRuleType}","${pkRuleParams}","${mapping.enabled}"`
             );
           });
         });
@@ -2272,7 +2643,7 @@ const DataMigration: React.FC = () => {
                             Field Configuration
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                            Check fields to generate, assign source columns, configure transformations, or set field rules
+                            Check fields to generate, assign source columns, or set field rules
                           </Typography>
                         </Box>
                       )}
@@ -2285,7 +2656,6 @@ const DataMigration: React.FC = () => {
                               <TableCell>Target Field</TableCell>
                               <TableCell>Type</TableCell>
                               <TableCell>Source Column</TableCell>
-                              <TableCell>Transformation</TableCell>
                               <TableCell>Field Rule</TableCell>
                             </TableRow>
                           </TableHead>
@@ -2344,16 +2714,6 @@ const DataMigration: React.FC = () => {
                                         ))}
                                       </Select>
                                     </FormControl>
-                                  </TableCell>
-                                  <TableCell>
-                                    <TextField
-                                      fullWidth
-                                      size="small"
-                                      placeholder="e.g., (val) => val.toUpperCase()"
-                                      value={fieldMapping.transformation || ''}
-                                      onChange={(e) => handleUpdateFieldMapping(originalIndex, fieldMapping.fieldName, 'transformation', e.target.value)}
-                                      disabled={!fieldMapping.generate}
-                                    />
                                   </TableCell>
                                   <TableCell>
                                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -2477,11 +2837,13 @@ const DataMigration: React.FC = () => {
                   value={bridgeEntity1}
                   onChange={(e) => {
                     const entity1Name = isa95Entities.find(ent => ent.tableName === e.target.value)?.name || '';
+                    const capitalizedEntity1 = entity1Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                     setBridgeEntity1(e.target.value);
                     // Auto-generate bridge name if both entities are selected
                     if (bridgeEntity2) {
                       const entity2Name = isa95Entities.find(ent => ent.tableName === bridgeEntity2)?.name || '';
-                      setBridgeName(`${entity1Name}_to_${entity2Name}_mapping`);
+                      const capitalizedEntity2 = entity2Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                      setBridgeName(`${capitalizedEntity1}_to_${capitalizedEntity2}_mapping`);
                     }
                   }}
                   label="First ISA95 Entity"
@@ -2499,16 +2861,18 @@ const DataMigration: React.FC = () => {
                   value={bridgeEntity2}
                   onChange={(e) => {
                     const entity2Name = isa95Entities.find(ent => ent.tableName === e.target.value)?.name || '';
+                    const capitalizedEntity2 = entity2Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                     setBridgeEntity2(e.target.value);
                     // Auto-generate bridge name if both entities are selected
                     if (bridgeEntity1) {
                       const entity1Name = isa95Entities.find(ent => ent.tableName === bridgeEntity1)?.name || '';
-                      setBridgeName(`${entity1Name}_to_${entity2Name}_mapping`);
+                      const capitalizedEntity1 = entity1Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                      setBridgeName(`${capitalizedEntity1}_to_${capitalizedEntity2}_mapping`);
                     }
                   }}
                   label="Second ISA95 Entity"
                 >
-                  {isa95Entities.filter(e => tableMappings.some(m => m.targetEntity === e.tableName && !m.isBridge) && e.tableName !== bridgeEntity1).map(entity => (
+                  {isa95Entities.filter(e => tableMappings.some(m => m.targetEntity === e.tableName && !m.isBridge)).map(entity => (
                     <MenuItem key={entity.tableName} value={entity.tableName}>
                       {entity.name}
                     </MenuItem>
@@ -2786,6 +3150,8 @@ const DataMigration: React.FC = () => {
                 <MenuItem value={RuleType.Sequence}>Sequence</MenuItem>
                 <MenuItem value={RuleType.PrefixSequence}>Prefix + Sequence</MenuItem>
                 <MenuItem value={RuleType.Enumeration}>Enumeration</MenuItem>
+                <MenuItem value={RuleType.IfThen}>If-Then (Conditional)</MenuItem>
+                <MenuItem value={RuleType.Case}>Case (Switch/Case)</MenuItem>
               </Select>
             </FormControl>
 
@@ -2983,6 +3349,230 @@ const DataMigration: React.FC = () => {
                 )}
               </Box>
             )}
+
+            {/* IfThen Parameters */}
+            {fieldRuleType === RuleType.IfThen && selectedFieldForRule && (() => {
+              const mappingIndex = selectedFieldForRule.mappingIndex;
+              const fieldMapping = tableMappings[mappingIndex]?.fieldMappings.find(
+                f => f.fieldName === selectedFieldForRule.fieldName
+              );
+              const hasSourceColumn = !!fieldMapping?.sourceColumn;
+              
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {hasSourceColumn ? (
+                    <Alert severity="success">
+                      Using source field: <strong>{fieldMapping.sourceColumn}</strong>
+                    </Alert>
+                  ) : (
+                    <Alert severity="info">
+                      Select the source field to evaluate and define the values to use when the condition is true or false.
+                    </Alert>
+                  )}
+                  {!hasSourceColumn && (
+                    <FormControl fullWidth>
+                      <InputLabel>Source Field</InputLabel>
+                      <Select
+                        value={ifThenSourceField}
+                        onChange={(e) => setIfThenSourceField(e.target.value)}
+                        label="Source Field"
+                      >
+                        <MenuItem value="">
+                          <em>Select a source field</em>
+                        </MenuItem>
+                    {importedTables
+                      .find((t: SourceTable) => t.name === tableMappings[mappingIndex]?.sourceTable)
+                      ?.columns.map((col: any) => (
+                        <MenuItem key={col.name} value={col.name}>
+                          {col.name} ({col.type})
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+                  )}
+                <TextField
+                  fullWidth
+                  label="Condition"
+                  value={ifThenCondition}
+                  onChange={(e) => setIfThenCondition(e.target.value)}
+                  placeholder="e.g., 'Active', '> 100', etc."
+                  helperText="Condition to check against the source field value"
+                />
+                <TextField
+                  fullWidth
+                  label="Value if True"
+                  value={ifThenTrueValue}
+                  onChange={(e) => setIfThenTrueValue(e.target.value)}
+                  placeholder="Value when condition is true"
+                  helperText="Value to use when the condition evaluates to true"
+                />
+                <TextField
+                  fullWidth
+                  label="Value if False"
+                  value={ifThenFalseValue}
+                  onChange={(e) => setIfThenFalseValue(e.target.value)}
+                  placeholder="Value when condition is false"
+                  helperText="Value to use when the condition evaluates to false"
+                />
+              </Box>
+              );
+            })()}
+
+            {/* Case Parameters */}
+            {fieldRuleType === RuleType.Case && selectedFieldForRule && (() => {
+              const mappingIndex = selectedFieldForRule.mappingIndex;
+              const fieldMapping = tableMappings[mappingIndex]?.fieldMappings.find(
+                f => f.fieldName === selectedFieldForRule.fieldName
+              );
+              const hasSourceColumn = !!fieldMapping?.sourceColumn;
+              const targetEntityName = tableMappings[mappingIndex]?.targetEntity;
+              const targetEntity = isa95Entities.find(e => e.tableName === targetEntityName);
+              const targetField = targetEntity?.fields.find(f => f.name === selectedFieldForRule.fieldName);
+              const hasEnumValues = targetField?.enumValues && targetField.enumValues.length > 0;
+              const targetEnumValues = targetField?.enumValues || [];
+              
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {hasSourceColumn ? (
+                    <Alert severity="success">
+                      Using source field: <strong>{fieldMapping.sourceColumn}</strong>
+                      {hasEnumValues && ' • Target field is an enumeration'}
+                    </Alert>
+                  ) : (
+                    <Alert severity="info">
+                      Select the source field and define case-value pairs. The first matching case will be used.
+                      {hasEnumValues && ' Target field is an enumeration - result values will use dropdown selects.'}
+                    </Alert>
+                  )}
+                  {!hasSourceColumn && (
+                    <FormControl fullWidth>
+                      <InputLabel>Source Field</InputLabel>
+                      <Select
+                        value={caseSourceField}
+                        onChange={(e) => setCaseSourceField(e.target.value)}
+                        label="Source Field"
+                      >
+                        <MenuItem value="">
+                          <em>Select a source field</em>
+                      </MenuItem>
+                      {importedTables
+                        .find((t: SourceTable) => t.name === tableMappings[mappingIndex]?.sourceTable)
+                        ?.columns.map((col: any) => (
+                          <MenuItem key={col.name} value={col.name}>
+                            {col.name} ({col.type})
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                  )}
+                  <Typography variant="subtitle2" gutterBottom>
+                    Case Conditions
+                  </Typography>
+                  {caseCases.map((caseItem, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                      <TextField
+                        fullWidth
+                        label="Case"
+                        value={caseItem.case}
+                        onChange={(e) => {
+                          const newCases = [...caseCases];
+                          newCases[index].case = e.target.value;
+                          setCaseCases(newCases);
+                        }}
+                        placeholder="Case value to match"
+                      />
+                      {hasEnumValues ? (
+                        <FormControl fullWidth>
+                          <InputLabel>Result Value</InputLabel>
+                          <Select
+                            value={caseItem.value}
+                            onChange={(e) => {
+                              const newCases = [...caseCases];
+                              newCases[index].value = e.target.value;
+                              setCaseCases(newCases);
+                            }}
+                            label="Result Value"
+                          >
+                            {targetEnumValues.map((value, idx) => {
+                              const displayValue = typeof value === 'object' ? (value.displayName || value.enumValue || value.name) : value;
+                              const actualValue = typeof value === 'object' ? value.enumValue : value;
+                              return (
+                                <MenuItem key={idx} value={actualValue}>
+                                  {displayValue}
+                                </MenuItem>
+                              );
+                            })}
+                          </Select>
+                        </FormControl>
+                      ) : (
+                        <TextField
+                          fullWidth
+                          label="Result Value"
+                          value={caseItem.value}
+                          onChange={(e) => {
+                            const newCases = [...caseCases];
+                            newCases[index].value = e.target.value;
+                            setCaseCases(newCases);
+                          }}
+                          placeholder="Value to return"
+                        />
+                      )}
+                      <IconButton
+                        color="error"
+                        onClick={() => {
+                          if (caseCases.length > 1) {
+                          setCaseCases(caseCases.filter((_, i) => i !== index));
+                        }
+                      }}
+                      disabled={caseCases.length === 1}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => setCaseCases([...caseCases, { case: '', value: '' }])}
+                  size="small"
+                >
+                  Add Case
+                </Button>
+                {hasEnumValues ? (
+                  <FormControl fullWidth>
+                    <InputLabel>Default Value (Optional)</InputLabel>
+                    <Select
+                      value={caseDefaultValue}
+                      onChange={(e) => setCaseDefaultValue(e.target.value)}
+                      label="Default Value (Optional)"
+                    >
+                      <MenuItem value="">
+                        <em>None</em>
+                      </MenuItem>
+                      {targetEnumValues.map((value, idx) => {
+                        const displayValue = typeof value === 'object' ? (value.displayName || value.enumValue || value.name) : value;
+                        const actualValue = typeof value === 'object' ? value.enumValue : value;
+                        return (
+                          <MenuItem key={idx} value={actualValue}>
+                            {displayValue}
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    label="Default Value (Optional)"
+                    value={caseDefaultValue}
+                    onChange={(e) => setCaseDefaultValue(e.target.value)}
+                    placeholder="Value if no cases match"
+                    helperText="Optional: Value to use if none of the cases match"
+                  />
+                )}
+              </Box>
+              );
+            })()}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -3290,12 +3880,14 @@ const DataMigration: React.FC = () => {
                   value={bridgeEntity1}
                   onChange={(e) => {
                     const entity1Name = isa95Entities.find(ent => ent.tableName === e.target.value)?.name || '';
+                    const capitalizedEntity1 = entity1Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                     setBridgeEntity1(e.target.value);
                     setBridgeEntity1Column('');
                     // Auto-generate bridge name if both entities are selected
                     if (bridgeEntity2) {
                       const entity2Name = isa95Entities.find(ent => ent.tableName === bridgeEntity2)?.name || '';
-                      setBridgeName(`${entity1Name}_to_${entity2Name}_mapping`);
+                      const capitalizedEntity2 = entity2Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                      setBridgeName(`${capitalizedEntity1}_to_${capitalizedEntity2}_mapping`);
                     }
                     // Update available relationships after state is set
                     setTimeout(() => updateAvailableRelationships(), 0);
@@ -3334,12 +3926,14 @@ const DataMigration: React.FC = () => {
                   value={bridgeEntity2}
                   onChange={(e) => {
                     const entity2Name = isa95Entities.find(ent => ent.tableName === e.target.value)?.name || '';
+                    const capitalizedEntity2 = entity2Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                     setBridgeEntity2(e.target.value);
                     setBridgeEntity2Column('');
                     // Auto-generate bridge name if both entities are selected
                     if (bridgeEntity1) {
                       const entity1Name = isa95Entities.find(ent => ent.tableName === bridgeEntity1)?.name || '';
-                      setBridgeName(`${entity1Name}_to_${entity2Name}_mapping`);
+                      const capitalizedEntity1 = entity1Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                      setBridgeName(`${capitalizedEntity1}_to_${capitalizedEntity2}_mapping`);
                     }
                     // Update available relationships after state is set
                     setTimeout(() => updateAvailableRelationships(), 0);

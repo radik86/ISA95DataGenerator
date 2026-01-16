@@ -14,6 +14,23 @@ public class MappingFileService : IMappingFileService
         _metadataLoader = metadataLoader;
     }
 
+    private string CapitalizeEntityName(string entityName)
+    {
+        if (string.IsNullOrEmpty(entityName))
+            return entityName;
+        
+        // Split by spaces and capitalize first letter of each word
+        var words = entityName.Split(' ');
+        for (int i = 0; i < words.Length; i++)
+        {
+            if (!string.IsNullOrEmpty(words[i]))
+            {
+                words[i] = char.ToUpper(words[i][0]) + words[i].Substring(1);
+            }
+        }
+        return string.Join(" ", words);
+    }
+
     public async Task<MappingFile> GenerateMappingFileAsync(DataGenerationRequest request, DataGenerationResponse generatedData)
     {
         var mappingFile = new MappingFile
@@ -54,9 +71,9 @@ public class MappingFileService : IMappingFileService
                     {
                         mappingFile.Mappings.Add(new MappingEntry
                         {
-                            SourceType = request.RootEntityName,
+                            SourceType = CapitalizeEntityName(request.RootEntityName),
                             SourcePrimaryKey = sourcePK,
-                            TargetType = targetEntityName,
+                            TargetType = CapitalizeEntityName(targetEntityName),
                             TargetPrimaryKey = targetPK?.ToString() ?? string.Empty,
                             RelationshipType = relationship.Name
                         });
@@ -107,9 +124,9 @@ public class MappingFileService : IMappingFileService
                             {
                                 mappingFile.Mappings.Add(new MappingEntry
                                 {
-                                    SourceType = kvp.Key,
+                                    SourceType = CapitalizeEntityName(kvp.Key),
                                     SourcePrimaryKey = sourcePK,
-                                    TargetType = targetEntityName,
+                                    TargetType = CapitalizeEntityName(targetEntityName),
                                     TargetPrimaryKey = targetPK?.ToString() ?? string.Empty,
                                     RelationshipType = relationship.Name
                                 });
@@ -168,9 +185,9 @@ public class MappingFileService : IMappingFileService
                                 {
                                     mappingFile.Mappings.Add(new MappingEntry
                                     {
-                                        SourceType = kvp.Key,
+                                        SourceType = CapitalizeEntityName(kvp.Key),
                                         SourcePrimaryKey = sourcePK,
-                                        TargetType = targetEntityName,
+                                        TargetType = CapitalizeEntityName(targetEntityName),
                                         TargetPrimaryKey = targetPK?.ToString() ?? string.Empty,
                                         RelationshipType = relationshipName
                                     });

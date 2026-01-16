@@ -1,2 +1,4 @@
 PlantID,PlantName,Description
-PLANT-01,Bakery Plant 1,Main bakery site
+PLANT01MUNICH,Bakery Plant 1 Munich,Main bakery site in MUNICH
+PLANT02VIENNA,Bakery Plant 2 Vienna,Main bakery site in VIENNA
+PLANT03FRA,Bakery Plant 3 Frankfurt,Main bakery site in Frankfurt

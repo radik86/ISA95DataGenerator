@@ -72,6 +72,41 @@ interface MasterDataDB extends DBSchema {
     value: EquipmentPropertyAssignmentRecord;
     indexes: { 'by-equipment': string; 'by-segment': string; 'by-property': string; 'by-updated': Date };
   };
+  operationEventDefinitions: {
+    key: string;
+    value: OperationEventDefinitionRecord;
+    indexes: { 'by-category': string; 'by-code': string; 'by-updated': Date };
+  };
+  hierarchyScopes: {
+    key: string;
+    value: HierarchyScopeRecord;
+    indexes: { 'by-level': string; 'by-equipment': string; 'by-updated': Date };
+  };
+  hierarchyScopesFlat: {
+    key: string;
+    value: HierarchyScopeFlatRecord;
+    indexes: { 'by-site': string; 'by-enterprise': string; 'by-updated': Date };
+  };
+  hierarchyScopeParentChild: {
+    key: string;
+    value: HierarchyScopeParentChildRecord;
+    indexes: { 'by-parent-level': string; 'by-child-level': string; 'by-updated': Date };
+  };
+  shifts: {
+    key: string;
+    value: ShiftRecord;
+    indexes: { 'by-number': number; 'by-updated': Date };
+  };
+  crews: {
+    key: string;
+    value: CrewRecord;
+    indexes: { 'by-updated': Date };
+  };
+  shiftCrewAssignments: {
+    key: string;
+    value: ShiftCrewAssignmentRecord;
+    indexes: { 'by-shift': string; 'by-crew': string; 'by-updated': Date };
+  };
 }
 
 // Record Interfaces with metadata
@@ -106,6 +141,7 @@ export interface MaterialLotRecord extends BaseRecord {
   supplierOrProducerId?: string;
   supplierOrProducerName?: string;
   producedByProcessSegmentId?: string;
+  parentLotId?: string;
 }
 
 export interface MaterialSublotRecord extends BaseRecord {
@@ -131,6 +167,7 @@ export interface EquipmentRecord extends BaseRecord {
   className: string;
   description?: string;
   productionLineId?: string;
+  parentEquipmentId?: string;
 }
 
 export interface ProcessSegmentRecord extends BaseRecord {
@@ -177,6 +214,7 @@ export interface LineEquipmentRecord extends BaseRecord {
   equipmentId: string;
   sequence: number;
   description: string;
+  plantId?: string;
 }
 
 export interface EquipmentPropertyRecord extends BaseRecord {
@@ -198,6 +236,71 @@ export interface EquipmentPropertyAssignmentRecord extends BaseRecord {
   samplingIntervalSeconds?: number;
 }
 
+export interface OperationEventDefinitionRecord extends BaseRecord {
+  id: string;
+  eventCategory: string;
+  eventCode: string;
+  description: string;
+  causesDowntime: boolean;
+  causesScrap: boolean;
+  rootCauseType: string;
+}
+
+export interface HierarchyScopeRecord extends BaseRecord {
+  id: string;
+  equipmentID: string;
+  equipmentLevel: string;
+}
+
+export interface HierarchyScopeFlatRecord extends BaseRecord {
+  id: string;
+  Enterprise: string;
+  Site: string;
+  Area: string;
+  'Work Center': string;
+  'Work Unit': string;
+  'Process Cell': string;
+  Unit: string;
+  'Production Line': string;
+  'Production Unit': string;
+  'Work Cell': string;
+  'Storage Zone': string;
+  'Storage Unit': string;
+}
+
+export interface HierarchyScopeParentChildRecord extends BaseRecord {
+  id: string;
+  parentEquipmentLevel: string;
+  parentEquipmentID: string;
+  childEquipmentLevel: string;
+  childEquipmentID: string;
+}
+
+export interface ShiftRecord extends BaseRecord {
+  id: string;
+  shiftNumber: number;
+  shiftName: string;
+  startTime: string;
+  endTime: string;
+  description: string;
+}
+
+export interface CrewRecord extends BaseRecord {
+  id: string;
+  crewName: string;
+  peopleCount: number;
+  skills: string;
+  description: string;
+}
+
+export interface ShiftCrewAssignmentRecord extends BaseRecord {
+  id: string;
+  shiftId: string;
+  crewId: string;
+  effectiveDate: string;
+  expiryDate: string;
+}
+
 class MasterDataDatabase {
   private dbPromise: Promise<IDBPDatabase<MasterDataDB>>;
 
@@ -206,7 +309,7 @@ class MasterDataDatabase {
   }
 
   private async initDB(): Promise<IDBPDatabase<MasterDataDB>> {
-    return openDB<MasterDataDB>('master-data-db', 5, {
+    return openDB<MasterDataDB>('master-data-db', 10, {
       upgrade(db, oldVersion) {
         // Material Classes
         if (!db.objectStoreNames.contains('materialClasses')) {
@@ -305,6 +408,67 @@ class MasterDataDatabase {
           epaStore.createIndex('by-segment', 'processSegmentId');
           epaStore.createIndex('by-property', 'equipmentPropertyId');
           epaStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operation Event Definitions (version 6)
+        if (!db.objectStoreNames.contains('operationEventDefinitions')) {
+          const oedStore = db.createObjectStore('operationEventDefinitions', { keyPath: 'id' });
+          oedStore.createIndex('by-category', 'eventCategory');
+          oedStore.createIndex('by-code', 'eventCode');
+          oedStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operation Event Definition Segment Assignments (version 7)
+        if (!db.objectStoreNames.contains('operationEventDefSegmentAssignments')) {
+          const oedsaStore = db.createObjectStore('operationEventDefSegmentAssignments', { keyPath: 'id' });
+          oedsaStore.createIndex('by-definition', 'operationsEventDefinitionId');
+          oedsaStore.createIndex('by-segment', 'processSegmentId');
+          oedsaStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Hierarchy Scopes (version 7)
+        if (!db.objectStoreNames.contains('hierarchyScopes')) {
+          const hsStore = db.createObjectStore('hierarchyScopes', { keyPath: 'id' });
+          hsStore.createIndex('by-level', 'equipmentLevel');
+          hsStore.createIndex('by-equipment', 'equipmentID');
+          hsStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Hierarchy Scopes Flat (version 8)
+        if (!db.objectStoreNames.contains('hierarchyScopesFlat')) {
+          const hsFlatStore = db.createObjectStore('hierarchyScopesFlat', { keyPath: 'id' });
+          hsFlatStore.createIndex('by-site', 'Site');
+          hsFlatStore.createIndex('by-enterprise', 'Enterprise');
+          hsFlatStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Hierarchy Scope Parent-Child (version 9)
+        if (!db.objectStoreNames.contains('hierarchyScopeParentChild')) {
+          const hspcStore = db.createObjectStore('hierarchyScopeParentChild', { keyPath: 'id' });
+          hspcStore.createIndex('by-parent-level', 'parentEquipmentLevel');
+          hspcStore.createIndex('by-child-level', 'childEquipmentLevel');
+          hspcStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Shifts (version 10)
+        if (!db.objectStoreNames.contains('shifts')) {
+          const shiftsStore = db.createObjectStore('shifts', { keyPath: 'id' });
+          shiftsStore.createIndex('by-number', 'shiftNumber');
+          shiftsStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Crews (version 10)
+        if (!db.objectStoreNames.contains('crews')) {
+          const crewsStore = db.createObjectStore('crews', { keyPath: 'id' });
+          crewsStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Shift-Crew Assignments (version 10)
+        if (!db.objectStoreNames.contains('shiftCrewAssignments')) {
+          const scaStore = db.createObjectStore('shiftCrewAssignments', { keyPath: 'id' });
+          scaStore.createIndex('by-shift', 'shiftId');
+          scaStore.createIndex('by-crew', 'crewId');
+          scaStore.createIndex('by-updated', 'updatedAt');
         }
       },
     });
@@ -437,6 +601,7 @@ class MasterDataDatabase {
     plants?: any[];
     productionLines?: any[];
     lineEquipment?: any[];
+    operationEventDefinitions?: any[];
   }): Promise<void> {
     if (csvData.materialClasses) {
       await this.bulkAdd('materialClasses', csvData.materialClasses);
@@ -494,6 +659,42 @@ class MasterDataDatabase {
     if (csvData.lineEquipment) {
       await this.bulkAdd('lineEquipment', csvData.lineEquipment);
     }
+    if (csvData.operationEventDefinitions) {
+      console.log('Importing operation event definitions:', csvData.operationEventDefinitions.length);
+      await this.bulkAdd('operationEventDefinitions', csvData.operationEventDefinitions);
+    }
+
+    if (csvData.operationEventDefSegmentAssignments) {
+      console.log('Importing operation event def segment assignments:', csvData.operationEventDefSegmentAssignments.length);
+      await this.bulkAdd('operationEventDefSegmentAssignments', csvData.operationEventDefSegmentAssignments);
+    }
+
+    if (csvData.hierarchyScopes) {
+      console.log('Importing hierarchy scopes:', csvData.hierarchyScopes.length);
+      await this.bulkAdd('hierarchyScopes', csvData.hierarchyScopes);
+    }
+
+    if (csvData.hierarchyScopesFlat) {
+      console.log('Importing hierarchy scopes flat:', csvData.hierarchyScopesFlat.length);
+      await this.bulkAdd('hierarchyScopesFlat', csvData.hierarchyScopesFlat);
+    }
+
+    if (csvData.shifts) {
+      console.log('Importing shifts:', csvData.shifts.length);
+      await this.bulkAdd('shifts', csvData.shifts);
+    }
+
+    if (csvData.crews) {
+      console.log('Importing crews:', csvData.crews.length);
+      await this.bulkAdd('crews', csvData.crews);
+    }
+
+    if (csvData.shiftCrewAssignments) {
+      console.log('Importing shift-crew assignments:', csvData.shiftCrewAssignments.length);
+      await this.bulkAdd('shiftCrewAssignments', csvData.shiftCrewAssignments);
+    }
+
+    console.log('Master data import completed successfully');
   }
 }
 

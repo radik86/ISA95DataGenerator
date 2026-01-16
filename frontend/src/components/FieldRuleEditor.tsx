@@ -64,6 +64,15 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
   const [seqEnd, setSeqEnd] = useState(100);
   const [seqPadding, setSeqPadding] = useState(0);
   const [selectedEnumValue, setSelectedEnumValue] = useState('');
+  
+  // IfThen rule parameters
+  const [ifThenCondition, setIfThenCondition] = useState('');
+  const [ifThenTrueValue, setIfThenTrueValue] = useState('');
+  const [ifThenFalseValue, setIfThenFalseValue] = useState('');
+  
+  // Case rule parameters
+  const [caseCases, setCaseCases] = useState<Array<{ case: string; value: string }>>([{ case: '', value: '' }]);
+  const [caseDefaultValue, setCaseDefaultValue] = useState('');
 
   const { data: entityStructure } = useEntityStructure(selectedEntity);
 
@@ -114,6 +123,19 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
         break;
       case RuleType.Enumeration:
         parameters = { values: [selectedEnumValue] };
+        break;
+      case RuleType.IfThen:
+        parameters = { 
+          condition: ifThenCondition, 
+          trueValue: ifThenTrueValue, 
+          falseValue: ifThenFalseValue 
+        };
+        break;
+      case RuleType.Case:
+        parameters = { 
+          cases: caseCases.filter(c => c.case.trim() && c.value.trim()),
+          defaultValue: caseDefaultValue || undefined
+        };
         break;
     }
 
@@ -185,6 +207,15 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
       case RuleType.Enumeration:
         setSelectedEnumValue(params?.values?.[0] || '');
         break;
+      case RuleType.IfThen:
+        setIfThenCondition(params?.condition || '');
+        setIfThenTrueValue(params?.trueValue || '');
+        setIfThenFalseValue(params?.falseValue || '');
+        break;
+      case RuleType.Case:
+        setCaseCases(params?.cases || [{ case: '', value: '' }]);
+        setCaseDefaultValue(params?.defaultValue || '');
+        break;
     }
   };
 
@@ -198,6 +229,11 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
     setSequenceStart(1);
     setSequenceIncrement(1);
     setSelectedEnumValue('');
+    setIfThenCondition('');
+    setIfThenTrueValue('');
+    setIfThenFalseValue('');
+    setCaseCases([{ case: '', value: '' }]);
+    setCaseDefaultValue('');
   };
 
   const renderRuleParameters = () => {
@@ -398,6 +434,135 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
           </Box>
         );
 
+      case RuleType.IfThen:
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="Condition"
+              value={ifThenCondition}
+              onChange={(e) => setIfThenCondition(e.target.value)}
+              placeholder="e.g., field name to check or condition"
+              helperText="Condition to evaluate (e.g., source field name or expression)"
+            />
+            <TextField
+              fullWidth
+              label="Value if True"
+              value={ifThenTrueValue}
+              onChange={(e) => setIfThenTrueValue(e.target.value)}
+              placeholder="Value when condition is true"
+              helperText="Value to use when the condition evaluates to true"
+            />
+            <TextField
+              fullWidth
+              label="Value if False"
+              value={ifThenFalseValue}
+              onChange={(e) => setIfThenFalseValue(e.target.value)}
+              placeholder="Value when condition is false"
+              helperText="Value to use when the condition evaluates to false"
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              Checks the condition and returns the true value or false value accordingly.
+            </Typography>
+          </Box>
+        );
+
+      case RuleType.Case:
+        const fieldForCase = availableFields.find(f => f.name === selectedField);
+        const hasEnumValues = fieldForCase?.enumValues && fieldForCase.enumValues.length > 0;
+        const enumValuesForCase = fieldForCase?.enumValues || [];
+
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Case Conditions
+            </Typography>
+            {caseCases.map((caseItem, index) => (
+              <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                {hasEnumValues ? (
+                  <FormControl fullWidth>
+                    <InputLabel>Case Value</InputLabel>
+                    <Select
+                      value={caseItem.case}
+                      onChange={(e) => {
+                        const newCases = [...caseCases];
+                        newCases[index].case = e.target.value;
+                        setCaseCases(newCases);
+                      }}
+                      label="Case Value"
+                    >
+                      {enumValuesForCase.map((value, idx) => {
+                        const displayValue = typeof value === 'object' ? (value.displayName || value.enumValue || value.name) : value;
+                        const actualValue = typeof value === 'object' ? value.enumValue : value;
+                        return (
+                          <MenuItem key={idx} value={actualValue}>
+                            {displayValue}
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    label="Case"
+                    value={caseItem.case}
+                    onChange={(e) => {
+                      const newCases = [...caseCases];
+                      newCases[index].case = e.target.value;
+                      setCaseCases(newCases);
+                    }}
+                    placeholder="Case value to match"
+                  />
+                )}
+                <TextField
+                  fullWidth
+                  label="Result Value"
+                  value={caseItem.value}
+                  onChange={(e) => {
+                    const newCases = [...caseCases];
+                    newCases[index].value = e.target.value;
+                    setCaseCases(newCases);
+                  }}
+                  placeholder="Value to return"
+                />
+                <IconButton
+                  color="error"
+                  onClick={() => {
+                    if (caseCases.length > 1) {
+                      setCaseCases(caseCases.filter((_, i) => i !== index));
+                    }
+                  }}
+                  disabled={caseCases.length === 1}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+            ))}
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => setCaseCases([...caseCases, { case: '', value: '' }])}
+              size="small"
+            >
+              Add Case
+            </Button>
+            <TextField
+              fullWidth
+              label="Default Value (Optional)"
+              value={caseDefaultValue}
+              onChange={(e) => setCaseDefaultValue(e.target.value)}
+              placeholder="Value if no cases match"
+              helperText="Optional: Value to use if none of the cases match"
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              {hasEnumValues 
+                ? 'Select enumeration values for cases and specify result values.'
+                : 'Define case conditions and their corresponding result values. Similar to a switch statement.'}
+            </Typography>
+          </Box>
+        );
+
       default:
         return null;
     }
@@ -421,7 +586,12 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
         return seqStart <= seqEnd;
       case RuleType.Enumeration:
         return selectedEnumValue.trim().length > 0;
-        return seqStart <= seqEnd;
+      case RuleType.IfThen:
+        return ifThenCondition.trim().length > 0 && 
+               ifThenTrueValue.trim().length > 0 && 
+               ifThenFalseValue.trim().length > 0;
+      case RuleType.Case:
+        return caseCases.some(c => c.case.trim().length > 0 && c.value.trim().length > 0);
       default:
         return false;
     }
@@ -539,6 +709,12 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
                     </MenuItem>,
                     <MenuItem key="prefixsequence" value={RuleType.PrefixSequence}>
                       Prefix/Suffix + Sequential - Fixed text + number sequence
+                    </MenuItem>,
+                    <MenuItem key="ifthen" value={RuleType.IfThen}>
+                      If-Then - Conditional value based on condition
+                    </MenuItem>,
+                    <MenuItem key="case" value={RuleType.Case}>
+                      Case - Switch/case statement with multiple conditions
                     </MenuItem>
                   );
                   

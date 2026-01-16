@@ -627,25 +627,28 @@ const EnumerationEvaluations: React.FC = () => {
             {viewMode === 'values' && (
               <Box>
                 {groupedEnumerations.map((group) => {
-                  // Get all unique enum values across all entities for this field
-                  const allEnumValuesMap = new Map<string, EnumValue>();
+                  // Collect all unique enum values (case-insensitive grouping) across all entities
+                  const valueMap = new Map<string, Set<string>>();
                   group.occurrences.forEach(occ => {
                     occ.enumValues.forEach(ev => {
-                      if (!allEnumValuesMap.has(ev.enumValue)) {
-                        allEnumValuesMap.set(ev.enumValue, ev);
+                      const valueStr = ev.enumValue.toString();
+                      const lowerValue = valueStr.toLowerCase();
+                      if (!valueMap.has(lowerValue)) {
+                        valueMap.set(lowerValue, new Set());
                       }
+                      valueMap.get(lowerValue)!.add(valueStr);
                     });
                   });
-                  const sortedEnumValues = Array.from(allEnumValuesMap.entries()).sort((a, b) => 
-                    a[0].localeCompare(b[0])
-                  );
-
+                  
+                  // Sort by lowercase value for alphanumeric ordering
+                  const sortedKeys = Array.from(valueMap.keys()).sort();
+                  
                   return (
                     <Paper key={group.fieldName} sx={{ mb: 3, p: 2 }}>
                       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {group.fieldName}
                         <Chip label={`${group.totalEntities} entities`} size="small" color="primary" />
-                        <Chip label={`${sortedEnumValues.length} values`} size="small" color="secondary" />
+                        <Chip label={`${sortedKeys.length} unique values`} size="small" color="secondary" />
                       </Typography>
                       
                       <TableContainer sx={{ maxHeight: 600 }}>
@@ -653,10 +656,7 @@ const EnumerationEvaluations: React.FC = () => {
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ fontWeight: 'bold', bgcolor: 'secondary.light', color: 'white', minWidth: 150 }}>
-                                Enum Value
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 'bold', bgcolor: 'secondary.light', color: 'white', minWidth: 150 }}>
-                                Display Name
+                                Value
                               </TableCell>
                               {group.occurrences.map((occurrence) => (
                                 <TableCell 
@@ -680,38 +680,66 @@ const EnumerationEvaluations: React.FC = () => {
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {sortedEnumValues.map(([enumValue, enumObj]) => {
+                            {sortedKeys.map((lowerValue) => {
+                              const variants = valueMap.get(lowerValue)!;
+                              
+                              // Collect actual values for each entity for this enum value (case-insensitive match)
+                              const rowValues = group.occurrences.map((occurrence) => {
+                                const entityEnumValue = occurrence.enumValues.find(ev => 
+                                  ev.enumValue.toString().toLowerCase() === lowerValue
+                                );
+                                return entityEnumValue ? entityEnumValue.enumValue.toString() : '';
+                              });
+                              
+                              // Find unique values in this row (excluding empty strings)
+                              const nonEmptyValues = rowValues.filter(v => v !== '');
+                              const uniqueValues = new Set(nonEmptyValues);
+                              const hasInconsistency = uniqueValues.size > 1;
+                              
+                              // Use the most common variant or first one as the row label
+                              const rowLabel = Array.from(variants)[0];
+                              
                               return (
-                                <TableRow key={enumValue} hover>
+                                <TableRow key={lowerValue} hover>
                                   <TableCell sx={{ fontWeight: 'medium', bgcolor: 'grey.50' }}>
-                                    {enumValue}
-                                  </TableCell>
-                                  <TableCell sx={{ bgcolor: 'grey.50', fontSize: '0.85rem' }}>
-                                    {enumObj.displayName || '-'}
+                                    {rowLabel}
+                                    {hasInconsistency && (
+                                      <Chip 
+                                        label="inconsistent" 
+                                        size="small" 
+                                        color="warning" 
+                                        sx={{ ml: 1, fontSize: '0.7rem' }}
+                                      />
+                                    )}
                                   </TableCell>
                                   {group.occurrences.map((occurrence) => {
-                                    // Find the actual enum value this entity has for this field
-                                    const entityEnumValue = occurrence.enumValues.find(ev => ev.enumValue.toString() === enumValue);
-                                    const matchesRow = entityEnumValue !== undefined;
+                                    const entityEnumValue = occurrence.enumValues.find(ev => 
+                                      ev.enumValue.toString().toLowerCase() === lowerValue
+                                    );
+                                    const displayValue = entityEnumValue ? entityEnumValue.enumValue.toString() : '';
+                                    const hasValue = displayValue !== '';
                                     
-                                    // Show only the specific value if it matches this row
-                                    const displayValue = matchesRow ? enumValue : '';
-                                    const displayName = matchesRow && entityEnumValue?.displayName ? entityEnumValue.displayName : '';
+                                    // Check if this cell's value differs from others in the row
+                                    const isDifferent = hasValue && hasInconsistency;
                                     
                                     return (
                                       <TableCell 
                                         key={occurrence.entityName} 
                                         align="center"
                                         sx={{ 
-                                          bgcolor: matchesRow ? 'success.light' : 'grey.100',
+                                          bgcolor: !hasValue ? 'grey.100' : isDifferent ? 'warning.light' : 'success.light',
                                           borderLeft: 1,
                                           borderColor: 'divider',
                                           fontSize: '0.85rem',
-                                          fontWeight: matchesRow ? 'medium' : 'normal',
-                                          color: matchesRow ? 'success.dark' : 'grey.600'
+                                          fontWeight: hasValue ? 'medium' : 'normal',
+                                          color: !hasValue ? 'grey.600' : isDifferent ? 'warning.dark' : 'success.dark'
                                         }}
                                       >
-                                        <Tooltip title={displayName || displayValue || 'No value'}>
+                                        <Tooltip title={
+                                          isDifferent 
+                                            ? `Inconsistent! Other values: ${Array.from(uniqueValues).filter(v => v !== displayValue).join(', ')}`
+                                            : entityEnumValue?.displayName || displayValue || 'No value'
+                                        }>
                                           <span>{displayValue}</span>
                                         </Tooltip>
                                       </TableCell>
@@ -724,21 +752,21 @@ const EnumerationEvaluations: React.FC = () => {
                         </Table>
                       </TableContainer>
                       
-                      {/* Description section below table */}
-                      {sortedEnumValues.some(([_, ev]) => ev.description) && (
-                        <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                          <Typography variant="subtitle2" gutterBottom fontWeight="bold">
-                            Value Descriptions:
+                      {/* Show inconsistencies summary */}
+                      {Array.from(valueMap.entries()).some(([_, variants]) => variants.size > 1) && (
+                        <Box sx={{ mt: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                          <Typography variant="subtitle2" gutterBottom fontWeight="bold" color="warning.dark">
+                            ⚠️ Inconsistencies Detected:
                           </Typography>
-                          {sortedEnumValues.map(([enumValue, enumObj]) => (
-                            enumObj.description && (
-                              <Box key={enumValue} sx={{ mb: 1 }}>
-                                <Typography variant="body2">
-                                  <strong>{enumValue}:</strong> {enumObj.description}
+                          {Array.from(valueMap.entries())
+                            .filter(([_, variants]) => variants.size > 1)
+                            .map(([lowerValue, variants]) => (
+                              <Box key={lowerValue} sx={{ mb: 1 }}>
+                                <Typography variant="body2" color="warning.dark">
+                                  <strong>{lowerValue}:</strong> {Array.from(variants).join(', ')}
                                 </Typography>
                               </Box>
-                            )
-                          ))}
+                            ))}
                         </Box>
                       )}
                     </Paper>

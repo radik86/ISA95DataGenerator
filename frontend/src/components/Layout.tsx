@@ -23,6 +23,7 @@ import {
   Assignment as ProcessIcon,
   Transform as TransformIcon,
   Assessment as AssessmentIcon,
+  FactCheck as QualityIcon,
 } from '@mui/icons-material';
 
 const DRAWER_WIDTH = 240;
@@ -37,6 +38,7 @@ const menuItems = [
   { path: '/process-data', label: 'Process Data Generator', icon: <ProcessIcon /> },
   { path: '/data-migration', label: 'Data Migration', icon: <TransformIcon /> },
   { path: '/enumeration-evaluations', label: 'Enumeration Evaluations', icon: <AssessmentIcon /> },
+  { path: '/quality-checks', label: 'Quality Checks', icon: <QualityIcon /> },
 ];
 
 const Layout: React.FC = () => {

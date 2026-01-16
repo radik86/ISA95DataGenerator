@@ -1,3 +1,4 @@
 EquipmentID,EquipmentName,EquipmentClassID,EquipmentClass,EquipmentDescription
 EQ-MIX-01,Mixer #1,MIXER,Mixer,Primary dough mixer
 EQ-OVEN-01,Oven #1,OVEN,Oven,Main baking oven
+EQ-PACKAGE-01,Package #1,PACK,Packaging,Main packaging machine

@@ -1,0 +1,6 @@
+CrewID,CrewName,PeopleCount,Skills,Description
+CREW-001,Alpha Production Crew,8,"Machine Operation, Quality Control, Packaging","Primary production crew with full operational capabilities"
+CREW-002,Beta Assembly Crew,6,"Assembly, Testing, Documentation","Specialized crew for assembly and testing operations"
+CREW-003,Gamma Maintenance Crew,5,"Mechanical Repair, Electrical, Preventive Maintenance","Maintenance and repair crew for equipment upkeep"
+CREW-004,Delta Quality Crew,4,"Quality Inspection, Testing, Compliance","Quality assurance and inspection specialists"
+CREW-005,Epsilon Logistics Crew,7,"Material Handling, Inventory Management, Shipping","Material handling and logistics operations crew"

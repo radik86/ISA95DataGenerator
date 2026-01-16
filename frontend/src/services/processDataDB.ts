@@ -52,6 +52,11 @@ interface ProcessDataDB extends DBSchema {
     value: EquipmentPropertyTrackingRecord;
     indexes: { 'by-equipment': string; 'by-property': string; 'by-segment-resp': string; 'by-timestamp': Date; 'by-updated': Date };
   };
+  operationsEvents: {
+    key: string;
+    value: OperationsEventRecord;
+    indexes: { 'by-segment-resp': string; 'by-event-def': string; 'by-updated': Date };
+  };
 }
 
 // Record Interfaces with metadata
@@ -165,8 +170,18 @@ export interface EquipmentPropertyTrackingRecord extends BaseRecord {
   createdTimestamp: string;
 }
 
+export interface OperationsEventRecord extends BaseRecord {
+  id: string;
+  segmentResponseId: string;
+  operationsEventDefinitionId: string;
+  startDateTime: string;
+  endDateTime: string;
+  durationMinutes: number;
+  comment?: string;
+}
+
 const DB_NAME = 'process-data-db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 class ProcessDataDBService {
   private db: IDBPDatabase<ProcessDataDB> | null = null;
@@ -256,6 +271,14 @@ class ProcessDataDBService {
           propTrackStore.createIndex('by-segment-resp', 'segmentResponseId');
           propTrackStore.createIndex('by-timestamp', 'createdTimestamp');
           propTrackStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operations Events
+        if (!db.objectStoreNames.contains('operationsEvents')) {
+          const opsEventsStore = db.createObjectStore('operationsEvents', { keyPath: 'id' });
+          opsEventsStore.createIndex('by-segment-resp', 'segmentResponseId');
+          opsEventsStore.createIndex('by-event-def', 'operationsEventDefinitionId');
+          opsEventsStore.createIndex('by-updated', 'updatedAt');
         }
       },
     });
@@ -407,11 +430,12 @@ class ProcessDataDBService {
     materialActuals: Omit<SegmentMaterialActualRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     equipmentActuals: Omit<SegmentEquipmentActualRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     equipmentPropertyTracking: Omit<EquipmentPropertyTrackingRecord, 'createdAt' | 'updatedAt' | 'version'>[],
-    testResults: Omit<TestResultRecord, 'createdAt' | 'updatedAt' | 'version'>[]
+    testResults: Omit<TestResultRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    operationsEvents: Omit<OperationsEventRecord, 'createdAt' | 'updatedAt' | 'version'>[]
   ): Promise<void> {
     const db = await this.init();
     const tx = db.transaction(
-      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults'],
+      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents'],
       'readwrite'
     );
 
@@ -469,6 +493,16 @@ class ProcessDataDBService {
     for (const tr of testResults) {
       await tx.objectStore('testResults').put({
         ...tr,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      });
+    }
+
+    // Save operations events
+    for (const oe of operationsEvents) {
+      await tx.objectStore('operationsEvents').put({
+        ...oe,
         createdAt: now,
         updatedAt: now,
         version: 1,

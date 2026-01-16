@@ -19,7 +19,9 @@ public enum FieldRuleType
     Static,         // Parameters: { Value: object }
     Sequence,       // Parameters: { Start: int, Increment: int }
     PrefixSequence, // Parameters: { Prefix, Suffix, Start, End, Padding }
-    Enumeration     // Parameters: { Values: string[] } - from field's enum values
+    Enumeration,    // Parameters: { Values: string[] } - from field's enum values
+    IfThen,         // Parameters: { Condition: string, TrueValue: object, FalseValue: object }
+    Case            // Parameters: { Cases: [{Case: string, Value: object}], DefaultValue: object }
 }
 
 // Specific parameter classes for type safety
@@ -63,4 +65,25 @@ public class PrefixSequenceParameters
 public class EnumerationParameters
 {
     public List<string> Values { get; set; } = new();
+}
+
+public class IfThenParameters
+{
+    public string? SourceField { get; set; }
+    public string Condition { get; set; } = string.Empty;
+    public object? TrueValue { get; set; }
+    public object? FalseValue { get; set; }
+}
+
+public class CaseParameters
+{
+    public string? SourceField { get; set; }
+    public List<CaseItem> Cases { get; set; } = new();
+    public object? DefaultValue { get; set; }
+}
+
+public class CaseItem
+{
+    public string Case { get; set; } = string.Empty;
+    public object? Value { get; set; }
 }

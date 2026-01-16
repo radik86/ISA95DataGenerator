@@ -1,0 +1,4 @@
+PrimaryKey,id,equipmentID,equipmentLevel
+HS-PLANT-001Site,HS-PLANT-001,PLANT-001,Site
+HS-LINE-001ProductionLine,HS-LINE-001,LINE-001,Production Line
+HS-LINE-002ProductionLine,HS-LINE-002,LINE-002,Production Line

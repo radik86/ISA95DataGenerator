@@ -1,3 +1,4 @@
 EquipmentClassID,EquipmentClassName,Description
 MIXER,Mixer,Industrial dough mixing equipment
 OVEN,Oven,Industrial baking oven
+PACK,Packaging,Industrial packaging machine

@@ -25,6 +25,8 @@ import {
   Divider,
   Tabs,
   Tab,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   PlayArrow as GenerateIcon,
@@ -32,6 +34,7 @@ import {
   Refresh as RefreshIcon,
   Save as SaveIcon,
   GetApp as GetAppIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { masterDataDB } from '../services/masterDataDB';
 import { processDataDB } from '../services/processDataDB';
@@ -112,7 +115,7 @@ interface SegmentMaterialActual {
   materialLotId: string;
   actualQty: number;
   qtyUoM: string;
-  direction: 'CONSUME' | 'PRODUCE';
+  direction: 'CONSUME' | 'PRODUCE' | 'Scrap';
 }
 
 interface SegmentEquipmentActual {
@@ -132,6 +135,14 @@ interface EquipmentPropertyTracking {
   value: number;
   uom: string;
   createdTimestamp: string;
+}
+
+interface OperationsEvent {
+  id: string;
+  segmentResponseId: string;
+  operationsEventDefinitionId: string;
+  effectiveTimestamp: string;
+  notes: string;
 }
 
 interface TestResult {
@@ -161,6 +172,8 @@ const ProcessDataGenerator: React.FC = () => {
   const [plants, setPlants] = useState<any[]>([]);
   const [equipmentProperties, setEquipmentProperties] = useState<any[]>([]);
   const [equipmentPropertyAssignments, setEquipmentPropertyAssignments] = useState<any[]>([]);
+  const [operationEventDefinitions, setOperationEventDefinitions] = useState<any[]>([]);
+  const [operationEventDefSegmentAssignments, setOperationEventDefSegmentAssignments] = useState<any[]>([]);
 
   // Form data for operations request
   const [formData, setFormData] = useState<OperationsRequest>({
@@ -177,6 +190,7 @@ const ProcessDataGenerator: React.FC = () => {
     status: 'Planned',
   });
   const [scrapProducedPercent, setScrapProducedPercent] = useState<number>(0);
+  const [productionDelayMinutes, setProductionDelayMinutes] = useState<number>(0);
 
   // Generated data
   const [generatedOperationsRequest, setGeneratedOperationsRequest] = useState<OperationsRequest | null>(null);
@@ -195,11 +209,30 @@ const ProcessDataGenerator: React.FC = () => {
   const [materialActuals, setMaterialActuals] = useState<SegmentMaterialActual[]>([]);
   const [equipmentActuals, setEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
   const [equipmentPropertyTracking, setEquipmentPropertyTracking] = useState<EquipmentPropertyTracking[]>([]);
+  const [operationsEvents, setOperationsEvents] = useState<OperationsEvent[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [generatedMaterialLotsForDisplay, setGeneratedMaterialLotsForDisplay] = useState<any[]>([]);
+  const [generatedMaterialSublotsForDisplay, setGeneratedMaterialSublotsForDisplay] = useState<any[]>([]);
   const [actualGenerationTimestamp, setActualGenerationTimestamp] = useState<Date | null>(null);
   const [referenceOperationsRequest, setReferenceOperationsRequest] = useState<OperationsRequest | null>(null);
   const [referenceSegmentRequirements, setReferenceSegmentRequirements] = useState<SegmentRequirement[]>([]);
+  
+  // Stored actual data from database
+  const [storedOperationsResponses, setStoredOperationsResponses] = useState<any[]>([]);
+  const [storedSegmentResponses, setStoredSegmentResponses] = useState<any[]>([]);
+  const [storedMaterialActuals, setStoredMaterialActuals] = useState<any[]>([]);
+  const [storedEquipmentActuals, setStoredEquipmentActuals] = useState<any[]>([]);
+  const [storedOperationsEvents, setStoredOperationsEvents] = useState<any[]>([]);
+  const [storedTestResults, setStoredTestResults] = useState<any[]>([]);
+  const [storedEquipmentPropertyTracking, setStoredEquipmentPropertyTracking] = useState<any[]>([]);
+
+  // Data overview filters and expansion states
+  const [planDataExpanded, setPlanDataExpanded] = useState(false);
+  const [actualDataExpanded, setActualDataExpanded] = useState(false);
+  const [planDataFilter, setPlanDataFilter] = useState('');
+  const [actualDataFilter, setActualDataFilter] = useState('');
+  const [materialActualsFilter, setMaterialActualsFilter] = useState<'ALL' | 'CONSUME' | 'PRODUCE' | 'Scrap'>('ALL');
+  const [segmentResponsesFilter, setSegmentResponsesFilter] = useState('');
 
   const loadSavedOperationsRequests = async () => {
     try {
@@ -210,10 +243,44 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
+  const loadStoredActualData = async () => {
+    try {
+      const [opsResp, segResp, matAct, eqAct, opsEvt, tests, eqProp] = await Promise.all([
+        processDataDB.getAll('operationsResponses'),
+        processDataDB.getAll('segmentResponses'),
+        processDataDB.getAll('segmentMaterialActuals'),
+        processDataDB.getAll('segmentEquipmentActuals'),
+        processDataDB.getAll('operationsEvents'),
+        processDataDB.getAll('testResults'),
+        processDataDB.getAll('equipmentPropertyTracking'),
+      ]);
+
+      setStoredOperationsResponses(opsResp);
+      setStoredSegmentResponses(segResp);
+      setStoredMaterialActuals(matAct);
+      setStoredEquipmentActuals(eqAct);
+      setStoredOperationsEvents(opsEvt);
+      setStoredTestResults(tests);
+      setStoredEquipmentPropertyTracking(eqProp);
+
+      console.log('[Stored Actual Data] Loaded:', {
+        operationsResponses: opsResp.length,
+        segmentResponses: segResp.length,
+        materialActuals: matAct.length,
+        equipmentActuals: eqAct.length,
+        operationsEvents: opsEvt.length,
+        testResults: tests.length,
+        equipmentPropertyTracking: eqProp.length,
+      });
+    } catch (error) {
+      console.error('Failed to load stored actual data:', error);
+    }
+  };
+
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, pl, p, eprop, epa] = await Promise.all([
+      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
@@ -223,6 +290,8 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataDB.getAll('plants'),
         masterDataDB.getAll('equipmentProperties'),
         masterDataDB.getAll('equipmentPropertyAssignments'),
+        masterDataDB.getAll('operationEventDefinitions'),
+        masterDataDB.getAll('operationEventDefSegmentAssignments'),
       ]);
 
       setMaterials(mat);
@@ -234,6 +303,14 @@ const ProcessDataGenerator: React.FC = () => {
       setPlants(p);
       setEquipmentProperties(eprop);
       setEquipmentPropertyAssignments(epa);
+      setOperationEventDefinitions(oed);
+      setOperationEventDefSegmentAssignments(oedsa);
+      
+      console.log('[Master Data] Loaded:', {
+        operationEventDefinitions: oed.length,
+        operationEventDefSegmentAssignments: oedsa.length
+      });
+      
       setLoading(false);
     } catch (error) {
       console.error('Failed to load master data:', error);
@@ -249,6 +326,7 @@ const ProcessDataGenerator: React.FC = () => {
   useEffect(() => {
     loadMasterData();
     loadSavedOperationsRequests();
+    loadStoredActualData();
   }, []);
 
   const generateActualData = async () => {
@@ -283,6 +361,8 @@ const ProcessDataGenerator: React.FC = () => {
       const generatedMatActuals: SegmentMaterialActual[] = [];
       const generatedEqActuals: SegmentEquipmentActual[] = [];
       const generatedMaterialLots: any[] = []; // Store material lots to be created in master data
+      const generatedMaterialSublots: any[] = []; // Store material sublots to be created in master data
+      const generatedOperationsEvents: OperationsEvent[] = [];
 
       // Track end times for each sequence number to enable parallel processing
       const sequenceEndTimes = new Map<number, Date>();
@@ -294,17 +374,32 @@ const ProcessDataGenerator: React.FC = () => {
       // Sort segment requirements by sequence to process in order
       const sortedSegReqs = [...orData.segmentRequirements].sort((a, b) => a.sequence - b.sequence);
 
+      console.log(`[Actual Data Generation] Processing ${sortedSegReqs.length} segment requirements`);
+      console.log(`[Actual Data Generation] Actual quantity: ${actualProductQuantity}`);
+      
+      if (sortedSegReqs.length === 0) {
+        throw new Error('No segment requirements found for this operations request. Please ensure the operations request has segment requirements defined.');
+      }
+
       for (const segReq of sortedSegReqs) {
         // Get process segment for duration
         const processSegment = processSegments.find(ps => ps.id === segReq.processSegmentId);
+        if (!processSegment) {
+          console.error(`[Seq ${segReq.sequence}] ERROR: Process segment not found for ID: ${segReq.processSegmentId}`);
+          throw new Error(`Process segment "${segReq.processSegmentId}" not found in master data. Please ensure all process segments are loaded.`);
+        }
         const segmentDuration = processSegment?.durationHours || 2;
         
         // Get equipment usage for capacity calculation
         const eqUsages = equipmentUsages.filter(eu => eu.processSegmentId === segReq.processSegmentId);
         const equipmentCapacity = eqUsages.length > 0 ? eqUsages[0].capacityPerRun : 100;
         
+        console.log(`[Seq ${segReq.sequence}] Process segment: ${processSegment.name}, Duration: ${segmentDuration}h, Equipment capacity: ${equipmentCapacity}`);
+        
         // Calculate number of runs needed
         const runsNeeded = Math.ceil(actualProductQuantity / equipmentCapacity);
+        
+        console.log(`[Seq ${segReq.sequence}] Runs needed: ${runsNeeded} (${actualProductQuantity} units / ${equipmentCapacity} capacity)`);
         
         // Create multiple segment responses based on equipment capacity
         for (let run = 0; run < runsNeeded; run++) {
@@ -372,6 +467,12 @@ const ProcessDataGenerator: React.FC = () => {
             // First run of this sequence - use segment requirement's earliest start time
             runStartTime = new Date(segReq.earliestStartDateTime.replace(' ', 'T') + 'Z');
             console.log(`[Seq ${segReq.sequence} Run ${run + 1}] First run, using segment requirement earliest start: ${runStartTime.toISOString()}`);
+            
+            // Apply production delay ONLY to the very first segment response (first sequence, first run)
+            if (segReq.sequence === 10 && run === 0 && productionDelayMinutes > 0) {
+              runStartTime = new Date(runStartTime.getTime() + productionDelayMinutes * 60 * 1000);
+              console.log(`[Seq ${segReq.sequence} Run ${run + 1}] Applied production delay of ${productionDelayMinutes} minutes. New start: ${runStartTime.toISOString()}`);
+            }
           }
           
           // Calculate duration for this run
@@ -415,10 +516,22 @@ const ProcessDataGenerator: React.FC = () => {
             const matActualId = `MAT-ACT-${segRespId}-${bom.materialId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
             
             // Generate material lot ID
-            const materialLotId = `LOT-${bom.materialId}-${timestamp.toISOString().slice(0, 10).replace(/-/g, '')}-R${run + 1}`;
+            const materialLotId = `LOT-${opsResponseId}-${bom.materialId}-R${run + 1}`;
             
-            // Determine direction based on material class
-            const isOutput = material?.classId === 'FINISHEDPRODUCT' || material?.classId === 'INPROCESSMATERIAL';
+            // Determine direction from BOM MaterialUse field
+            let direction = 'Material consumed'; // default
+            if (bom.materialUse) {
+              const materialUse = bom.materialUse.toUpperCase();
+              if (materialUse === 'PRODUCE' || materialUse === 'PRODUCED') {
+                direction = 'Material produced';
+              } else if (materialUse === 'SCRAP') {
+                direction = 'Scrap';
+              } else {
+                direction = 'Material consumed';
+              }
+            }
+            
+            const isOutput = direction === 'Material produced' || direction === 'Scrap';
             
             const matActual: SegmentMaterialActual = {
               id: matActualId,
@@ -427,7 +540,7 @@ const ProcessDataGenerator: React.FC = () => {
               materialLotId: materialLotId,
               actualQty: bom.qtyPerUnit * runQuantity,
               qtyUoM: bom.uom,
-              direction: isOutput ? 'PRODUCE' : 'CONSUME',
+              direction: direction,
             };
             generatedMatActuals.push(matActual);
             
@@ -451,16 +564,20 @@ const ProcessDataGenerator: React.FC = () => {
           // Add finished product to material actuals if this is the last segment
           const isLastSegment = segReq.sequence === Math.max(...orData.segmentRequirements.map(sr => sr.sequence));
           if (isLastSegment) {
-            const finishedProductLotId = `LOT-${orData.operationsRequest.productMaterialId}-${timestamp.toISOString().slice(0, 10).replace(/-/g, '')}-R${run + 1}`;
+            // Calculate scrap quantity first (extracted from total production)
+            const scrapQuantity = scrapProducedPercent > 0 ? (runQuantity * scrapProducedPercent) / 100 : 0;
+            const finishedGoodQuantity = runQuantity - scrapQuantity;
+            
+            const finishedProductLotId = `LOT-${opsResponseId}-${orData.operationsRequest.productMaterialId}-R${run + 1}`;
             
             const finishedProductActual: SegmentMaterialActual = {
               id: `MAT-ACT-${segRespId}-FINAL-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
               segmentResponseId: segRespId,
               materialId: orData.operationsRequest.productMaterialId,
               materialLotId: finishedProductLotId,
-              actualQty: runQuantity,
+              actualQty: finishedGoodQuantity,
               qtyUoM: orData.operationsRequest.quantityUoM,
-              direction: 'PRODUCE',
+              direction: 'Material produced',
             };
             generatedMatActuals.push(finishedProductActual);
             
@@ -468,7 +585,7 @@ const ProcessDataGenerator: React.FC = () => {
             const finishedProductLot = {
               id: finishedProductLotId,
               materialId: orData.operationsRequest.productMaterialId,
-              lotQuantity: runQuantity,
+              lotQuantity: finishedGoodQuantity,
               lotUoM: orData.operationsRequest.quantityUoM,
               producedDateTime: endTime.toISOString().slice(0, 19).replace('T', ' '),
               producedByProcessSegmentId: segReq.processSegmentId,
@@ -478,10 +595,32 @@ const ProcessDataGenerator: React.FC = () => {
             };
             generatedMaterialLots.push(finishedProductLot);
             
+            // Create sublots for finished product (100 EA per sublot)
+            const sublotSize = 100;
+            const numSublots = Math.ceil(finishedGoodQuantity / sublotSize);
+            
+            for (let sublotIdx = 0; sublotIdx < numSublots; sublotIdx++) {
+              const remainingQty = finishedGoodQuantity - (sublotIdx * sublotSize);
+              const sublotQty = Math.min(sublotSize, remainingQty);
+              
+              const sublotId = `${finishedProductLotId}-SUB${String(sublotIdx + 1).padStart(3, '0')}`;
+              
+              const sublot = {
+                id: sublotId,
+                materialLotId: finishedProductLotId,  // Parent lot reference
+                quantity: sublotQty,
+                quantityUnitOfMeasure: orData.operationsRequest.quantityUoM,
+                producedDateTime: endTime.toISOString().slice(0, 19).replace('T', ' '),
+                status: 'Available',
+              };
+              generatedMaterialSublots.push(sublot);
+            }
+            
+            console.log(`[Sublots] Created ${numSublots} sublots for finished product lot ${finishedProductLotId}`);
+            
             // Create scrap material lot if scrap percentage is specified
             if (scrapProducedPercent > 0) {
-              const scrapQuantity = (runQuantity * scrapProducedPercent) / 100;
-              const scrapLotId = `LOT-SCRAP-${orData.operationsRequest.productMaterialId}-${timestamp.toISOString().slice(0, 10).replace(/-/g, '')}-R${run + 1}`;
+              const scrapLotId = `LOT-SCRAP-${opsResponseId}-${orData.operationsRequest.productMaterialId}-R${run + 1}`;
               
               const scrapProductActual: SegmentMaterialActual = {
                 id: `MAT-ACT-${segRespId}-SCRAP-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
@@ -490,7 +629,7 @@ const ProcessDataGenerator: React.FC = () => {
                 materialLotId: scrapLotId,
                 actualQty: scrapQuantity,
                 qtyUoM: orData.operationsRequest.quantityUoM,
-                direction: 'PRODUCE',
+                direction: 'Scrap',
               };
               generatedMatActuals.push(scrapProductActual);
               
@@ -523,6 +662,86 @@ const ProcessDataGenerator: React.FC = () => {
             };
             generatedEqActuals.push(eqActual);
           }
+        }
+      }
+
+      // Generate Operations Events per segment requirement (not per run)
+      // Only create downtime events if production delay was defined
+      // Only create scrap events if scrap percentage was defined
+      console.log(`[Operations Events] Checking segment requirements - scrap=${scrapProducedPercent}, delay=${productionDelayMinutes}`);
+      
+      for (const segReq of sortedSegReqs) {
+        const shouldGenerateEvents = scrapProducedPercent > 0 || productionDelayMinutes > 0;
+        
+        if (!shouldGenerateEvents) {
+          continue;
+        }
+        
+        console.log(`[Operations Events] Processing segment ${segReq.processSegmentId}`);
+        
+        // Find event definitions assigned to this segment
+        let segmentEventAssignments = operationEventDefSegmentAssignments.filter(
+          oedsa => oedsa.processSegmentId === segReq.processSegmentId
+        );
+        
+        // Filter based on what conditions are met
+        segmentEventAssignments = segmentEventAssignments.filter(assignment => {
+          const eventDef = operationEventDefinitions.find(oed => oed.id === assignment.operationsEventDefinitionId);
+          if (!eventDef) return false;
+          
+          // Include downtime events only if production delay is defined
+          const includeForDowntime = productionDelayMinutes > 0 && eventDef.causesDowntime;
+          
+          // Include scrap events only if scrap percentage is defined
+          const includeForScrap = scrapProducedPercent > 0 && eventDef.causesScrap;
+          
+          return includeForDowntime || includeForScrap;
+        });
+        
+        console.log(`[Operations Events] Found ${segmentEventAssignments.length} matching event assignments for segment`);
+        
+        if (segmentEventAssignments.length > 0) {
+          // Randomly select 1-3 events per segment requirement
+          const numEvents = Math.floor(Math.random() * 3) + 1; // 1 to 3
+          const shuffled = [...segmentEventAssignments].sort(() => 0.5 - Math.random());
+          const selectedAssignments = shuffled.slice(0, Math.min(numEvents, segmentEventAssignments.length));
+          
+          console.log(`[Operations Events] Generating ${selectedAssignments.length} events for segment`);
+          
+          // Find any segment response for this segment requirement to use for timestamp range
+          const segmentResponses = generatedSegResponses.filter(sr => sr.segmentRequirementId === segReq.id);
+          if (segmentResponses.length === 0) continue;
+          
+          // Use the first and last segment response times as the range
+          const startTime = new Date(segmentResponses[0].actualStartDateTime.replace(' ', 'T') + 'Z');
+          const endTime = new Date(segmentResponses[segmentResponses.length - 1].actualEndDateTime.replace(' ', 'T') + 'Z');
+          
+          for (const assignment of selectedAssignments) {
+            const eventDef = operationEventDefinitions.find(
+              oed => oed.id === assignment.operationsEventDefinitionId
+            );
+            
+            // Generate random timestamp between segment start and end
+            const startTimeMs = startTime.getTime();
+            const endTimeMs = endTime.getTime();
+            const randomTimeMs = startTimeMs + Math.random() * (endTimeMs - startTimeMs);
+            const eventTime = new Date(randomTimeMs);
+            
+            // Use the first segment response id for this segment requirement
+            const segRespId = segmentResponses[0].id;
+            
+            const operationsEvent: OperationsEvent = {
+              id: `OPS-EVENT-${segReq.processSegmentId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+              segmentResponseId: segRespId,
+              operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+              effectiveTimestamp: eventTime.toISOString().slice(0, 19).replace('T', ' '),
+              notes: `${eventDef?.description || 'Event'} - ${assignment.notes}`,
+            };
+            generatedOperationsEvents.push(operationsEvent);
+            console.log(`[Operations Events] Created event: ${operationsEvent.id} (${eventDef?.eventCode})`);
+          }
+        } else {
+          console.log(`[Operations Events] No matching event assignments found for segment ${segReq.processSegmentId}`);
         }
       }
 
@@ -589,7 +808,15 @@ const ProcessDataGenerator: React.FC = () => {
 
       // Create Operations Response using tracked earliest start and latest end
       if (!operationsStartTime || !operationsEndTime) {
-        throw new Error('No segment responses were generated');
+        console.error('[Actual Data Generation] ERROR: No segment responses were generated');
+        console.error('[Actual Data Generation] Debug info:', {
+          sortedSegReqs: sortedSegReqs.length,
+          generatedSegResponses: generatedSegResponses.length,
+          actualProductQuantity,
+          operationsStartTime,
+          operationsEndTime
+        });
+        throw new Error('No segment responses were generated. This could be due to: \n1. No segment requirements defined for the operations request\n2. Equipment capacity configuration is invalid\n3. Process segment data is missing');
       }
 
       const opsResponse: OperationsResponse = {
@@ -610,6 +837,7 @@ const ProcessDataGenerator: React.FC = () => {
       setMaterialActuals(generatedMatActuals);
       setEquipmentActuals(generatedEqActuals);
       setEquipmentPropertyTracking(generatedPropertyTracking);
+      setOperationsEvents(generatedOperationsEvents);
       setGeneratedMaterialLotsForDisplay(generatedMaterialLots);
       
       // Generate Test Results for produced material lots
@@ -637,25 +865,18 @@ const ProcessDataGenerator: React.FC = () => {
       setTestResults(generatedTestResults);
       console.log(`Generated ${generatedTestResults.length} test results for material lots`);
       
-      // Save material lots to master data
-      if (generatedMaterialLots.length > 0) {
-        try {
-          for (const lot of generatedMaterialLots) {
-            await masterDataDB.add('materialLots', lot);
-          }
-          console.log(`Saved ${generatedMaterialLots.length} material lots to master data`);
-        } catch (error) {
-          console.error('Failed to save material lots to master data:', error);
-          // Continue even if material lot save fails - show warning but don't fail the whole operation
-        }
-      }
+      // Store lots and sublots in state for later saving
+      setGeneratedMaterialLotsForDisplay(generatedMaterialLots);
+      setGeneratedMaterialSublotsForDisplay(generatedMaterialSublots);
+      console.log(`Generated ${generatedMaterialLots.length} material lots and ${generatedMaterialSublots.length} sublots (will be saved when 'Save to DB' is clicked)`);
       
       setLoading(false);
 
-      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedMaterialLots.length} material lots, ${generatedTestResults.length} test results`, 'success');
+      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
     } catch (error) {
       console.error('Error generating actual data:', error);
-      showSnackbar('Failed to generate actual data', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate actual data';
+      showSnackbar(errorMessage, 'error');
       setLoading(false);
     }
   };
@@ -663,13 +884,75 @@ const ProcessDataGenerator: React.FC = () => {
   const resetActualData = () => {
     setSelectedOperationsRequestId('');
     setActualProductQuantity(0);
+    setProductionDelayMinutes(0);
     setGeneratedOperationsResponse(null);
     setSegmentResponses([]);
     setMaterialActuals([]);
     setEquipmentActuals([]);
     setEquipmentPropertyTracking([]);
+    setOperationsEvents([]);
     setTestResults([]);
+    setGeneratedMaterialLotsForDisplay([]);
+    setGeneratedMaterialSublotsForDisplay([]);
     setActualGenerationTimestamp(null);
+  };
+
+  const checkOperationsRequestData = async () => {
+    if (!selectedOperationsRequestId) {
+      showSnackbar('Please select an operations request first', 'error');
+      return;
+    }
+
+    try {
+      const orData = await processDataDB.getOperationsRequestWithRequirements(selectedOperationsRequestId);
+      if (!orData) {
+        showSnackbar('Operations request not found in database', 'error');
+        return;
+      }
+
+      // Handle potentially undefined arrays
+      const segmentReqs = orData.segmentRequirements || [];
+      const materialReqs = orData.segmentMaterialRequirements || [];
+      const equipmentReqs = orData.segmentEquipmentRequirements || [];
+
+      console.log('[Check OR Data]', {
+        operationsRequest: orData.operationsRequest,
+        segmentRequirements: segmentReqs.length,
+        segmentMaterialRequirements: materialReqs.length,
+        segmentEquipmentRequirements: equipmentReqs.length
+      });
+
+      let message = `Operations Request: ${orData.operationsRequest.id}\n`;
+      message += `Description: ${orData.operationsRequest.description}\n`;
+      message += `Product: ${orData.operationsRequest.productMaterialId}\n`;
+      message += `Quantity: ${orData.operationsRequest.plannedQuantity} ${orData.operationsRequest.quantityUoM}\n\n`;
+      message += `Segment Requirements: ${segmentReqs.length}\n`;
+      message += `Material Requirements: ${materialReqs.length}\n`;
+      message += `Equipment Requirements: ${equipmentReqs.length}`;
+
+      if (segmentReqs.length === 0) {
+        message += '\n\n⚠️ WARNING: No segment requirements found!\n\n';
+        message += 'This operations request cannot be used to generate actual data.\n\n';
+        message += 'SOLUTION:\n';
+        message += '1. Go to the "Plan Data" tab\n';
+        message += '2. Enter the same product and configuration\n';
+        message += '3. Click "Generate Plan Data"\n';
+        message += '4. Click "Save to Database"\n';
+        message += '5. Return to this tab and select the operations request again';
+      }
+
+      alert(message);
+      
+      if (segmentReqs.length > 0) {
+        showSnackbar('Operations request data is valid and ready for actual data generation', 'success');
+      } else {
+        showSnackbar('Operations request is missing segment requirements - cannot generate actual data', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to check operations request data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to check operations request data';
+      showSnackbar(errorMessage, 'error');
+    }
   };
 
   const saveActualToDatabase = async () => {
@@ -680,19 +963,236 @@ const ProcessDataGenerator: React.FC = () => {
 
     try {
       setLoading(true);
+      
+      // Save actual data to process data DB
       await processDataDB.saveActualData(
         generatedOperationsResponse,
         segmentResponses,
         materialActuals,
         equipmentActuals,
         equipmentPropertyTracking,
-        testResults
+        testResults,
+        operationsEvents
       );
+      
+      // Save material lots to master data
+      if (generatedMaterialLotsForDisplay.length > 0) {
+        for (const lot of generatedMaterialLotsForDisplay) {
+          await masterDataDB.add('materialLots', lot);
+        }
+        console.log(`Saved ${generatedMaterialLotsForDisplay.length} material lots to master data`);
+      }
+      
+      // Save material sublots to master data
+      if (generatedMaterialSublotsForDisplay.length > 0) {
+        for (const sublot of generatedMaterialSublotsForDisplay) {
+          await masterDataDB.add('materialSublots', sublot);
+        }
+        console.log(`Saved ${generatedMaterialSublotsForDisplay.length} material sublots to master data`);
+      }
+      
       setLoading(false);
       showSnackbar('Actual data saved to database successfully', 'success');
+      
+      // Reload stored actual data to update the overview
+      await loadStoredActualData();
     } catch (error) {
       console.error('Failed to save actual data:', error);
       showSnackbar('Failed to save actual data to database', 'error');
+      setLoading(false);
+    }
+  };
+
+  const cleanupDatabase = async () => {
+    if (!window.confirm('Are you sure you want to delete all process data (operations requests, responses, segment data, etc.)? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('[Process Data Generator] Cleaning up process data database...');
+      
+      // Clear all process data stores
+      const stores = [
+        'operationsRequests',
+        'segmentRequirements',
+        'segmentMaterialRequirements',
+        'segmentEquipmentRequirements',
+        'operationsResponses',
+        'segmentResponses',
+        'segmentMaterialActuals',
+        'segmentEquipmentActuals',
+        'equipmentPropertyTracking',
+        'testResults',
+        'operationsEvents'
+      ];
+      
+      for (const store of stores) {
+        try {
+          await processDataDB.clear(store as any);
+          console.log(`[Cleanup] Cleared ${store}`);
+        } catch (error) {
+          console.error(`[Cleanup] Failed to clear ${store}:`, error);
+        }
+      }
+      
+      // Reset UI state
+      setSavedOperationsRequests([]);
+      setSelectedOperationsRequestId('');
+      setGeneratedOperationsResponse(null);
+      setSegmentResponses([]);
+      setMaterialActuals([]);
+      setEquipmentActuals([]);
+      setEquipmentPropertyTracking([]);
+      setOperationsEvents([]);
+      setTestResults([]);
+      setGeneratedMaterialLotsForDisplay([]);
+      setGeneratedMaterialSublotsForDisplay([]);
+      setActualGenerationTimestamp(null);
+      setReferenceOperationsRequest(null);
+      setReferenceSegmentRequirements([]);
+      
+      // Reload stored data to update overview
+      await loadSavedOperationsRequests();
+      await loadStoredActualData();
+      
+      setLoading(false);
+      showSnackbar('Process data database cleaned up successfully', 'success');
+    } catch (error) {
+      console.error('Failed to cleanup database:', error);
+      showSnackbar('Failed to cleanup database', 'error');
+      setLoading(false);
+    }
+  };
+
+  const deleteOperationsRequest = async (operationsRequestId: string) => {
+    if (!window.confirm(`Are you sure you want to delete operations request "${operationsRequestId}" and all its related data? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log(`[Delete Plan] Deleting operations request: ${operationsRequestId}`);
+      
+      // Load all related data for this operations request
+      const orData = await processDataDB.getOperationsRequestWithRequirements(operationsRequestId);
+      if (!orData) {
+        showSnackbar('Operations request not found', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const segmentReqs = orData.segmentRequirements || [];
+      const materialReqs = orData.segmentMaterialRequirements || [];
+      const equipmentReqs = orData.segmentEquipmentRequirements || [];
+
+      console.log(`[Delete Plan] Found ${segmentReqs.length} segment requirements, ${materialReqs.length} material requirements, ${equipmentReqs.length} equipment requirements`);
+      
+      // Delete all related data in order
+      // 1. Delete segment material requirements
+      for (const mr of materialReqs) {
+        await processDataDB.delete('segmentMaterialRequirements', mr.id);
+      }
+      console.log(`[Delete Plan] Deleted ${materialReqs.length} segment material requirements`);
+      
+      // 2. Delete segment equipment requirements
+      for (const er of equipmentReqs) {
+        await processDataDB.delete('segmentEquipmentRequirements', er.id);
+      }
+      console.log(`[Delete Plan] Deleted ${equipmentReqs.length} segment equipment requirements`);
+      
+      // 3. Delete segment requirements
+      for (const sr of segmentReqs) {
+        await processDataDB.delete('segmentRequirements', sr.id);
+      }
+      console.log(`[Delete Plan] Deleted ${segmentReqs.length} segment requirements`);
+      
+      // 4. Delete the operations request itself
+      await processDataDB.delete('operationsRequests', operationsRequestId);
+      console.log(`[Delete Plan] Deleted operations request ${operationsRequestId}`);
+      
+      // Reload saved operations requests to update the overview
+      await loadSavedOperationsRequests();
+      
+      setLoading(false);
+      showSnackbar(`Operations request "${operationsRequestId}" deleted successfully`, 'success');
+    } catch (error) {
+      console.error('Failed to delete operations request:', error);
+      showSnackbar('Failed to delete operations request', 'error');
+      setLoading(false);
+    }
+  };
+
+  const deleteOperationsResponse = async (operationsResponseId: string) => {
+    if (!window.confirm(`Are you sure you want to delete operations response "${operationsResponseId}" and all its related data? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log(`[Delete] Deleting operations response: ${operationsResponseId}`);
+      
+      // Find all segment responses for this operations response
+      const segmentResponsesToDelete = storedSegmentResponses.filter(sr => sr.operationsResponseId === operationsResponseId);
+      const segmentResponseIds = segmentResponsesToDelete.map(sr => sr.id);
+      
+      console.log(`[Delete] Found ${segmentResponsesToDelete.length} segment responses to delete`);
+      
+      // Delete all related data in order
+      // 1. Delete material actuals related to these segment responses
+      for (const segId of segmentResponseIds) {
+        const matActuals = storedMaterialActuals.filter(ma => ma.segmentResponseId === segId);
+        for (const ma of matActuals) {
+          await processDataDB.delete('segmentMaterialActuals', ma.id);
+        }
+        console.log(`[Delete] Deleted ${matActuals.length} material actuals for segment ${segId}`);
+      }
+      
+      // 2. Delete equipment actuals
+      for (const segId of segmentResponseIds) {
+        const eqActuals = storedEquipmentActuals.filter(ea => ea.segmentResponseId === segId);
+        for (const ea of eqActuals) {
+          await processDataDB.delete('segmentEquipmentActuals', ea.id);
+        }
+        console.log(`[Delete] Deleted ${eqActuals.length} equipment actuals for segment ${segId}`);
+      }
+      
+      // 3. Delete operations events
+      for (const segId of segmentResponseIds) {
+        const events = storedOperationsEvents.filter(oe => oe.segmentResponseId === segId);
+        for (const evt of events) {
+          await processDataDB.delete('operationsEvents', evt.id);
+        }
+        console.log(`[Delete] Deleted ${events.length} operations events for segment ${segId}`);
+      }
+      
+      // 4. Delete equipment property tracking
+      for (const segId of segmentResponseIds) {
+        const tracking = storedEquipmentPropertyTracking.filter(ept => ept.segmentResponseId === segId);
+        for (const t of tracking) {
+          await processDataDB.delete('equipmentPropertyTracking', t.id);
+        }
+        console.log(`[Delete] Deleted ${tracking.length} equipment property tracking records for segment ${segId}`);
+      }
+      
+      // 5. Delete segment responses
+      for (const sr of segmentResponsesToDelete) {
+        await processDataDB.delete('segmentResponses', sr.id);
+      }
+      console.log(`[Delete] Deleted ${segmentResponsesToDelete.length} segment responses`);
+      
+      // 6. Delete the operations response itself
+      await processDataDB.delete('operationsResponses', operationsResponseId);
+      console.log(`[Delete] Deleted operations response ${operationsResponseId}`);
+      
+      // Reload stored data to update the overview
+      await loadStoredActualData();
+      
+      setLoading(false);
+      showSnackbar(`Operations response "${operationsResponseId}" deleted successfully`, 'success');
+    } catch (error) {
+      console.error('Failed to delete operations response:', error);
+      showSnackbar('Failed to delete operations response', 'error');
       setLoading(false);
     }
   };
@@ -1066,6 +1566,15 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
         <Box>
           <Button
             variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={cleanupDatabase}
+            sx={{ mr: 1 }}
+          >
+            Cleanup DB
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={<RefreshIcon />}
             onClick={activeTab === 0 ? resetForm : resetActualData}
             sx={{ mr: 1 }}
@@ -1105,6 +1614,108 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             Generate process data based on operations requests. Select a product and production line to automatically create 
             segment requirements with material and equipment requirements based on master data (BOMs, equipment usage, capacities).
           </Alert>
+
+          {/* Plan Data Overview */}
+          {savedOperationsRequests.length > 0 && (
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.lighter' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  📊 Saved Plan Data Overview
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() => setPlanDataExpanded(!planDataExpanded)}
+                  variant="outlined"
+                >
+                  {planDataExpanded ? 'Collapse' : 'Expand All'}
+                </Button>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              
+              {planDataExpanded && (
+                <Box sx={{ mb: 2 }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label="Filter Operations Requests"
+                    placeholder="Search by ID, description, or product..."
+                    value={planDataFilter}
+                    onChange={(e) => setPlanDataFilter(e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+              )}
+              
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    <strong>Operations Requests:</strong> {savedOperationsRequests.filter(req => 
+                      !planDataFilter || 
+                      req.id?.toLowerCase().includes(planDataFilter.toLowerCase()) ||
+                      req.description?.toLowerCase().includes(planDataFilter.toLowerCase()) ||
+                      req.productMaterialId?.toLowerCase().includes(planDataFilter.toLowerCase())
+                    ).length} {planDataFilter && `(filtered from ${savedOperationsRequests.length})`}
+                  </Typography>
+                  <Box sx={{ maxHeight: planDataExpanded ? 500 : 200, overflowY: 'auto', pr: 1 }}>
+                    {savedOperationsRequests
+                      .filter(req => 
+                        !planDataFilter || 
+                        req.id?.toLowerCase().includes(planDataFilter.toLowerCase()) ||
+                        req.description?.toLowerCase().includes(planDataFilter.toLowerCase()) ||
+                        req.productMaterialId?.toLowerCase().includes(planDataFilter.toLowerCase())
+                      )
+                      .slice(0, planDataExpanded ? undefined : 3)
+                      .map((req) => {
+                        const plant = plants.find(p => p.id === req.plantId);
+                        const line = productionLines.find(l => l.id === req.lineId);
+                        const product = materials.find(m => m.id === req.productMaterialId);
+                        return (
+                          <Box key={req.id} sx={{ ml: 2, mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1, position: 'relative' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="caption" display="block">
+                                  <strong>{req.id}</strong> - {req.description}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Product: {product?.name || req.productMaterialId} | Qty: {req.plannedQuantity} {req.quantityUoM}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Plant: {plant?.name || req.plantId} | Line: {line?.name || req.lineId}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {new Date(req.plannedStartDateTime).toLocaleString()} → {new Date(req.plannedEndDateTime).toLocaleString()}
+                                </Typography>
+                              </Box>
+                              <Tooltip title="Delete this operations request">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => deleteOperationsRequest(req.id)}
+                                  sx={{ ml: 1 }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                  </Box>
+                  {!planDataExpanded && savedOperationsRequests.length > 3 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+                      ...and {savedOperationsRequests.length - 3} more
+                    </Typography>
+                  )}
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    <Chip label={`${savedOperationsRequests.length} Requests`} color="primary" size="small" />
+                    <Chip label="Saved in DB" color="success" size="small" />
+                  </Box>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
 
       <Grid container spacing={3}>
         {/* Operations Request Form */}
@@ -1513,6 +2124,209 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             Generate actual production data based on saved operations requests. Select an operations request and enter the actual quantity produced.
           </Alert>
 
+          {/* Actual Data Overview */}
+          {(savedOperationsRequests.length > 0 || storedOperationsResponses.length > 0 || generatedOperationsResponse) && (
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.lighter' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  📊 Actual Data Overview (Stored in Database)
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() => setActualDataExpanded(!actualDataExpanded)}
+                  variant="outlined"
+                >
+                  {actualDataExpanded ? 'Collapse' : 'Expand All'}
+                </Button>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              
+              {actualDataExpanded && storedOperationsResponses.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Filter by Operations Response ID"
+                        placeholder="Search by response ID..."
+                        value={actualDataFilter}
+                        onChange={(e) => setActualDataFilter(e.target.value)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Material Actuals Filter</InputLabel>
+                        <Select
+                          value={materialActualsFilter}
+                          label="Material Actuals Filter"
+                          onChange={(e) => setMaterialActualsFilter(e.target.value as any)}
+                        >
+                          <MenuItem value="ALL">All Materials</MenuItem>
+                          <MenuItem value="CONSUME">Consumed Only</MenuItem>
+                          <MenuItem value="PRODUCE">Produced Only</MenuItem>
+                          <MenuItem value="Scrap">Scrap Only</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </Box>
+              )}
+              
+              <Grid container spacing={2}>
+                {/* Available Plan Data */}
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                    Available Operations Requests (Plan):
+                  </Typography>
+                  <Typography variant="body2" color="text.primary" gutterBottom>
+                    <strong>{savedOperationsRequests.length}</strong> requests saved in database
+                  </Typography>
+                  <Box sx={{ maxHeight: actualDataExpanded ? 400 : 150, overflowY: 'auto', pr: 1 }}>
+                    {savedOperationsRequests.slice(0, actualDataExpanded ? undefined : 2).map((req) => {
+                      const plant = plants.find(p => p.id === req.plantId);
+                      const line = productionLines.find(l => l.id === req.lineId);
+                      const product = materials.find(m => m.id === req.productMaterialId);
+                      return (
+                        <Box key={req.id} sx={{ ml: 2, mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                          <Typography variant="caption" display="block">
+                            <strong>{req.id}</strong> - {req.description}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Product: {product?.name || req.productMaterialId} | Qty: {req.plannedQuantity} {req.quantityUoM}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Plant: {plant?.name || req.plantId} | Line: {line?.name || req.lineId}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                  {!actualDataExpanded && savedOperationsRequests.length > 2 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 2, display: 'block', mt: 1 }}>
+                      ...and {savedOperationsRequests.length - 2} more
+                    </Typography>
+                  )}
+                </Grid>
+
+                {/* Stored Actual Data from Database */}
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                    Stored Actual Data (Database):
+                  </Typography>
+                  {storedOperationsResponses.length > 0 ? (
+                    <Box>
+                      <Typography variant="body2" color="text.primary" gutterBottom>
+                        <strong>{storedOperationsResponses.length}</strong> operations responses stored
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                        <Chip label={`${storedOperationsResponses.length} Responses`} size="small" color="primary" />
+                        <Chip label={`${storedSegmentResponses.length} Segments`} size="small" color="success" />
+                        <Chip label={`${storedMaterialActuals.length} Materials`} size="small" color="warning" />
+                        <Chip label={`${storedEquipmentActuals.length} Equipment`} size="small" color="info" />
+                        <Chip label={`${storedOperationsEvents.length} Events`} size="small" color="error" />
+                        <Chip label={`${storedTestResults.length} Tests`} size="small" color="secondary" />
+                      </Box>
+                      
+                      <Box sx={{ maxHeight: actualDataExpanded ? 400 : 150, overflowY: 'auto', pr: 1 }}>
+                        {storedOperationsResponses
+                          .filter(resp => !actualDataFilter || resp.id?.toLowerCase().includes(actualDataFilter.toLowerCase()))
+                          .slice(0, actualDataExpanded ? undefined : 2)
+                          .map((resp) => {
+                            const respSegments = storedSegmentResponses.filter(sr => sr.operationsResponseId === resp.id);
+                            const respMaterials = storedMaterialActuals.filter(ma => {
+                              const segment = storedSegmentResponses.find(sr => sr.id === ma.segmentResponseId);
+                              return segment?.operationsResponseId === resp.id &&
+                                     (materialActualsFilter === 'ALL' || ma.direction === materialActualsFilter);
+                            });
+                            const respEquipment = storedEquipmentActuals.filter(ea => {
+                              const segment = storedSegmentResponses.find(sr => sr.id === ea.segmentResponseId);
+                              return segment?.operationsResponseId === resp.id;
+                            });
+                            const respEvents = storedOperationsEvents.filter(oe => {
+                              const segment = storedSegmentResponses.find(sr => sr.id === oe.segmentResponseId);
+                              return segment?.operationsResponseId === resp.id;
+                            });
+                            
+                            return (
+                              <Box key={resp.id} sx={{ ml: 2, mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1, position: 'relative' }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                                  <Box sx={{ flex: 1 }}>
+                                    <Typography variant="caption" display="block">
+                                      <strong>{resp.id}</strong>
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      Request: {resp.operationsRequestId}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      Actual: {resp.actualQuantity} {resp.quantityUoM} | Status: {resp.status}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {new Date(resp.actualStartDateTime).toLocaleString()} → {new Date(resp.actualEndDateTime).toLocaleString()}
+                                    </Typography>
+                                  </Box>
+                                  <Tooltip title="Delete this operations response">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => deleteOperationsResponse(resp.id)}
+                                      sx={{ ml: 1 }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                                <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                  <Chip label={`${respSegments.length} Seg`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="success" />
+                                  <Chip label={`${respMaterials.length} Mat`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="warning" />
+                                  <Chip label={`${respEquipment.length} Eq`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="info" />
+                                  <Chip label={`${respEvents.length} Evt`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="error" />
+                                </Box>
+                                
+                                {/* Expanded view - show segment responses */}
+                                {actualDataExpanded && respSegments.length > 0 && (
+                                  <Box sx={{ mt: 1, ml: 1 }}>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                      <strong>Segments:</strong>
+                                    </Typography>
+                                    {respSegments.map((sr, idx) => {
+                                      const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
+                                      const segMatActs = storedMaterialActuals.filter(ma => ma.segmentResponseId === sr.id);
+                                      const segEqActs = storedEquipmentActuals.filter(ea => ea.segmentResponseId === sr.id);
+                                      
+                                      return (
+                                        <Box key={sr.id} sx={{ ml: 1, mb: 0.5, p: 0.5, bgcolor: 'background.default', borderRadius: 0.5, fontSize: '0.7rem' }}>
+                                          <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
+                                            {idx + 1}. {segment?.name || sr.processSegmentId}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>
+                                            Qty: {sr.actualQuantity} {sr.quantityUoM} | {segMatActs.length} mat, {segEqActs.length} eq
+                                          </Typography>
+                                        </Box>
+                                      );
+                                    })}
+                                  </Box>
+                                )}
+                              </Box>
+                            );
+                          })}
+                      </Box>
+                      {!actualDataExpanded && storedOperationsResponses.length > 2 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, display: 'block', mt: 1 }}>
+                          ...and {storedOperationsResponses.length - 2} more responses
+                        </Typography>
+                      )}
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No actual data stored in database yet. Generate and save actual data to see it here.
+                    </Typography>
+                  )}
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+
           <Grid container spacing={3}>
             {/* Actual Data Form */}
             <Grid item xs={12} md={6}>
@@ -1550,6 +2364,27 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     {selectedOperationsRequestId && (
                       <>
                         <Grid item xs={12}>
+                          <Button
+                            fullWidth
+                            variant="outlined"
+                            color="info"
+                            onClick={checkOperationsRequestData}
+                            startIcon={<RefreshIcon />}
+                          >
+                            Check Operations Request Data
+                          </Button>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
+                            Click "Check Operations Request Data" to verify that this operations request has segment requirements before generating actual data.
+                          </Alert>
+                        </Grid>
+                      </>
+                    )}
+
+                    {selectedOperationsRequestId && (
+                      <>
+                        <Grid item xs={12}>
                           <Alert severity="info" size="small">
                             Selected: {savedOperationsRequests.find(or => or.id === selectedOperationsRequestId)?.description}
                           </Alert>
@@ -1583,6 +2418,18 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             value={scrapProducedPercent}
                             onChange={(e) => setScrapProducedPercent(parseFloat(e.target.value) || 0)}
                             inputProps={{ min: 0, max: 100, step: 0.1 }}
+                          />
+                        </Grid>
+
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Production Delay (minutes)"
+                            type="number"
+                            value={productionDelayMinutes}
+                            onChange={(e) => setProductionDelayMinutes(parseInt(e.target.value) || 0)}
+                            inputProps={{ min: 0, step: 1 }}
+                            helperText="Delay before starting production"
                           />
                         </Grid>
 
@@ -1645,7 +2492,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Chip label={`${materialActuals.length} Material Actuals`} color="warning" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentActuals.length} Equipment Actuals`} color="info" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentPropertyTracking.length} Property Tracking`} color="secondary" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${operationsEvents.length} Operations Events`} color="error" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialLotsForDisplay.length} Material Lots`} color="success" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${generatedMaterialSublotsForDisplay.length} Material Sublots`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${testResults.length} Test Results`} color="info" sx={{ mb: 1 }} />
                       </Box>
 
@@ -1811,7 +2660,12 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               {/* Segment Responses Table */}
               <Paper sx={{ mb: 2 }}>
                 <Box sx={{ p: 2, bgcolor: 'success.dark', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="subtitle1">Segment Responses (Actual Data)</Typography>
+                  <Typography variant="subtitle1">Segment Responses (Actual Data) - {segmentResponses.filter(sr => {
+                    if (!segmentResponsesFilter) return true;
+                    const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
+                    return sr.id?.toLowerCase().includes(segmentResponsesFilter.toLowerCase()) ||
+                           segment?.name?.toLowerCase().includes(segmentResponsesFilter.toLowerCase());
+                  }).length} records</Typography>
                   <Button
                     size="small"
                     variant="outlined"
@@ -1822,8 +2676,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     Export CSV
                   </Button>
                 </Box>
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer sx={{ maxHeight: 500 }}>
+                  <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
                         <TableCell>ID</TableCell>
@@ -1835,21 +2689,28 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {segmentResponses.map((sr) => {
-                        const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
-                        return (
-                          <TableRow key={sr.id}>
-                            <TableCell>{sr.id}</TableCell>
-                            <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
-                            <TableCell>{sr.actualStartDateTime}</TableCell>
-                            <TableCell>{sr.actualEndDateTime}</TableCell>
-                            <TableCell>{sr.actualQuantity} {sr.quantityUoM}</TableCell>
-                            <TableCell>
-                              <Chip label={sr.status} size="small" color="success" />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
+                      {segmentResponses
+                        .filter(sr => {
+                          if (!segmentResponsesFilter) return true;
+                          const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
+                          return sr.id?.toLowerCase().includes(segmentResponsesFilter.toLowerCase()) ||
+                                 segment?.name?.toLowerCase().includes(segmentResponsesFilter.toLowerCase());
+                        })
+                        .map((sr) => {
+                          const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
+                          return (
+                            <TableRow key={sr.id}>
+                              <TableCell>{sr.id}</TableCell>
+                              <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
+                              <TableCell>{sr.actualStartDateTime}</TableCell>
+                              <TableCell>{sr.actualEndDateTime}</TableCell>
+                              <TableCell>{sr.actualQuantity} {sr.quantityUoM}</TableCell>
+                              <TableCell>
+                                <Chip label={sr.status} size="small" color="success" />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1858,7 +2719,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               {/* Material Actuals Table */}
               <Paper sx={{ mb: 2 }}>
                 <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="subtitle1">Material Actuals</Typography>
+                  <Typography variant="subtitle1">Material Actuals - {materialActuals.filter(ma => materialActualsFilter === 'ALL' || ma.direction === materialActualsFilter).length} records</Typography>
                   <Button
                     size="small"
                     variant="outlined"
@@ -1869,8 +2730,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     Export CSV
                   </Button>
                 </Box>
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer sx={{ maxHeight: 500 }}>
+                  <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
                         <TableCell>ID</TableCell>
@@ -1882,25 +2743,27 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {materialActuals.map((ma) => {
-                        const material = materials.find(m => m.id === ma.materialId);
-                        return (
-                          <TableRow key={ma.id}>
-                            <TableCell>{ma.id}</TableCell>
-                            <TableCell>{ma.segmentResponseId}</TableCell>
-                            <TableCell>{material?.name || ma.materialId}</TableCell>
-                            <TableCell>{ma.materialLotId}</TableCell>
-                            <TableCell>{ma.actualQty} {ma.qtyUoM}</TableCell>
-                            <TableCell>
-                              <Chip 
-                                label={ma.direction} 
-                                size="small" 
-                                color={ma.direction === 'PRODUCE' ? 'success' : 'default'}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
+                      {materialActuals
+                        .filter(ma => materialActualsFilter === 'ALL' || ma.direction === materialActualsFilter)
+                        .map((ma) => {
+                          const material = materials.find(m => m.id === ma.materialId);
+                          return (
+                            <TableRow key={ma.id}>
+                              <TableCell>{ma.id}</TableCell>
+                              <TableCell>{ma.segmentResponseId}</TableCell>
+                              <TableCell>{material?.name || ma.materialId}</TableCell>
+                              <TableCell>{ma.materialLotId}</TableCell>
+                              <TableCell>{ma.actualQty} {ma.qtyUoM}</TableCell>
+                              <TableCell>
+                                <Chip 
+                                  label={ma.direction} 
+                                  size="small" 
+                                  color={ma.direction === 'PRODUCE' ? 'success' : ma.direction === 'Scrap' ? 'error' : 'default'}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1909,7 +2772,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               {/* Equipment Actuals Table */}
               <Paper sx={{ mb: 2 }}>
                 <Box sx={{ p: 2, bgcolor: 'info.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="subtitle1">Equipment Actuals</Typography>
+                  <Typography variant="subtitle1">Equipment Actuals - {equipmentActuals.length} records</Typography>
                   <Button
                     size="small"
                     variant="outlined"
@@ -1920,8 +2783,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     Export CSV
                   </Button>
                 </Box>
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer sx={{ maxHeight: 500 }}>
+                  <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
                         <TableCell>ID</TableCell>
@@ -2006,6 +2869,54 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                 </Paper>
               )}
 
+              {/* Operations Events Table */}
+              {operationsEvents.length > 0 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white' }}>
+                    <Typography variant="subtitle1">Operations Events</Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Event ID</TableCell>
+                          <TableCell>Segment Response</TableCell>
+                          <TableCell>Event Definition</TableCell>
+                          <TableCell>Event Code</TableCell>
+                          <TableCell>Event Category</TableCell>
+                          <TableCell>Effective Timestamp</TableCell>
+                          <TableCell>Notes</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {operationsEvents.map((event) => {
+                          const eventDef = operationEventDefinitions.find(oed => oed.id === event.operationsEventDefinitionId);
+                          return (
+                            <TableRow key={event.id}>
+                              <TableCell>{event.id}</TableCell>
+                              <TableCell>{event.segmentResponseId}</TableCell>
+                              <TableCell>{eventDef?.description || event.operationsEventDefinitionId}</TableCell>
+                              <TableCell>
+                                <Chip label={eventDef?.eventCode || 'N/A'} size="small" />
+                              </TableCell>
+                              <TableCell>
+                                <Chip 
+                                  label={eventDef?.eventCategory || 'N/A'} 
+                                  color={eventDef?.causesDowntime ? 'error' : 'warning'}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>{event.effectiveTimestamp}</TableCell>
+                              <TableCell>{event.notes}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
               {/* Material Lots Table */}
               <Paper>
                 <Box sx={{ p: 2, bgcolor: 'success.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2061,8 +2972,56 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                 </TableContainer>
               </Paper>
 
+              {/* Material Sublots Table */}
+              <Paper sx={{ mt: 2 }}>
+                <Box sx={{ p: 2, bgcolor: 'success.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="subtitle1">
+                    Material Sublots
+                    <Chip label={generatedMaterialSublotsForDisplay.length} size="small" sx={{ ml: 1, bgcolor: 'white', color: 'success.main' }} />
+                  </Typography>
+                </Box>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Sublot ID</TableCell>
+                        <TableCell>Parent Lot ID</TableCell>
+                        <TableCell>Material</TableCell>
+                        <TableCell>Quantity</TableCell>
+                        <TableCell>UoM</TableCell>
+                        <TableCell>Produced DateTime</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {generatedMaterialSublotsForDisplay.map((sublot) => {
+                        const parentLot = generatedMaterialLotsForDisplay.find(l => l.id === sublot.materialLotId);
+                        const materialItem = materials.find(m => m.id === parentLot?.materialId);
+                        return (
+                          <TableRow key={sublot.id}>
+                            <TableCell>{sublot.id}</TableCell>
+                            <TableCell>{sublot.materialLotId}</TableCell>
+                            <TableCell>{materialItem?.name || 'N/A'}</TableCell>
+                            <TableCell>{sublot.quantity?.toFixed(2) || 0}</TableCell>
+                            <TableCell>{sublot.quantityUnitOfMeasure}</TableCell>
+                            <TableCell>{sublot.producedDateTime}</TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={sublot.status} 
+                                size="small" 
+                                color="success"
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
               {/* Test Results Table */}
-              <Paper>
+              <Paper sx={{ mt: 2 }}>
                 <Box sx={{ p: 2, bgcolor: 'info.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="subtitle1">
                     Test Results

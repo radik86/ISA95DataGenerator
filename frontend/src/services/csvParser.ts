@@ -14,6 +14,12 @@ export interface ParsedCSVData {
   plants?: any[];
   productionLines?: any[];
   lineEquipment?: any[];
+  operationEventDefinitions?: any[];
+  hierarchyScopes?: any[];
+  hierarchyScopesFlat?: any[];
+  shifts?: any[];
+  crews?: any[];
+  shiftCrewAssignments?: any[];
 }
 
 class CSVParser {
@@ -135,6 +141,7 @@ class CSVParser {
       materialId: r.MaterialID,
       qtyPerUnit: parseFloat(r.MaterialQtyPerUnit) || 0,
       uom: r.MaterialUoM,
+      materialUse: r.MaterialUse || 'CONSUME',
     }));
   }
 
@@ -152,31 +159,32 @@ class CSVParser {
   parsePlants(csvText: string): any[] {
     const records = this.parseCSV(csvText);
     return records.map(r => ({
-      id: r.id,
-      name: r.name,
-      location: r.location || '',
-      description: r.description || '',
+      id: r.PlantID,
+      name: r.PlantName,
+      location: r.Location || '',
+      description: r.Description || '',
     }));
   }
 
   parseProductionLines(csvText: string): any[] {
     const records = this.parseCSV(csvText);
     return records.map(r => ({
-      id: r.id,
-      plantId: r.plantId,
-      name: r.name,
-      description: r.description || '',
+      id: r.LineID,
+      plantId: r.PlantID,
+      name: r.LineName,
+      description: r.Description || '',
     }));
   }
 
   parseLineEquipment(csvText: string): any[] {
     const records = this.parseCSV(csvText);
     return records.map(r => ({
-      id: r.id,
-      productionLineId: r.productionLineId,
-      equipmentId: r.equipmentId,
-      sequence: parseInt(r.sequence) || 0,
-      description: r.description || '',
+      id: r.LineEquipmentID,
+      productionLineId: r.LineID,
+      equipmentId: r.EquipmentID,
+      sequence: parseInt(r.Sequence) || 0,
+      description: r.Role || '',
+      plantId: r.PlantID || '',
     }));
   }
 
@@ -213,6 +221,70 @@ class CSVParser {
       samplingMode: r.SamplingMode,
       samplingIntervalSeconds: r.SamplingIntervalSeconds ? parseInt(r.SamplingIntervalSeconds) : undefined,
     }));
+  }
+
+  parseOperationEventDefinitions(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.OperationsEventDefinitionID,
+      eventCategory: r.EventCategory,
+      eventCode: r.EventCode,
+      description: r.Description,
+      causesDowntime: r.CausesDowntime === 'True' || r.CausesDowntime === 'true',
+      causesScrap: r.CausesScrap === 'True' || r.CausesScrap === 'true',
+      rootCauseType: r.RootCauseType,
+    }));
+  }
+
+  parseOperationEventDefSegmentAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.OperationsEventDefSegAssignID,
+      operationsEventDefinitionId: r.OperationsEventDefinitionID,
+      processSegmentId: r.ProcessSegmentID,
+      isPrimarySegment: r.IsPrimarySegment === 'True' || r.IsPrimarySegment === 'true',
+      notes: r.Notes,
+    }));
+  }
+
+  parseHierarchyScopes(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    console.log('[CSV Parser] Hierarchy Scopes - Sample record:', records[0]);
+    return records.map(r => {
+      const id = r.HierarchyScopeID || r.ID || r.id || r.hierarchyScopeID;
+      if (!id) {
+        console.error('[CSV Parser] Missing ID in hierarchy scope record:', r);
+      }
+      return {
+        id: id,
+        equipmentID: r.EquipmentID || r.equipmentID,
+        equipmentLevel: r.EquipmentLevel || r.equipmentLevel,
+      };
+    });
+  }
+
+  parseHierarchyScopesFlat(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    console.log('[CSV Parser] Hierarchy Scopes Flat - Sample record:', records[0]);
+    
+    // Generate unique IDs for each record based on the combination of all levels
+    return records.map((r, index) => {
+      return {
+        id: `HS-FLAT-${String(index + 1).padStart(4, '0')}`,
+        Enterprise: r.Enterprise || '',
+        Site: r.Site || '',
+        Area: r.Area || '',
+        'Work Center': r['Work Center'] || r.WorkCenter || '',
+        'Work Unit': r['Work Unit'] || r.WorkUnit || '',
+        'Process Cell': r['Process Cell'] || r.ProcessCell || '',
+        Unit: r.Unit || '',
+        'Production Line': r['Production Line'] || r.ProductionLine || '',
+        'Production Unit': r['Production Unit'] || r.ProductionUnit || '',
+        'Work Cell': r['Work Cell'] || r.WorkCell || '',
+        'Storage Zone': r['Storage Zone'] || r.StorageZone || '',
+        'Storage Unit': r['Storage Unit'] || r.StorageUnit || '',
+      };
+    });
   }
 
   async parseAllFromFiles(files: {
@@ -290,6 +362,40 @@ class CSVParser {
     });
 
     return rows.join('\n');
+  }
+
+  parseShifts(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.ShiftID,
+      shiftNumber: parseInt(r.ShiftNumber) || 1,
+      shiftName: r.ShiftName || '',
+      startTime: r.StartTime || '',
+      endTime: r.EndTime || '',
+      description: r.Description || '',
+    }));
+  }
+
+  parseCrews(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.CrewID,
+      crewName: r.CrewName || '',
+      peopleCount: parseInt(r.PeopleCount) || 0,
+      skills: r.Skills || '',
+      description: r.Description || '',
+    }));
+  }
+
+  parseShiftCrewAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.AssignmentID,
+      shiftId: r.ShiftID || '',
+      crewId: r.CrewID || '',
+      effectiveDate: r.EffectiveDate || '',
+      expiryDate: r.ExpiryDate || '',
+    }));
   }
 }
 

@@ -8,3 +8,6 @@ Flour_Type_550,Flour Type 550,RAWMATERIAL,RawMaterial,kg,Standard wheat flour ty
 Salt,Salt,RAWMATERIAL,RawMaterial,kg,Food-grade salt
 Water,Water,RAWMATERIAL,RawMaterial,l,Potable process water
 Yeast,Yeast,RAWMATERIAL,RawMaterial,kg,Baker's yeast for fermentation
+CARTON_400EA,Caerton 400EA,PACKMATERIAL,PackMaterial,EA,Carton box 400 
+EURO_PALLET,EURO Pallet,TRANSPORTMATERIAL,TransportMaterial,EA,Euro Pallet
+Paper,Paper,PACKMATERIAL,PackMaterial,g,Paper for packaging

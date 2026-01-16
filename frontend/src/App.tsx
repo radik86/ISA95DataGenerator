@@ -12,6 +12,7 @@ import MasterDataManager from './components/MasterDataManager';
 import ProcessDataGenerator from './components/ProcessDataGenerator';
 import DataMigration from './components/DataMigration';
 import EnumerationEvaluations from './components/EnumerationEvaluations';
+import QualityChecks from './components/QualityChecks';
 
 const theme = createTheme({
   palette: {
@@ -52,6 +53,7 @@ function App() {
               <Route path="process-data" element={<ProcessDataGenerator />} />
               <Route path="data-migration" element={<DataMigration />} />
               <Route path="enumeration-evaluations" element={<EnumerationEvaluations />} />
+              <Route path="quality-checks" element={<QualityChecks />} />
             </Route>
           </Routes>
         </BrowserRouter>

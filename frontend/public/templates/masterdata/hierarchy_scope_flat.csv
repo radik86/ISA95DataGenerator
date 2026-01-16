@@ -1,0 +1,10 @@
+﻿Enterprise,Site,Area,Work Center,Work Unit,Process Cell,Unit,Production Line,Production Unit,Work Cell,Storage Zone,Storage Unit
+FINEBAKERY,PLANT01MUNICH,BAKING,WCenter1,WUnit1,ProcessCell1,Unit1,LINE-01,PUnit1,EQ-MIX-01,StorageZone1,StorageUnit1
+FINEBAKERY,PLANT01MUNICH,BAKING,WCenter1,WUnit1,ProcessCell1,Unit1,LINE-01,PUnit2,EQ-OVEN-01,StorageZone1,StorageUnit2
+FINEBAKERY,PLANT01MUNICH,BAKING,WCenter1,WUnit1,ProcessCell1,Unit1,LINE-01,PUnit3,EQ-PACKAGE-01,StorageZone1,StorageUnit3
+FINEBAKERY,PLANT02VIENNA,BAKING,WCenter2,WUnit2,ProcessCell1,Unit1,LINE-02,PUnit1,EQ-MIX-01,StorageZone1,StorageUnit1
+FINEBAKERY,PLANT02VIENNA,BAKING,WCenter2,WUnit2,ProcessCell1,Unit1,LINE-02,PUnit1,EQ-OVEN-01,StorageZone1,StorageUnit2
+FINEBAKERY,PLANT02VIENNA,BAKING,WCenter2,WUnit2,ProcessCell1,Unit1,LINE-02,PUnit1,EQ-PACKAGE-01,StorageZone1,StorageUnit3
+FINEBAKERY,PLANT03FRA,BAKING,WCenter3,WUnit3,ProcessCell1,Unit1,LINE-03,PUnit1,EQ-MIX-01,StorageZone1,StorageUnit1
+FINEBAKERY,PLANT03FRA,BAKING,WCenter3,WUnit3,ProcessCell1,Unit1,LINE-03,PUnit1,EQ-OVEN-01,StorageZone1,StorageUnit2
+FINEBAKERY,PLANT03FRA,BAKING,WCenter3,WUnit3,ProcessCell1,Unit1,LINE-03,PUnit1,EQ-PACKAGE-01,StorageZone1,StorageUnit3

@@ -1,0 +1,20 @@
+OperationsEventDefSegAssignID,OperationsEventDefinitionID,ProcessSegmentID,IsPrimarySegment,Notes
+OEDSA-001,OED-UD-OVERTEMP,BREAD-750G-BAKE,true,Oven temperature fault during baking
+OEDSA-002,OED-UD-MIXFAIL,BREAD-750G-MIX,true,Mixer failure during dough mixing
+OEDSA-003,OED-UD-BEARING,BREAD-750G-MIX,true,Bearing overheat on mixer
+OEDSA-004,OED-UD-BELT,BREAD-750G-MIX,true,Drive belt failure on mixer
+OEDSA-005,OED-UD-SENSOR,BREAD-750G-MIX,false,Sensor failure may also affect baking
+OEDSA-006,OED-UD-SENSOR,BREAD-750G-BAKE,false,Sensor failure in oven temperature probe
+OEDSA-007,OED-UTIL-GAS,BREAD-750G-BAKE,true,Gas supply loss affects oven
+OEDSA-008,OED-UTIL-WATER,BREAD-750G-MIX,true,Water pressure affects dough preparation
+OEDSA-009,OED-SCR-BURN,BREAD-750G-BAKE,true,Burning only possible during baking
+OEDSA-010,OED-SCR-UNDER,BREAD-750G-BAKE,true,Underbaking only possible during baking
+OEDSA-011,OED-PROC-TEMPDEV,BREAD-750G-BAKE,true,Temperature deviation in oven
+OEDSA-012,OED-PROC-MIXERR,BREAD-750G-MIX,true,Incorrect mixing parameters
+OEDSA-013,OED-PROC-FLOW,BREAD-750G-MIX,true,Ingredient dosing error
+OEDSA-014,OED-MAT-SHORT,BREAD-750G-MIX,true,Raw material missing before or during mixing
+OEDSA-015,OED-MAT-EXPIRED,BREAD-750G-MIX,true,Expired ingredient detected
+OEDSA-016,OED-QC-FAIL,BREAD-750G-PACK,true,Final inspection at packaging
+OEDSA-017,OED-QC-LABEL,BREAD-750G-PACK,true,Labeling error during packaging
+OEDSA-018,OED-PLAN-DELAY,BREAD-750G-MIX,false,Schedule deviation detected at start
+OEDSA-019,OED-PLAN-OVERRUN,BREAD-750G-BAKE,false,Runtime exceeded planned duration

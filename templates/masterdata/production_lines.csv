@@ -1,2 +1,4 @@
 LineID,PlantID,LineName,Description
-LINE-01,PLANT-01,Line 1 (Mix+Bake),Mixer + Oven bread line
+LINE-01,PLANT01MUNICH,Line 1 (Mix+Bake+Package) 400,Mixer + Oven + Package bread line with capacity 400 EA
+LINE-02,PLANT02VIENNA,Line 1 (Mix+Bake+Package) 600,Mixer + Oven + Package bread line with capacity 600 EA
+LINE-03,PLANT03FRA,Line 1 (Mix+Bake+Package) 200,Mixer + Oven + Package bread line  with capacity 200 EA

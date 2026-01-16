@@ -74,7 +74,9 @@ export enum RuleType {
   Static = 'Static',
   Sequence = 'Sequence',
   PrefixSequence = 'PrefixSequence',
-  Enumeration = 'Enumeration'
+  Enumeration = 'Enumeration',
+  IfThen = 'IfThen',
+  Case = 'Case'
 }
 
 export type RuleParameters = 
@@ -84,7 +86,9 @@ export type RuleParameters =
   | StaticParameters 
   | SequenceParameters
   | PrefixSequenceParameters
-  | EnumerationParameters;
+  | EnumerationParameters
+  | IfThenParameters
+  | CaseParameters;
 
 export interface RangeParameters {
   min: number;
@@ -118,6 +122,22 @@ export interface PrefixSequenceParameters {
 
 export interface EnumerationParameters {
   values: string[]; // The enumeration values to choose from
+}
+
+export interface IfThenParameters {
+  sourceField?: string; // Optional source field to evaluate
+  condition: string; // The condition to evaluate (e.g., a field name or value to check)
+  trueValue: any; // Value to use when condition is true
+  falseValue: any; // Value to use when condition is false
+}
+
+export interface CaseParameters {
+  sourceField?: string; // Optional source field to evaluate
+  cases: Array<{
+    case: string; // The case condition or value to match
+    value: any; // The value to return for this case
+  }>;
+  defaultValue?: any; // Optional default value if no cases match
 }
 
 export interface DataGenerationRequest {

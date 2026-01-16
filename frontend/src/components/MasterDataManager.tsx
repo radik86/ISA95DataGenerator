@@ -66,6 +66,17 @@ interface MaterialLot {
   supplierOrProducerId?: string;
   supplierOrProducerName?: string;
   producedByProcessSegmentId?: string;
+  parentLotId?: string;
+}
+
+interface MaterialSublot {
+  id: string;
+  materialLotId: string;
+  quantity: number;
+  quantityUnitOfMeasure: string;
+  storageLocation?: string;
+  status?: string;
+  disposition?: string;
 }
 
 interface EquipmentClass {
@@ -81,6 +92,7 @@ interface Equipment {
   className: string;
   description?: string;
   productionLineId?: string;
+  parentEquipmentId?: string;
 }
 
 interface EquipmentProperty {
@@ -116,6 +128,7 @@ interface SegmentMaterialBOM {
   materialId: string;
   qtyPerUnit: number;
   uom: string;
+  materialUse: string;
 }
 
 interface EquipmentUsage {
@@ -146,10 +159,84 @@ interface LineEquipment {
   equipmentId: string;
   sequence: number;
   description: string;
+  plantId?: string;
+}
+
+interface OperationEventDefinition {
+  id: string;
+  eventCategory: string;
+  eventCode: string;
+  description: string;
+  causesDowntime: boolean;
+  causesScrap: boolean;
+  rootCauseType: string;
+}
+
+interface HierarchyScope {
+  id: string;
+  equipmentID: string;
+  equipmentLevel: string;
+}
+
+interface HierarchyScopeFlat {
+  id: string;
+  Enterprise: string;
+  Site: string;
+  Area: string;
+  'Work Center': string;
+  'Work Unit': string;
+  'Process Cell': string;
+  Unit: string;
+  'Production Line': string;
+  'Production Unit': string;
+  'Work Cell': string;
+  'Storage Zone': string;
+  'Storage Unit': string;
+}
+
+interface HierarchyScopeParentChild {
+  id: string;
+  parentEquipmentLevel: string;
+  parentEquipmentID: string;
+  childEquipmentLevel: string;
+  childEquipmentID: string;
+}
+
+interface OperationEventDefSegmentAssignment {
+  id: string;
+  operationsEventDefinitionId: string;
+  processSegmentId: string;
+  isPrimarySegment: boolean;
+  notes: string;
+}
+
+interface Shift {
+  id: string;
+  shiftNumber: number;
+  shiftName: string;
+  startTime: string;
+  endTime: string;
+  description: string;
+}
+
+interface Crew {
+  id: string;
+  crewName: string;
+  peopleCount: number;
+  skills: string;
+  description: string;
+}
+
+interface ShiftCrewAssignment {
+  id: string;
+  shiftId: string;
+  crewId: string;
+  effectiveDate: string;
+  expiryDate: string;
 }
 
 const MasterDataManager: React.FC = () => {
-  const [categoryTab, setCategoryTab] = useState(0); // 0: Materials, 1: Equipment & Facilities, 2: Production
+  const [categoryTab, setCategoryTab] = useState(0); // 0: Materials, 1: Equipment & Facilities, 2: Production, 3: Operations
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
@@ -172,6 +259,11 @@ const MasterDataManager: React.FC = () => {
   const [materialLots, setMaterialLots] = useState<MaterialLot[]>([]);
   const [materialLotDialog, setMaterialLotDialog] = useState(false);
   const [editingMaterialLot, setEditingMaterialLot] = useState<MaterialLot | null>(null);
+  
+  // Material Sublot State
+  const [materialSublots, setMaterialSublots] = useState<MaterialSublot[]>([]);
+  const [materialSublotDialog, setMaterialSublotDialog] = useState(false);
+  const [editingMaterialSublot, setEditingMaterialSublot] = useState<MaterialSublot | null>(null);
   
   // Equipment Class State
   const [equipmentClasses, setEquipmentClasses] = useState<EquipmentClass[]>([]);
@@ -223,6 +315,40 @@ const MasterDataManager: React.FC = () => {
   const [lineEquipmentDialog, setLineEquipmentDialog] = useState(false);
   const [editingLineEquipment, setEditingLineEquipment] = useState<LineEquipment | null>(null);
 
+  // Hierarchy Scope State
+  const [hierarchyScopes, setHierarchyScopes] = useState<HierarchyScope[]>([]);
+  const [hierarchyScopeDialog, setHierarchyScopeDialog] = useState(false);
+  const [editingHierarchyScope, setEditingHierarchyScope] = useState<HierarchyScope | null>(null);
+
+  // Hierarchy Scope Flat State
+  const [hierarchyScopesFlat, setHierarchyScopesFlat] = useState<HierarchyScopeFlat[]>([]);
+
+  // Hierarchy Scope Parent-Child State
+  const [hierarchyScopeParentChild, setHierarchyScopeParentChild] = useState<HierarchyScopeParentChild[]>([]);
+
+  // Operation Event Definition State
+  const [operationEventDefinitions, setOperationEventDefinitions] = useState<OperationEventDefinition[]>([]);
+  const [operationEventDefinitionDialog, setOperationEventDefinitionDialog] = useState(false);
+  const [editingOperationEventDefinition, setEditingOperationEventDefinition] = useState<OperationEventDefinition | null>(null);
+
+  // Operation Event Definition Segment Assignment State
+  const [operationEventDefSegmentAssignments, setOperationEventDefSegmentAssignments] = useState<OperationEventDefSegmentAssignment[]>([]);
+  const [operationEventDefSegmentAssignmentDialog, setOperationEventDefSegmentAssignmentDialog] = useState(false);
+  const [editingOperationEventDefSegmentAssignment, setEditingOperationEventDefSegmentAssignment] = useState<OperationEventDefSegmentAssignment | null>(null);
+
+  // Personnel Information State
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [shiftDialog, setShiftDialog] = useState(false);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+
+  const [crews, setCrews] = useState<Crew[]>([]);
+  const [crewDialog, setCrewDialog] = useState(false);
+  const [editingCrew, setEditingCrew] = useState<Crew | null>(null);
+
+  const [shiftCrewAssignments, setShiftCrewAssignments] = useState<ShiftCrewAssignment[]>([]);
+  const [shiftCrewAssignmentDialog, setShiftCrewAssignmentDialog] = useState(false);
+  const [editingShiftCrewAssignment, setEditingShiftCrewAssignment] = useState<ShiftCrewAssignment | null>(null);
+
   // Load data from IndexedDB on mount
   useEffect(() => {
     loadAllData();
@@ -242,10 +368,11 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ec, e, ep, epa, ps, bom, eu, p, pl, le] = await Promise.all([
+      const [mc, m, ml, ms, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, sh, cr, sca] = await Promise.all([
         masterDataDB.getAll('materialClasses'),
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('materialLots'),
+        masterDataDB.getAll('materialSublots'),
         masterDataDB.getAll('equipmentClasses'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('equipmentProperties'),
@@ -256,11 +383,20 @@ const MasterDataManager: React.FC = () => {
         masterDataDB.getAll('plants'),
         masterDataDB.getAll('productionLines'),
         masterDataDB.getAll('lineEquipment'),
+        masterDataDB.getAll('hierarchyScopes'),
+        masterDataDB.getAll('hierarchyScopesFlat'),
+        masterDataDB.getAll('hierarchyScopeParentChild'),
+        masterDataDB.getAll('operationEventDefinitions'),
+        masterDataDB.getAll('operationEventDefSegmentAssignments'),
+        masterDataDB.getAll('shifts'),
+        masterDataDB.getAll('crews'),
+        masterDataDB.getAll('shiftCrewAssignments'),
       ]);
 
       setMaterialClasses(mc);
       setMaterials(m);
       setMaterialLots(ml);
+      setMaterialSublots(ms);
       setEquipmentClasses(ec);
       setEquipment(e);
       setEquipmentProperties(ep);
@@ -271,11 +407,22 @@ const MasterDataManager: React.FC = () => {
       setPlants(p);
       setProductionLines(pl);
       setLineEquipment(le);
+      setHierarchyScopes(hs);
+      setHierarchyScopesFlat(hsf);
+      setHierarchyScopeParentChild(hspc);
+      setOperationEventDefinitions(oed);
+      setOperationEventDefSegmentAssignments(oedsa);
+      setShifts(sh);
+      setCrews(cr);
+      setShiftCrewAssignments(sca);
       
       console.log('Loaded data counts:', {
         equipmentProperties: ep.length,
         equipmentPropertyAssignments: epa.length,
-        equipment: e.length
+        equipment: e.length,
+        shifts: sh.length,
+        crews: cr.length,
+        shiftCrewAssignments: sca.length
       });
       
       setLoading(false);
@@ -312,6 +459,35 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to reset data:', error);
       showSnackbar('Failed to reset data', 'error');
+      setLoading(false);
+    }
+  };
+
+  const handleForceDatabaseReset = async () => {
+    if (!confirm('This will delete the entire database and reload from templates. This is useful if the database schema has been upgraded. Continue?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Close all database connections
+      const databases = await indexedDB.databases();
+      for (const db of databases) {
+        if (db.name === 'master-data-db') {
+          indexedDB.deleteDatabase(db.name);
+          console.log('Deleted database:', db.name);
+        }
+      }
+      
+      // Wait a moment for the deletion to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Reload the page to reinitialize everything
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to reset database:', error);
+      showSnackbar('Failed to reset database. Please manually clear IndexedDB from browser DevTools.', 'error');
       setLoading(false);
     }
   };
@@ -422,6 +598,38 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete material lot:', error);
       showSnackbar('Failed to delete material lot', 'error');
+    }
+  };
+
+  // Material Sublot Handlers
+  const handleSaveMaterialSublot = async (data: MaterialSublot) => {
+    try {
+      if (editingMaterialSublot) {
+        await masterDataDB.update('materialSublots', data);
+        setMaterialSublots(prev => prev.map(ms => ms.id === data.id ? data : ms));
+        showSnackbar('Material sublot updated', 'success');
+      } else {
+        await masterDataDB.add('materialSublots', data);
+        setMaterialSublots(prev => [...prev, data]);
+        showSnackbar('Material sublot added', 'success');
+      }
+      setMaterialSublotDialog(false);
+      setEditingMaterialSublot(null);
+    } catch (error) {
+      console.error('Failed to save material sublot:', error);
+      showSnackbar('Failed to save material sublot', 'error');
+    }
+  };
+
+  const handleDeleteMaterialSublot = async (id: string) => {
+    if (!confirm('Delete this material sublot?')) return;
+    try {
+      await masterDataDB.delete('materialSublots', id);
+      setMaterialSublots(prev => prev.filter(ms => ms.id !== id));
+      showSnackbar('Material sublot deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete material sublot:', error);
+      showSnackbar('Failed to delete material sublot', 'error');
     }
   };
 
@@ -649,6 +857,32 @@ const MasterDataManager: React.FC = () => {
     }
   };
 
+  // Operation Event Definition Handlers
+  const handleDeleteOperationEventDefinition = async (id: string) => {
+    if (!confirm('Delete this operation event definition?')) return;
+    try {
+      await masterDataDB.delete('operationEventDefinitions', id);
+      setOperationEventDefinitions(prev => prev.filter(oed => oed.id !== id));
+      showSnackbar('Operation event definition deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete operation event definition:', error);
+      showSnackbar('Failed to delete operation event definition', 'error');
+    }
+  };
+
+  // Operation Event Definition Segment Assignment Handlers
+  const handleDeleteOperationEventDefSegmentAssignment = async (id: string) => {
+    if (!confirm('Delete this event-segment assignment?')) return;
+    try {
+      await masterDataDB.delete('operationEventDefSegmentAssignments', id);
+      setOperationEventDefSegmentAssignments(prev => prev.filter(oedsa => oedsa.id !== id));
+      showSnackbar('Event-segment assignment deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete event-segment assignment:', error);
+      showSnackbar('Failed to delete event-segment assignment', 'error');
+    }
+  };
+
   // Plant Handlers
   const handleSavePlant = async (data: Plant) => {
     try {
@@ -742,6 +976,102 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete line equipment:', error);
       showSnackbar('Failed to delete line equipment', 'error');
+    }
+  };
+
+  // Shift Handlers
+  const handleSaveShift = async (data: Shift) => {
+    try {
+      if (editingShift) {
+        await masterDataDB.update('shifts', data);
+        setShifts(prev => prev.map(s => s.id === data.id ? data : s));
+        showSnackbar('Shift updated', 'success');
+      } else {
+        await masterDataDB.add('shifts', data);
+        setShifts(prev => [...prev, data]);
+        showSnackbar('Shift added', 'success');
+      }
+      setShiftDialog(false);
+      setEditingShift(null);
+    } catch (error) {
+      console.error('Failed to save shift:', error);
+      showSnackbar('Failed to save shift', 'error');
+    }
+  };
+
+  const handleDeleteShift = async (id: string) => {
+    if (!confirm('Delete this shift?')) return;
+    try {
+      await masterDataDB.delete('shifts', id);
+      setShifts(prev => prev.filter(s => s.id !== id));
+      showSnackbar('Shift deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete shift:', error);
+      showSnackbar('Failed to delete shift', 'error');
+    }
+  };
+
+  // Crew Handlers
+  const handleSaveCrew = async (data: Crew) => {
+    try {
+      if (editingCrew) {
+        await masterDataDB.update('crews', data);
+        setCrews(prev => prev.map(c => c.id === data.id ? data : c));
+        showSnackbar('Crew updated', 'success');
+      } else {
+        await masterDataDB.add('crews', data);
+        setCrews(prev => [...prev, data]);
+        showSnackbar('Crew added', 'success');
+      }
+      setCrewDialog(false);
+      setEditingCrew(null);
+    } catch (error) {
+      console.error('Failed to save crew:', error);
+      showSnackbar('Failed to save crew', 'error');
+    }
+  };
+
+  const handleDeleteCrew = async (id: string) => {
+    if (!confirm('Delete this crew?')) return;
+    try {
+      await masterDataDB.delete('crews', id);
+      setCrews(prev => prev.filter(c => c.id !== id));
+      showSnackbar('Crew deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete crew:', error);
+      showSnackbar('Failed to delete crew', 'error');
+    }
+  };
+
+  // Shift-Crew Assignment Handlers
+  const handleSaveShiftCrewAssignment = async (data: ShiftCrewAssignment) => {
+    try {
+      if (editingShiftCrewAssignment) {
+        await masterDataDB.update('shiftCrewAssignments', data);
+        setShiftCrewAssignments(prev => prev.map(sca => sca.id === data.id ? data : sca));
+        showSnackbar('Shift-crew assignment updated', 'success');
+      } else {
+        await masterDataDB.add('shiftCrewAssignments', data);
+        setShiftCrewAssignments(prev => [...prev, data]);
+        showSnackbar('Shift-crew assignment added', 'success');
+      }
+      setShiftCrewAssignmentDialog(false);
+      setEditingShiftCrewAssignment(null);
+    } catch (error) {
+      console.error('Failed to save shift-crew assignment:', error);
+      showSnackbar('Failed to save shift-crew assignment', 'error');
+    }
+  };
+
+  const handleDeleteShiftCrewAssignment = async (id: string) => {
+    if (!confirm('Delete this shift-crew assignment?')) return;
+    try {
+      await masterDataDB.delete('shiftCrewAssignments', id);
+      setShiftCrewAssignments(prev => prev.filter(sca => sca.id !== id));
+      showSnackbar('Shift-crew assignment deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete shift-crew assignment:', error);
+      showSnackbar('Failed to delete shift-crew assignment', 'error');
     }
   };
 
@@ -1028,6 +1358,16 @@ const MasterDataManager: React.FC = () => {
             </Button>
             <Button
               variant="outlined"
+              color="warning"
+              startIcon={<RefreshIcon />}
+              onClick={handleForceDatabaseReset}
+              sx={{ mr: 1 }}
+              title="Use this if database schema has been upgraded"
+            >
+              Force DB Reset
+            </Button>
+            <Button
+              variant="outlined"
               startIcon={<UploadIcon />}
               sx={{ mr: 1 }}
             >
@@ -1058,6 +1398,8 @@ const MasterDataManager: React.FC = () => {
         <Tab label="📦 Materials" />
         <Tab label="🏭 Equipment & Facilities" />
         <Tab label="⚙️ Production" />
+        <Tab label="📋 Operations" />
+        <Tab label="👥 Personnel Information" />
       </Tabs>
 
       {/* Materials Category */}
@@ -1067,6 +1409,7 @@ const MasterDataManager: React.FC = () => {
             <Tab label="Material Classes" />
             <Tab label="Materials" />
             <Tab label="Material Lots" />
+            <Tab label="Material Sublots" />
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -1116,6 +1459,23 @@ const MasterDataManager: React.FC = () => {
                 onDelete={handleDeleteMaterialLot}
               />
             )}
+
+            {tabValue === 3 && (
+              <MaterialSublotTab
+                data={materialSublots}
+                materialLots={materialLots}
+                materials={materials}
+                onAdd={() => {
+                  setEditingMaterialSublot(null);
+                  setMaterialSublotDialog(true);
+                }}
+                onEdit={(item) => {
+                  setEditingMaterialSublot(item);
+                  setMaterialSublotDialog(true);
+                }}
+                onDelete={handleDeleteMaterialSublot}
+              />
+            )}
           </Box>
         </Box>
       )}
@@ -1124,13 +1484,16 @@ const MasterDataManager: React.FC = () => {
       {categoryTab === 1 && (
         <Box>
           <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
-            <Tab label="Equipment Classes" />
+            <Tab label="Classes" />
             <Tab label="Equipment" />
-            <Tab label="Equipment Properties" />
-            <Tab label="Equipment Property Assignments" />
+            <Tab label="Properties" />
+            <Tab label="Prop. Assignments" />
             <Tab label="Plants" />
-            <Tab label="Production Lines" />
+            <Tab label="Lines" />
             <Tab label="Line Equipment" />
+            <Tab label="Hierarchy" />
+            <Tab label="Hierarchy Flat" />
+            <Tab label="Hierarchy P-C" />
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -1248,6 +1611,198 @@ const MasterDataManager: React.FC = () => {
                 onDelete={handleDeleteLineEquipment}
               />
             )}
+
+            {tabValue === 7 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Hierarchy Scopes</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingHierarchyScope(null);
+                    setHierarchyScopeDialog(true);
+                  }}>
+                    Add Hierarchy Scope
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Equipment ID</TableCell>
+                        <TableCell>Equipment Level</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {hierarchyScopes.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell><Chip label={row.id} size="small" /></TableCell>
+                          <TableCell>{row.equipmentID}</TableCell>
+                          <TableCell><Chip label={row.equipmentLevel} color="primary" size="small" /></TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingHierarchyScope(row);
+                              setHierarchyScopeDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={async () => {
+                              if (window.confirm('Are you sure you want to delete this hierarchy scope?')) {
+                                await masterDataDB.delete('hierarchyScopes', row.id);
+                                setHierarchyScopes(prev => prev.filter(h => h.id !== row.id));
+                              }
+                            }}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 8 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Hierarchy Scopes Flat</Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary"
+                    onClick={async () => {
+                      if (window.confirm('This will convert flat hierarchy scope data into row-based format. Existing hierarchy scopes will be replaced. Continue?')) {
+                        try {
+                          setLoading(true);
+                          const { hierarchyScopeConverter } = await import('../services/hierarchyScopeConverter');
+                          const result = await hierarchyScopeConverter.convertAndSave();
+                          
+                          if (result.success) {
+                            // Reload hierarchy scopes and parent-child
+                            const hs = await masterDataDB.getAll('hierarchyScopes');
+                            const hspc = await masterDataDB.getAll('hierarchyScopeParentChild');
+                            setHierarchyScopes(hs);
+                            setHierarchyScopeParentChild(hspc);
+                            setSnackbar({
+                              open: true,
+                              message: result.message,
+                              severity: 'success'
+                            });
+                          } else {
+                            setSnackbar({
+                              open: true,
+                              message: result.message,
+                              severity: 'warning'
+                            });
+                          }
+                        } catch (error) {
+                          console.error('Conversion error:', error);
+                          setSnackbar({
+                            open: true,
+                            message: `Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                            severity: 'error'
+                          });
+                        } finally {
+                          setLoading(false);
+                        }
+                      }
+                    }}
+                  >
+                    Convert Flat to Row-Based
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Enterprise</TableCell>
+                        <TableCell>Site</TableCell>
+                        <TableCell>Area</TableCell>
+                        <TableCell>Work Center</TableCell>
+                        <TableCell>Work Unit</TableCell>
+                        <TableCell>Process Cell</TableCell>
+                        <TableCell>Unit</TableCell>
+                        <TableCell>Production Line</TableCell>
+                        <TableCell>Production Unit</TableCell>
+                        <TableCell>Work Cell</TableCell>
+                        <TableCell>Storage Zone</TableCell>
+                        <TableCell>Storage Unit</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {hierarchyScopesFlat.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell><Chip label={row.id} size="small" /></TableCell>
+                          <TableCell>{row.Enterprise}</TableCell>
+                          <TableCell>{row.Site}</TableCell>
+                          <TableCell>{row.Area}</TableCell>
+                          <TableCell>{row['Work Center']}</TableCell>
+                          <TableCell>{row['Work Unit']}</TableCell>
+                          <TableCell>{row['Process Cell']}</TableCell>
+                          <TableCell>{row.Unit}</TableCell>
+                          <TableCell>{row['Production Line']}</TableCell>
+                          <TableCell>{row['Production Unit']}</TableCell>
+                          <TableCell>{row['Work Cell']}</TableCell>
+                          <TableCell>{row['Storage Zone']}</TableCell>
+                          <TableCell>{row['Storage Unit']}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 9 && (
+              <Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="h6">Hierarchy Scope Parent-Child Relationships</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    This table shows the parent-child relationships between equipment levels in the hierarchy.
+                    Generated automatically when converting flat hierarchy scope data to row-based format.
+                  </Typography>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Parent Level</TableCell>
+                        <TableCell>Parent Equipment ID</TableCell>
+                        <TableCell>Child Level</TableCell>
+                        <TableCell>Child Equipment ID</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {hierarchyScopeParentChild.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">
+                            <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+                              No parent-child relationships found. Convert flat hierarchy scope data to generate relationships.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        hierarchyScopeParentChild.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell><Chip label={row.id} size="small" /></TableCell>
+                            <TableCell>
+                              <Chip label={row.parentEquipmentLevel} color="primary" size="small" variant="outlined" />
+                            </TableCell>
+                            <TableCell>{row.parentEquipmentID}</TableCell>
+                            <TableCell>
+                              <Chip label={row.childEquipmentLevel} color="secondary" size="small" variant="outlined" />
+                            </TableCell>
+                            <TableCell>{row.childEquipmentID}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
           </Box>
         </Box>
       )}
@@ -1316,6 +1871,230 @@ const MasterDataManager: React.FC = () => {
         </Box>
       )}
 
+      {/* Operations Category */}
+      {categoryTab === 3 && (
+        <Box>
+          <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
+            <Tab label="Operation Event Definitions" />
+            <Tab label="Event-Segment Assignments" />
+          </Tabs>
+
+          <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
+            {tabValue === 0 && (
+              <OperationEventDefinitionTab
+                data={operationEventDefinitions}
+                onAdd={() => {
+                  setEditingOperationEventDefinition(null);
+                  setOperationEventDefinitionDialog(true);
+                }}
+                onEdit={(item) => {
+                  setEditingOperationEventDefinition(item);
+                  setOperationEventDefinitionDialog(true);
+                }}
+                onDelete={handleDeleteOperationEventDefinition}
+              />
+            )}
+            {tabValue === 1 && (
+              <OperationEventDefSegmentAssignmentTab
+                data={operationEventDefSegmentAssignments}
+                operationEventDefinitions={operationEventDefinitions}
+                processSegments={processSegments}
+                onAdd={() => {
+                  setEditingOperationEventDefSegmentAssignment(null);
+                  setOperationEventDefSegmentAssignmentDialog(true);
+                }}
+                onEdit={(item) => {
+                  setEditingOperationEventDefSegmentAssignment(item);
+                  setOperationEventDefSegmentAssignmentDialog(true);
+                }}
+                onDelete={handleDeleteOperationEventDefSegmentAssignment}
+              />
+            )}
+          </Box>
+        </Box>
+      )}
+
+      {/* Personnel Information Category */}
+      {categoryTab === 4 && (
+        <Box>
+          <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
+            <Tab label="Shifts" />
+            <Tab label="Crews" />
+            <Tab label="Shift-Crew Assignments" />
+          </Tabs>
+
+          <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
+            {tabValue === 0 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Shifts</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingShift(null);
+                    setShiftDialog(true);
+                  }}>
+                    Add Shift
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Shift Number</TableCell>
+                        <TableCell>Shift Name</TableCell>
+                        <TableCell>Start Time</TableCell>
+                        <TableCell>End Time</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {shifts.map((shift) => (
+                        <TableRow key={shift.id}>
+                          <TableCell><Chip label={shift.id} size="small" /></TableCell>
+                          <TableCell><Chip label={`Shift ${shift.shiftNumber}`} size="small" color="primary" /></TableCell>
+                          <TableCell>{shift.shiftName}</TableCell>
+                          <TableCell>{shift.startTime}</TableCell>
+                          <TableCell>{shift.endTime}</TableCell>
+                          <TableCell>{shift.description}</TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingShift(shift);
+                              setShiftDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteShift(shift.id)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 1 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Crews</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingCrew(null);
+                    setCrewDialog(true);
+                  }}>
+                    Add Crew
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Crew Name</TableCell>
+                        <TableCell>People Count</TableCell>
+                        <TableCell>Skills</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {crews.map((crew) => (
+                        <TableRow key={crew.id}>
+                          <TableCell><Chip label={crew.id} size="small" /></TableCell>
+                          <TableCell>{crew.crewName}</TableCell>
+                          <TableCell><Chip label={crew.peopleCount} size="small" color="secondary" /></TableCell>
+                          <TableCell>{crew.skills}</TableCell>
+                          <TableCell>{crew.description}</TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingCrew(crew);
+                              setCrewDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteCrew(crew.id)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 2 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Shift-Crew Assignments</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingShiftCrewAssignment(null);
+                    setShiftCrewAssignmentDialog(true);
+                  }}>
+                    Add Assignment
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Shift</TableCell>
+                        <TableCell>Crew</TableCell>
+                        <TableCell>Effective Date</TableCell>
+                        <TableCell>Expiry Date</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {shiftCrewAssignments.map((assignment) => {
+                        const shift = shifts.find(s => s.id === assignment.shiftId);
+                        const crew = crews.find(c => c.id === assignment.crewId);
+                        return (
+                          <TableRow key={assignment.id}>
+                            <TableCell><Chip label={assignment.id} size="small" /></TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={shift ? `${shift.shiftName} (${shift.shiftNumber})` : assignment.shiftId} 
+                                size="small" 
+                                color="primary"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={crew ? crew.crewName : assignment.crewId} 
+                                size="small" 
+                                color="secondary"
+                              />
+                            </TableCell>
+                            <TableCell>{assignment.effectiveDate}</TableCell>
+                            <TableCell>{assignment.expiryDate}</TableCell>
+                            <TableCell align="right">
+                              <IconButton size="small" onClick={() => {
+                                setEditingShiftCrewAssignment(assignment);
+                                setShiftCrewAssignmentDialog(true);
+                              }}>
+                                <EditIcon />
+                              </IconButton>
+                              <IconButton size="small" color="error" onClick={() => handleDeleteShiftCrewAssignment(assignment.id)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+          </Box>
+        </Box>
+      )}
+
       {/* Dialogs */}
       <MaterialClassDialog
         open={materialClassDialog}
@@ -1342,11 +2121,24 @@ const MasterDataManager: React.FC = () => {
         open={materialLotDialog}
         data={editingMaterialLot}
         materials={materials}
+        materialLots={materialLots}
         onClose={() => {
           setMaterialLotDialog(false);
           setEditingMaterialLot(null);
         }}
         onSave={handleSaveMaterialLot}
+      />
+
+      <MaterialSublotDialog
+        open={materialSublotDialog}
+        data={editingMaterialSublot}
+        materialLots={materialLots}
+        materials={materials}
+        onClose={() => {
+          setMaterialSublotDialog(false);
+          setEditingMaterialSublot(null);
+        }}
+        onSave={handleSaveMaterialSublot}
       />
 
       <EquipmentClassDialog
@@ -1365,6 +2157,7 @@ const MasterDataManager: React.FC = () => {
         equipmentClasses={equipmentClasses}
         productionLines={productionLines}
         plants={plants}
+        equipment={equipment}
         onClose={() => {
           setEquipmentDialog(false);
           setEditingEquipment(null);
@@ -1463,6 +2256,60 @@ const MasterDataManager: React.FC = () => {
           setEditingLineEquipment(null);
         }}
         onSave={handleSaveLineEquipment}
+      />
+
+      <HierarchyScopeDialog
+        open={hierarchyScopeDialog}
+        data={editingHierarchyScope}
+        plants={plants}
+        productionLines={productionLines}
+        onClose={() => {
+          setHierarchyScopeDialog(false);
+          setEditingHierarchyScope(null);
+        }}
+        onSave={async (data) => {
+          if (editingHierarchyScope) {
+            await masterDataDB.update('hierarchyScopes', data);
+            setHierarchyScopes(prev => prev.map(h => h.id === data.id ? data : h));
+          } else {
+            await masterDataDB.add('hierarchyScopes', data);
+            setHierarchyScopes(prev => [...prev, data]);
+          }
+          setHierarchyScopeDialog(false);
+          setEditingHierarchyScope(null);
+        }}
+      />
+
+      <ShiftDialog
+        open={shiftDialog}
+        data={editingShift}
+        onClose={() => {
+          setShiftDialog(false);
+          setEditingShift(null);
+        }}
+        onSave={handleSaveShift}
+      />
+
+      <CrewDialog
+        open={crewDialog}
+        data={editingCrew}
+        onClose={() => {
+          setCrewDialog(false);
+          setEditingCrew(null);
+        }}
+        onSave={handleSaveCrew}
+      />
+
+      <ShiftCrewAssignmentDialog
+        open={shiftCrewAssignmentDialog}
+        data={editingShiftCrewAssignment}
+        shifts={shifts}
+        crews={crews}
+        onClose={() => {
+          setShiftCrewAssignmentDialog(false);
+          setEditingShiftCrewAssignment(null);
+        }}
+        onSave={handleSaveShiftCrewAssignment}
       />
 
       <Snackbar
@@ -1625,12 +2472,14 @@ const MaterialLotTab: React.FC<MaterialLotTabProps> = ({ data, materials, onAdd,
               <TableCell>Produced</TableCell>
               <TableCell>Supplier/Producer</TableCell>
               <TableCell>Produced By</TableCell>
+              <TableCell>Parent Lot</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {data.map((row) => {
               const material = materials.find(m => m.id === row.materialId);
+              const parentLot = data.find(l => l.id === row.parentLotId);
               return (
                 <TableRow key={row.id}>
                   <TableCell><Chip label={row.id} size="small" /></TableCell>
@@ -1662,6 +2511,86 @@ const MaterialLotTab: React.FC<MaterialLotTabProps> = ({ data, materials, onAdd,
                       <Chip label={row.producedByProcessSegmentId} size="small" />
                     ) : '-'}
                   </TableCell>
+                  <TableCell>
+                    {parentLot ? (
+                      <Chip label={parentLot.id} size="small" color="default" />
+                    ) : '-'}
+                  </TableCell>
+                  <TableCell align="right">
+                    <IconButton size="small" onClick={() => onEdit(row)}>
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton size="small" color="error" onClick={() => onDelete(row.id)}>
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+};
+
+interface MaterialSublotTabProps {
+  data: MaterialSublot[];
+  materialLots: MaterialLot[];
+  materials: Material[];
+  onAdd: () => void;
+  onEdit: (item: MaterialSublot) => void;
+  onDelete: (id: string) => void;
+}
+
+const MaterialSublotTab: React.FC<MaterialSublotTabProps> = ({ data, materialLots, materials, onAdd, onEdit, onDelete }) => {
+  return (
+    <Box>
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+        <Typography variant="h6">Material Sublots</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
+          Add Material Sublot
+        </Button>
+      </Box>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Sublot ID</TableCell>
+              <TableCell>Material Lot</TableCell>
+              <TableCell>Material</TableCell>
+              <TableCell>Quantity</TableCell>
+              <TableCell>UoM</TableCell>
+              <TableCell>Storage Location</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Disposition</TableCell>
+              <TableCell align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.map((row) => {
+              const lot = materialLots.find(l => l.id === row.materialLotId);
+              const material = materials.find(m => m.id === lot?.materialId);
+              return (
+                <TableRow key={row.id}>
+                  <TableCell><Chip label={row.id} size="small" /></TableCell>
+                  <TableCell>
+                    {lot ? (
+                      <Chip label={lot.id} size="small" color="primary" />
+                    ) : (
+                      <Chip label={row.materialLotId} size="small" color="default" />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {material ? (
+                      <Chip label={material.name} size="small" color="secondary" />
+                    ) : '-'}
+                  </TableCell>
+                  <TableCell>{row.quantity != null ? row.quantity.toFixed(2) : '-'}</TableCell>
+                  <TableCell>{row.quantityUnitOfMeasure || '-'}</TableCell>
+                  <TableCell>{row.storageLocation || '-'}</TableCell>
+                  <TableCell>{row.status || '-'}</TableCell>
+                  <TableCell>{row.disposition || '-'}</TableCell>
                   <TableCell align="right">
                     <IconButton size="small" onClick={() => onEdit(row)}>
                       <EditIcon />
@@ -1756,6 +2685,7 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ data, equipmentClasses, pro
               <TableCell>Name</TableCell>
               <TableCell>Class</TableCell>
               <TableCell>Production Line</TableCell>
+              <TableCell>Parent Equipment</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -1763,6 +2693,7 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ data, equipmentClasses, pro
             {data.map((row) => {
               const prodLine = productionLines.find(pl => pl.id === row.productionLineId);
               const plant = plants.find(p => p.id === prodLine?.plantId);
+              const parentEquipment = data.find(e => e.id === row.parentEquipmentId);
               return (
                 <TableRow key={row.id}>
                   <TableCell><Chip label={row.id} size="small" /></TableCell>
@@ -1783,6 +2714,11 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ data, equipmentClasses, pro
                     ) : (
                       <em>Not assigned</em>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {parentEquipment ? (
+                      <Chip label={parentEquipment.name} size="small" color="default" />
+                    ) : '-'}
                   </TableCell>
                   <TableCell align="right">
                     <IconButton size="small" onClick={() => onEdit(row)}>
@@ -2099,6 +3035,7 @@ const SegmentBOMTab: React.FC<SegmentBOMTabProps> = ({ data, processSegments, ma
                           <TableCell>Material Class</TableCell>
                           <TableCell>Qty Per Unit</TableCell>
                           <TableCell>UoM</TableCell>
+                          <TableCell>Material Use</TableCell>
                           <TableCell align="right">Actions</TableCell>
                         </TableRow>
                       </TableHead>
@@ -2121,6 +3058,16 @@ const SegmentBOMTab: React.FC<SegmentBOMTabProps> = ({ data, processSegments, ma
                               </TableCell>
                               <TableCell><strong>{row.qtyPerUnit}</strong></TableCell>
                               <TableCell>{row.uom}</TableCell>
+                              <TableCell>
+                                <Chip 
+                                  label={row.materialUse || 'CONSUME'} 
+                                  size="small"
+                                  color={
+                                    row.materialUse === 'PRODUCE' ? 'success' :
+                                    row.materialUse === 'SCRAP' ? 'error' : 'warning'
+                                  }
+                                />
+                              </TableCell>
                               <TableCell align="right">
                                 <IconButton size="small" onClick={() => onEdit(row)}>
                                   <EditIcon />
@@ -2455,11 +3402,12 @@ interface MaterialLotDialogProps {
   open: boolean;
   data: MaterialLot | null;
   materials: Material[];
+  materialLots: MaterialLot[];
   onClose: () => void;
   onSave: (data: MaterialLot) => void;
 }
 
-const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, materials, onClose, onSave }) => {
+const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, materials, materialLots, onClose, onSave }) => {
   const [formData, setFormData] = useState<MaterialLot>(
     data || { 
       id: '', 
@@ -2470,7 +3418,8 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
       producedDateTime: '',
       supplierOrProducerId: '',
       supplierOrProducerName: '',
-      producedByProcessSegmentId: ''
+      producedByProcessSegmentId: '',
+      parentLotId: ''
     }
   );
 
@@ -2487,7 +3436,8 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
         producedDateTime: '',
         supplierOrProducerId: '',
         supplierOrProducerName: '',
-        producedByProcessSegmentId: ''
+        producedByProcessSegmentId: '',
+        parentLotId: ''
       });
     }
   }, [data, open]);
@@ -2594,6 +3544,165 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               onChange={(e) => setFormData({ ...formData, producedByProcessSegmentId: e.target.value })}
             />
           </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Parent Lot (Optional)</InputLabel>
+              <Select
+                value={formData.parentLotId || ''}
+                label="Parent Lot (Optional)"
+                onChange={(e) => setFormData({ ...formData, parentLotId: e.target.value })}
+              >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+                {materialLots
+                  .filter(lot => lot.id !== formData.id)
+                  .map((lot) => {
+                    const material = materials.find(m => m.id === lot.materialId);
+                    return (
+                      <MenuItem key={lot.id} value={lot.id}>
+                        {lot.id} - {material?.name || lot.materialId} ({lot.lotQuantity} {lot.lotUoM})
+                      </MenuItem>
+                    );
+                  })}
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+interface MaterialSublotDialogProps {
+  open: boolean;
+  data: MaterialSublot | null;
+  materialLots: MaterialLot[];
+  materials: Material[];
+  onClose: () => void;
+  onSave: (data: MaterialSublot) => void;
+}
+
+const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data, materialLots, materials, onClose, onSave }) => {
+  const [formData, setFormData] = useState<MaterialSublot>(
+    data || {
+      id: '',
+      materialLotId: '',
+      quantity: 0,
+      quantityUnitOfMeasure: 'EA',
+      storageLocation: '',
+      status: '',
+      disposition: ''
+    }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({
+        id: '',
+        materialLotId: '',
+        quantity: 0,
+        quantityUnitOfMeasure: 'EA',
+        storageLocation: '',
+        status: '',
+        disposition: ''
+      });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.materialLotId) {
+      alert('Sublot ID and Material Lot are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Material Sublot</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Sublot ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Material Lot</InputLabel>
+              <Select
+                value={formData.materialLotId}
+                label="Material Lot"
+                onChange={(e) => setFormData({ ...formData, materialLotId: e.target.value })}
+              >
+                {materialLots.map((lot) => {
+                  const material = materials.find(m => m.id === lot.materialId);
+                  return (
+                    <MenuItem key={lot.id} value={lot.id}>
+                      {lot.id} - {material?.name || lot.materialId}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Quantity"
+              type="number"
+              value={formData.quantity}
+              onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })}
+              required
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Unit of Measure"
+              value={formData.quantityUnitOfMeasure}
+              onChange={(e) => setFormData({ ...formData, quantityUnitOfMeasure: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Storage Location"
+              value={formData.storageLocation}
+              onChange={(e) => setFormData({ ...formData, storageLocation: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Status"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              placeholder="e.g., Available, Reserved, Quarantined"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Disposition"
+              value={formData.disposition}
+              onChange={(e) => setFormData({ ...formData, disposition: e.target.value })}
+              placeholder="e.g., Approved, Rejected, Pending"
+            />
+          </Grid>
         </Grid>
       </DialogContent>
       <DialogActions>
@@ -2682,20 +3791,21 @@ interface EquipmentDialogProps {
   equipmentClasses: EquipmentClass[];
   productionLines: ProductionLine[];
   plants: Plant[];
+  equipment: Equipment[];
   onClose: () => void;
   onSave: (data: Equipment) => void;
 }
 
-const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipmentClasses, productionLines, plants, onClose, onSave }) => {
+const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipmentClasses, productionLines, plants, equipment, onClose, onSave }) => {
   const [formData, setFormData] = useState<Equipment>(
-    data || { id: '', name: '', classId: '', className: '', description: '', productionLineId: '' }
+    data || { id: '', name: '', classId: '', className: '', description: '', productionLineId: '', parentEquipmentId: '' }
   );
 
   React.useEffect(() => {
     if (data) {
       setFormData(data);
     } else {
-      setFormData({ id: '', name: '', classId: '', className: '', description: '', productionLineId: '' });
+      setFormData({ id: '', name: '', classId: '', className: '', description: '', productionLineId: '', parentEquipmentId: '' });
     }
   }, [data, open]);
 
@@ -2775,6 +3885,27 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
                     </MenuItem>
                   );
                 })}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Parent Equipment (Optional)</InputLabel>
+              <Select
+                value={formData.parentEquipmentId || ''}
+                label="Parent Equipment (Optional)"
+                onChange={(e) => setFormData({ ...formData, parentEquipmentId: e.target.value })}
+              >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+                {equipment
+                  .filter(eq => eq.id !== formData.id)
+                  .map((eq) => (
+                    <MenuItem key={eq.id} value={eq.id}>
+                      {eq.name} ({eq.id})
+                    </MenuItem>
+                  ))}
               </Select>
             </FormControl>
           </Grid>
@@ -3151,7 +4282,7 @@ interface SegmentBOMDialogProps {
 
 const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, processSegments, materials, onClose, onSave }) => {
   const [formData, setFormData] = useState<SegmentMaterialBOM>(
-    data || { id: '', processSegmentId: '', materialId: '', qtyPerUnit: 0, uom: '' }
+    data || { id: '', processSegmentId: '', materialId: '', qtyPerUnit: 0, uom: '', materialUse: 'CONSUME' }
   );
   const [selectedProduct, setSelectedProduct] = useState<string>('');
 
@@ -3164,7 +4295,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
         setSelectedProduct(segment.productMaterialId);
       }
     } else {
-      setFormData({ id: '', processSegmentId: '', materialId: '', qtyPerUnit: 0, uom: '' });
+      setFormData({ id: '', processSegmentId: '', materialId: '', qtyPerUnit: 0, uom: '', materialUse: 'CONSUME' });
       setSelectedProduct('');
     }
   }, [data, open, processSegments]);
@@ -3332,6 +4463,35 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
               required
               helperText="Auto-filled from material"
             />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>5. Material Use</InputLabel>
+              <Select
+                value={formData.materialUse || 'CONSUME'}
+                label="5. Material Use"
+                onChange={(e) => setFormData({ ...formData, materialUse: e.target.value })}
+              >
+                <MenuItem value="CONSUME">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip label="CONSUME" size="small" color="warning" />
+                    <span>Material consumed (input)</span>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="PRODUCE">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip label="PRODUCE" size="small" color="success" />
+                    <span>Material produced (output)</span>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="SCRAP">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip label="SCRAP" size="small" color="error" />
+                    <span>Scrap material (waste)</span>
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
           </Grid>
         </Grid>
       </DialogContent>
@@ -3611,8 +4771,9 @@ const LineEquipmentTab: React.FC<LineEquipmentTabProps> = ({ data, productionLin
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
+              <TableCell>Plant ID</TableCell>
               <TableCell>Production Line</TableCell>
-              <TableCell>Plant</TableCell>
+              <TableCell>Plant (from Line)</TableCell>
               <TableCell>Equipment</TableCell>
               <TableCell>Sequence</TableCell>
               <TableCell>Description</TableCell>
@@ -3623,10 +4784,22 @@ const LineEquipmentTab: React.FC<LineEquipmentTabProps> = ({ data, productionLin
             {data.map((row) => {
               const prodLine = productionLines.find(pl => pl.id === row.productionLineId);
               const plant = plants.find(p => p.id === prodLine?.plantId);
+              const directPlant = plants.find(p => p.id === row.plantId);
               const equip = equipment.find(e => e.id === row.equipmentId);
               return (
                 <TableRow key={row.id}>
                   <TableCell><Chip label={row.id} size="small" /></TableCell>
+                  <TableCell>
+                    {row.plantId ? (
+                      <Chip 
+                        label={directPlant?.name || row.plantId} 
+                        size="small" 
+                        color="info"
+                      />
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">-</Typography>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Chip 
                       label={prodLine?.name || row.productionLineId} 
@@ -3856,14 +5029,14 @@ interface LineEquipmentDialogProps {
 
 const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, productionLines, plants, equipment, onClose, onSave }) => {
   const [formData, setFormData] = useState<LineEquipment>(
-    data || { id: '', productionLineId: '', equipmentId: '', sequence: 10, description: '' }
+    data || { id: '', productionLineId: '', equipmentId: '', sequence: 10, description: '', plantId: '' }
   );
 
   React.useEffect(() => {
     if (data) {
       setFormData(data);
     } else {
-      setFormData({ id: '', productionLineId: '', equipmentId: '', sequence: 10, description: '' });
+      setFormData({ id: '', productionLineId: '', equipmentId: '', sequence: 10, description: '', plantId: '' });
     }
   }, [data, open]);
 
@@ -3892,6 +5065,22 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
               disabled={!!data}
               required
             />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Plant</InputLabel>
+              <Select
+                value={formData.plantId}
+                label="Plant"
+                onChange={(e) => setFormData({ ...formData, plantId: e.target.value })}
+              >
+                {plants.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.name} ({p.id})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
           <Grid item xs={12}>
             <FormControl fullWidth required>
@@ -3963,4 +5152,593 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
   );
 };
 
+// Shift Dialog Component
+interface ShiftDialogProps {
+  open: boolean;
+  data: Shift | null;
+  onClose: () => void;
+  onSave: (data: Shift) => void;
+}
+
+const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState<Shift>(
+    data || { id: '', shiftNumber: 1, shiftName: '', startTime: '', endTime: '', description: '' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', shiftNumber: 1, shiftName: '', startTime: '', endTime: '', description: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.shiftNumber || !formData.shiftName || !formData.startTime || !formData.endTime) {
+      alert('ID, Shift Number, Shift Name, Start Time, and End Time are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Shift</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Shift ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Shift Number</InputLabel>
+              <Select
+                value={formData.shiftNumber}
+                label="Shift Number"
+                onChange={(e) => setFormData({ ...formData, shiftNumber: e.target.value as number })}
+              >
+                <MenuItem value={1}>1</MenuItem>
+                <MenuItem value={2}>2</MenuItem>
+                <MenuItem value={3}>3</MenuItem>
+                <MenuItem value={4}>4</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Shift Name"
+              value={formData.shiftName}
+              onChange={(e) => setFormData({ ...formData, shiftName: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Start Time"
+              type="time"
+              value={formData.startTime}
+              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="End Time"
+              type="time"
+              value={formData.endTime}
+              onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              multiline
+              rows={2}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Crew Dialog Component
+interface CrewDialogProps {
+  open: boolean;
+  data: Crew | null;
+  onClose: () => void;
+  onSave: (data: Crew) => void;
+}
+
+const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState<Crew>(
+    data || { id: '', crewName: '', peopleCount: 0, skills: '', description: '' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', crewName: '', peopleCount: 0, skills: '', description: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.crewName || formData.peopleCount <= 0) {
+      alert('ID, Crew Name, and People Count (>0) are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Crew</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Crew ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Crew Name"
+              value={formData.crewName}
+              onChange={(e) => setFormData({ ...formData, crewName: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="People Count"
+              type="number"
+              value={formData.peopleCount}
+              onChange={(e) => setFormData({ ...formData, peopleCount: parseInt(e.target.value) || 0 })}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Skills"
+              value={formData.skills}
+              onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
+              helperText="Comma-separated list of skills"
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              multiline
+              rows={2}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Shift Crew Assignment Dialog Component
+interface ShiftCrewAssignmentDialogProps {
+  open: boolean;
+  data: ShiftCrewAssignment | null;
+  shifts: Shift[];
+  crews: Crew[];
+  onClose: () => void;
+  onSave: (data: ShiftCrewAssignment) => void;
+}
+
+const ShiftCrewAssignmentDialog: React.FC<ShiftCrewAssignmentDialogProps> = ({ open, data, shifts, crews, onClose, onSave }) => {
+  const [formData, setFormData] = useState<ShiftCrewAssignment>(
+    data || { id: '', shiftId: '', crewId: '', effectiveDate: '', expiryDate: '' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', shiftId: '', crewId: '', effectiveDate: '', expiryDate: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.shiftId || !formData.crewId || !formData.effectiveDate) {
+      alert('ID, Shift, Crew, and Effective Date are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Shift-Crew Assignment</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Assignment ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Shift</InputLabel>
+              <Select
+                value={formData.shiftId}
+                label="Shift"
+                onChange={(e) => setFormData({ ...formData, shiftId: e.target.value })}
+              >
+                {shifts.map((shift) => (
+                  <MenuItem key={shift.id} value={shift.id}>
+                    Shift {shift.shiftNumber}: {shift.shiftName} ({shift.startTime} - {shift.endTime})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Crew</InputLabel>
+              <Select
+                value={formData.crewId}
+                label="Crew"
+                onChange={(e) => setFormData({ ...formData, crewId: e.target.value })}
+              >
+                {crews.map((crew) => (
+                  <MenuItem key={crew.id} value={crew.id}>
+                    {crew.crewName} ({crew.peopleCount} people)
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Effective Date"
+              type="date"
+              value={formData.effectiveDate}
+              onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Expiry Date"
+              type="date"
+              value={formData.expiryDate}
+              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Hierarchy Scope Dialog Component
+interface HierarchyScopeDialogProps {
+  open: boolean;
+  data: HierarchyScope | null;
+  plants: Plant[];
+  productionLines: ProductionLine[];
+  onClose: () => void;
+  onSave: (data: HierarchyScope) => void;
+}
+
+const HierarchyScopeDialog: React.FC<HierarchyScopeDialogProps> = ({ open, data, plants, productionLines, onClose, onSave }) => {
+  const equipmentLevels = [
+    'Enterprise',
+    'Site',
+    'Area',
+    'Work Center',
+    'Work Unit',
+    'Process Cell',
+    'Unit',
+    'Production Line',
+    'Production Unit',
+    'Work Cell',
+    'Storage Zone',
+    'Storage Unit'
+  ];
+
+  const [formData, setFormData] = useState<HierarchyScope>(
+    data || { id: '', equipmentID: '', equipmentLevel: 'Site' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', equipmentID: '', equipmentLevel: 'Site' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.equipmentID || !formData.equipmentLevel) {
+      alert('All fields are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Hierarchy Scope</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Hierarchy Scope ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Equipment Level</InputLabel>
+              <Select
+                value={formData.equipmentLevel}
+                label="Equipment Level"
+                onChange={(e) => setFormData({ ...formData, equipmentLevel: e.target.value, equipmentID: '' })}
+              >
+                {equipmentLevels.map((level) => (
+                  <MenuItem key={level} value={level}>{level}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            {formData.equipmentLevel === 'Site' ? (
+              <FormControl fullWidth required>
+                <InputLabel>Plant</InputLabel>
+                <Select
+                  value={formData.equipmentID}
+                  label="Plant"
+                  onChange={(e) => setFormData({ ...formData, equipmentID: e.target.value })}
+                >
+                  {plants.map((plant) => (
+                    <MenuItem key={plant.id} value={plant.id}>{plant.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : formData.equipmentLevel === 'Production Line' ? (
+              <FormControl fullWidth required>
+                <InputLabel>Production Line</InputLabel>
+                <Select
+                  value={formData.equipmentID}
+                  label="Production Line"
+                  onChange={(e) => setFormData({ ...formData, equipmentID: e.target.value })}
+                >
+                  {productionLines.map((line) => (
+                    <MenuItem key={line.id} value={line.id}>{line.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                fullWidth
+                label="Equipment ID"
+                value={formData.equipmentID}
+                onChange={(e) => setFormData({ ...formData, equipmentID: e.target.value })}
+                required
+              />
+            )}
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Operation Event Definition Tab Component
+interface OperationEventDefinitionTabProps {
+  data: OperationEventDefinition[];
+  onAdd: () => void;
+  onEdit: (item: OperationEventDefinition) => void;
+  onDelete: (id: string) => void;
+}
+
+const OperationEventDefinitionTab: React.FC<OperationEventDefinitionTabProps> = ({ data, onAdd, onEdit, onDelete }) => {
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">Operation Event Definitions ({data.length})</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
+          Add Event Definition
+        </Button>
+      </Box>
+      
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell><strong>ID</strong></TableCell>
+              <TableCell><strong>Event Category</strong></TableCell>
+              <TableCell><strong>Event Code</strong></TableCell>
+              <TableCell><strong>Description</strong></TableCell>
+              <TableCell><strong>Causes Downtime</strong></TableCell>
+              <TableCell><strong>Causes Scrap</strong></TableCell>
+              <TableCell><strong>Root Cause Type</strong></TableCell>
+              <TableCell><strong>Actions</strong></TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>{item.id}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={item.eventCategory} 
+                    color={item.eventCategory.includes('Downtime') ? 'error' : 'warning'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>{item.eventCode}</TableCell>
+                <TableCell>{item.description}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={item.causesDowntime ? 'Yes' : 'No'} 
+                    color={item.causesDowntime ? 'error' : 'default'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  <Chip 
+                    label={item.causesScrap ? 'Yes' : 'No'} 
+                    color={item.causesScrap ? 'warning' : 'default'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>{item.rootCauseType}</TableCell>
+                <TableCell>
+                  <IconButton size="small" onClick={() => onEdit(item)} color="primary">
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton size="small" onClick={() => onDelete(item.id)} color="error">
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+};
+
+// Operation Event Definition Segment Assignment Tab Component
+interface OperationEventDefSegmentAssignmentTabProps {
+  data: OperationEventDefSegmentAssignment[];
+  operationEventDefinitions: OperationEventDefinition[];
+  processSegments: ProcessSegment[];
+  onAdd: () => void;
+  onEdit: (item: OperationEventDefSegmentAssignment) => void;
+  onDelete: (id: string) => void;
+}
+
+const OperationEventDefSegmentAssignmentTab: React.FC<OperationEventDefSegmentAssignmentTabProps> = ({ 
+  data, 
+  operationEventDefinitions, 
+  processSegments, 
+  onAdd, 
+  onEdit, 
+  onDelete 
+}) => {
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">Event-Segment Assignments ({data.length})</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
+          Add Assignment
+        </Button>
+      </Box>
+      
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell><strong>ID</strong></TableCell>
+              <TableCell><strong>Event Definition</strong></TableCell>
+              <TableCell><strong>Event Code</strong></TableCell>
+              <TableCell><strong>Process Segment</strong></TableCell>
+              <TableCell><strong>Primary Segment</strong></TableCell>
+              <TableCell><strong>Notes</strong></TableCell>
+              <TableCell><strong>Actions</strong></TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.map((item) => {
+              const eventDef = operationEventDefinitions.find(oed => oed.id === item.operationsEventDefinitionId);
+              const segment = processSegments.find(ps => ps.id === item.processSegmentId);
+              return (
+                <TableRow key={item.id}>
+                  <TableCell>{item.id}</TableCell>
+                  <TableCell>{eventDef?.description || item.operationsEventDefinitionId}</TableCell>
+                  <TableCell>
+                    <Chip label={eventDef?.eventCode || 'N/A'} size="small" />
+                  </TableCell>
+                  <TableCell>{segment?.segmentName || item.processSegmentId}</TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={item.isPrimarySegment ? 'Primary' : 'Secondary'} 
+                      color={item.isPrimarySegment ? 'primary' : 'default'}
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell>{item.notes}</TableCell>
+                  <TableCell>
+                    <IconButton size="small" onClick={() => onEdit(item)} color="primary">
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => onDelete(item.id)} color="error">
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+};
+
 export default MasterDataManager;
+

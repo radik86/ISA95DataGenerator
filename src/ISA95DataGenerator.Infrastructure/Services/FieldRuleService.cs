@@ -193,6 +193,13 @@ public class FieldRuleService : IFieldRuleService
                 _logger.LogInformation("DIAGNOSTIC FieldRuleService: Returning default value '{Value}'", defaultValue);
                 return defaultValue;
 
+            case FieldRuleType.IfThen:
+            case FieldRuleType.Case:
+                // These rules require source data - return default if called without source data
+                _logger.LogWarning("IfThen/Case rule called without source data for {EntityName}.{FieldName}", 
+                    rule.EntityName, rule.FieldName);
+                return GetDefaultValue(attribute.Schema);
+
             default:
                 return GetDefaultValue(attribute.Schema);
         }
@@ -332,6 +339,169 @@ public class FieldRuleService : IFieldRuleService
         return new string(Enumerable.Range(0, length)
             .Select(_ => chars[random.Next(chars.Length)])
             .ToArray());
+    }
+
+    public object GenerateFieldValue(FieldRule rule, AttributeDefinition attribute, Random random, Dictionary<string, object>? sourceData)
+    {
+        // Handle conditional rules that require source data
+        if (rule.RuleType == FieldRuleType.IfThen)
+        {
+            return GenerateIfThenValue(rule, attribute, sourceData);
+        }
+        
+        if (rule.RuleType == FieldRuleType.Case)
+        {
+            return GenerateCaseValue(rule, attribute, sourceData);
+        }
+        
+        // For non-conditional rules, use the standard method
+        return GenerateFieldValue(rule, attribute, random);
+    }
+
+    private object GenerateIfThenValue(FieldRule rule, AttributeDefinition attribute, Dictionary<string, object>? sourceData)
+    {
+        var ifThenParams = DeserializeParameters<IfThenParameters>(rule.Parameters);
+        
+        if (ifThenParams == null)
+        {
+            _logger.LogWarning("IfThen parameters missing for {EntityName}.{FieldName}", rule.EntityName, rule.FieldName);
+            return GetDefaultValue(attribute.Schema);
+        }
+
+        // Get source field value
+        var sourceValue = GetSourceFieldValue(ifThenParams.SourceField, sourceData);
+        if (sourceValue == null)
+        {
+            _logger.LogWarning("Source field {SourceField} not found in source data for {EntityName}.{FieldName}", 
+                ifThenParams.SourceField, rule.EntityName, rule.FieldName);
+            return ifThenParams.FalseValue ?? GetDefaultValue(attribute.Schema);
+        }
+
+        // Evaluate condition
+        bool conditionMet = EvaluateCondition(sourceValue.ToString() ?? "", ifThenParams.Condition ?? "");
+        
+        _logger.LogDebug("IfThen rule for {EntityName}.{FieldName}: sourceValue={SourceValue}, condition={Condition}, met={Met}",
+            rule.EntityName, rule.FieldName, sourceValue, ifThenParams.Condition, conditionMet);
+
+        return conditionMet ? 
+            (ifThenParams.TrueValue ?? GetDefaultValue(attribute.Schema)) : 
+            (ifThenParams.FalseValue ?? GetDefaultValue(attribute.Schema));
+    }
+
+    private object GenerateCaseValue(FieldRule rule, AttributeDefinition attribute, Dictionary<string, object>? sourceData)
+    {
+        var caseParams = DeserializeParameters<CaseParameters>(rule.Parameters);
+        
+        if (caseParams == null)
+        {
+            _logger.LogWarning("Case parameters missing for {EntityName}.{FieldName}", rule.EntityName, rule.FieldName);
+            return GetDefaultValue(attribute.Schema);
+        }
+
+        // Get source field value
+        var sourceValue = GetSourceFieldValue(caseParams.SourceField, sourceData);
+        if (sourceValue == null)
+        {
+            _logger.LogWarning("Source field {SourceField} not found in source data for {EntityName}.{FieldName}", 
+                caseParams.SourceField, rule.EntityName, rule.FieldName);
+            return caseParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+        }
+
+        var sourceValueStr = sourceValue.ToString() ?? "";
+        
+        // Try to match a case
+        if (caseParams.Cases != null)
+        {
+            foreach (var caseItem in caseParams.Cases)
+            {
+                if (string.Equals(sourceValueStr, caseItem.Case, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogDebug("Case rule for {EntityName}.{FieldName}: matched '{Case}' -> '{Value}'",
+                        rule.EntityName, rule.FieldName, caseItem.Case, caseItem.Value);
+                    return caseItem.Value ?? GetDefaultValue(attribute.Schema);
+                }
+            }
+        }
+        
+        // No match found, return default
+        _logger.LogDebug("Case rule for {EntityName}.{FieldName}: no match for '{SourceValue}', using default",
+            rule.EntityName, rule.FieldName, sourceValueStr);
+        return caseParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+    }
+
+    private object? GetSourceFieldValue(string? fieldName, Dictionary<string, object>? sourceData)
+    {
+        if (string.IsNullOrEmpty(fieldName) || sourceData == null)
+            return null;
+            
+        // Try exact match first
+        if (sourceData.TryGetValue(fieldName, out var value))
+            return value;
+            
+        // Try case-insensitive match
+        var key = sourceData.Keys.FirstOrDefault(k => 
+            string.Equals(k, fieldName, StringComparison.OrdinalIgnoreCase));
+            
+        return key != null ? sourceData[key] : null;
+    }
+
+    private bool EvaluateCondition(string sourceValue, string condition)
+    {
+        if (string.IsNullOrEmpty(condition))
+            return false;
+
+        // Parse condition format: "operator value" (e.g., "== Active", "> 100", "contains test")
+        condition = condition.Trim();
+        
+        // Check for comparison operators
+        if (condition.StartsWith("=="))
+        {
+            var compareValue = condition.Substring(2).Trim();
+            return string.Equals(sourceValue, compareValue, StringComparison.OrdinalIgnoreCase);
+        }
+        
+        if (condition.StartsWith("!="))
+        {
+            var compareValue = condition.Substring(2).Trim();
+            return !string.Equals(sourceValue, compareValue, StringComparison.OrdinalIgnoreCase);
+        }
+        
+        if (condition.StartsWith("contains", StringComparison.OrdinalIgnoreCase))
+        {
+            var searchValue = condition.Substring(8).Trim();
+            return sourceValue.Contains(searchValue, StringComparison.OrdinalIgnoreCase);
+        }
+        
+        // Try numeric comparisons
+        if (double.TryParse(sourceValue, out var numericValue))
+        {
+            if (condition.StartsWith(">="))
+            {
+                var compareValue = double.Parse(condition.Substring(2).Trim());
+                return numericValue >= compareValue;
+            }
+            
+            if (condition.StartsWith("<="))
+            {
+                var compareValue = double.Parse(condition.Substring(2).Trim());
+                return numericValue <= compareValue;
+            }
+            
+            if (condition.StartsWith(">"))
+            {
+                var compareValue = double.Parse(condition.Substring(1).Trim());
+                return numericValue > compareValue;
+            }
+            
+            if (condition.StartsWith("<"))
+            {
+                var compareValue = double.Parse(condition.Substring(1).Trim());
+                return numericValue < compareValue;
+            }
+        }
+        
+        // Default: exact match
+        return string.Equals(sourceValue, condition, StringComparison.OrdinalIgnoreCase);
     }
 
     private object GetDefaultValue(string schema)
