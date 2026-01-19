@@ -145,6 +145,17 @@ interface OperationsEvent {
   notes: string;
 }
 
+interface SegmentData {
+  id: string;
+  segmentResponseId: string;
+  recordType: 'shift' | 'crew';
+  shiftId?: string;
+  crewId?: string;
+  startDateTime: string;
+  endDateTime: string;
+  notes?: string;
+}
+
 interface TestResult {
   id: string;
   materialLotId: string;
@@ -174,6 +185,9 @@ const ProcessDataGenerator: React.FC = () => {
   const [equipmentPropertyAssignments, setEquipmentPropertyAssignments] = useState<any[]>([]);
   const [operationEventDefinitions, setOperationEventDefinitions] = useState<any[]>([]);
   const [operationEventDefSegmentAssignments, setOperationEventDefSegmentAssignments] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [crews, setCrews] = useState<any[]>([]);
+  const [shiftCrewAssignments, setShiftCrewAssignments] = useState<any[]>([]);
 
   // Form data for operations request
   const [formData, setFormData] = useState<OperationsRequest>({
@@ -210,6 +224,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [equipmentActuals, setEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
   const [equipmentPropertyTracking, setEquipmentPropertyTracking] = useState<EquipmentPropertyTracking[]>([]);
   const [operationsEvents, setOperationsEvents] = useState<OperationsEvent[]>([]);
+  const [segmentData, setSegmentData] = useState<SegmentData[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [generatedMaterialLotsForDisplay, setGeneratedMaterialLotsForDisplay] = useState<any[]>([]);
   const [generatedMaterialSublotsForDisplay, setGeneratedMaterialSublotsForDisplay] = useState<any[]>([]);
@@ -223,6 +238,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [storedMaterialActuals, setStoredMaterialActuals] = useState<any[]>([]);
   const [storedEquipmentActuals, setStoredEquipmentActuals] = useState<any[]>([]);
   const [storedOperationsEvents, setStoredOperationsEvents] = useState<any[]>([]);
+  const [storedSegmentData, setStoredSegmentData] = useState<any[]>([]);
   const [storedTestResults, setStoredTestResults] = useState<any[]>([]);
   const [storedEquipmentPropertyTracking, setStoredEquipmentPropertyTracking] = useState<any[]>([]);
 
@@ -245,12 +261,13 @@ const ProcessDataGenerator: React.FC = () => {
 
   const loadStoredActualData = async () => {
     try {
-      const [opsResp, segResp, matAct, eqAct, opsEvt, tests, eqProp] = await Promise.all([
+      const [opsResp, segResp, matAct, eqAct, opsEvt, segData, tests, eqProp] = await Promise.all([
         processDataDB.getAll('operationsResponses'),
         processDataDB.getAll('segmentResponses'),
         processDataDB.getAll('segmentMaterialActuals'),
         processDataDB.getAll('segmentEquipmentActuals'),
         processDataDB.getAll('operationsEvents'),
+        processDataDB.getAll('segmentData'),
         processDataDB.getAll('testResults'),
         processDataDB.getAll('equipmentPropertyTracking'),
       ]);
@@ -260,6 +277,7 @@ const ProcessDataGenerator: React.FC = () => {
       setStoredMaterialActuals(matAct);
       setStoredEquipmentActuals(eqAct);
       setStoredOperationsEvents(opsEvt);
+      setStoredSegmentData(segData);
       setStoredTestResults(tests);
       setStoredEquipmentPropertyTracking(eqProp);
 
@@ -269,6 +287,7 @@ const ProcessDataGenerator: React.FC = () => {
         materialActuals: matAct.length,
         equipmentActuals: eqAct.length,
         operationsEvents: opsEvt.length,
+        segmentData: segData.length,
         testResults: tests.length,
         equipmentPropertyTracking: eqProp.length,
       });
@@ -280,7 +299,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa] = await Promise.all([
+      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa, shft, crw, sca] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
@@ -292,6 +311,9 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataDB.getAll('equipmentPropertyAssignments'),
         masterDataDB.getAll('operationEventDefinitions'),
         masterDataDB.getAll('operationEventDefSegmentAssignments'),
+        masterDataDB.getAll('shifts'),
+        masterDataDB.getAll('crews'),
+        masterDataDB.getAll('shiftCrewAssignments'),
       ]);
 
       setMaterials(mat);
@@ -305,10 +327,16 @@ const ProcessDataGenerator: React.FC = () => {
       setEquipmentPropertyAssignments(epa);
       setOperationEventDefinitions(oed);
       setOperationEventDefSegmentAssignments(oedsa);
+      setShifts(shft);
+      setCrews(crw);
+      setShiftCrewAssignments(sca);
       
       console.log('[Master Data] Loaded:', {
         operationEventDefinitions: oed.length,
-        operationEventDefSegmentAssignments: oedsa.length
+        operationEventDefSegmentAssignments: oedsa.length,
+        shifts: shft.length,
+        crews: crw.length,
+        shiftCrewAssignments: sca.length
       });
       
       setLoading(false);
@@ -745,6 +773,159 @@ const ProcessDataGenerator: React.FC = () => {
         }
       }
 
+      // Generate Segment Data (Shift and Crew Assignments)
+      const generatedSegmentData: SegmentData[] = [];
+      console.log('[Segment Data] Starting shift and crew assignment generation');
+      
+      // Get the overall start and end time from ALL segment responses (operations response level)
+      if (generatedSegResponses.length > 0) {
+        const allStartTimes = generatedSegResponses.map(sr => new Date(sr.actualStartDateTime.replace(' ', 'T') + 'Z'));
+        const allEndTimes = generatedSegResponses.map(sr => new Date(sr.actualEndDateTime.replace(' ', 'T') + 'Z'));
+        
+        const operationsStartTime = new Date(Math.min(...allStartTimes.map(d => d.getTime())));
+        const operationsEndTime = new Date(Math.max(...allEndTimes.map(d => d.getTime())));
+        
+        console.log(`[Segment Data] Operations time range: ${operationsStartTime.toISOString()} to ${operationsEndTime.toISOString()}`);
+        
+        const currentDate = new Date(); // For checking expiry dates
+        
+        // Find which shift(s) cover the entire operations time period
+        const coveringShifts: { shift: any; startDateTime: Date; endDateTime: Date }[] = [];
+        
+        for (const shift of shifts) {
+          // Parse shift times
+          const [startHour, startMinute] = shift.startTime.split(':').map(Number);
+          const [endHour, endMinute] = shift.endTime.split(':').map(Number);
+          
+          // Check each day in the operations period
+          const currentDay = new Date(operationsStartTime);
+          currentDay.setHours(0, 0, 0, 0); // Start from beginning of day
+          
+          while (currentDay <= operationsEndTime) {
+            const shiftStart = new Date(currentDay);
+            shiftStart.setHours(startHour, startMinute, 0, 0);
+            
+            const shiftEnd = new Date(currentDay);
+            shiftEnd.setHours(endHour, endMinute, 0, 0);
+            
+            // Handle overnight shifts (end time before start time)
+            if (endHour < startHour || (endHour === startHour && endMinute < startMinute)) {
+              shiftEnd.setDate(shiftEnd.getDate() + 1);
+            }
+            
+            // Check if this shift overlaps with operations period
+            if (shiftStart < operationsEndTime && shiftEnd > operationsStartTime) {
+              coveringShifts.push({
+                shift,
+                startDateTime: shiftStart,
+                endDateTime: shiftEnd,
+              });
+            }
+            
+            // Move to next day
+            currentDay.setDate(currentDay.getDate() + 1);
+          }
+        }
+        
+        console.log(`[Segment Data] Found ${coveringShifts.length} shift periods covering the entire operations time range`);
+        
+        // Deduplicate shifts by shift ID and time pattern (startTime-endTime)
+        const uniqueShifts = new Map<string, { shift: any; startDateTime: Date; endDateTime: Date }>();
+        for (const coveringShift of coveringShifts) {
+          const shiftKey = `${coveringShift.shift.id}-${coveringShift.shift.startTime}-${coveringShift.shift.endTime}`;
+          if (!uniqueShifts.has(shiftKey)) {
+            uniqueShifts.set(shiftKey, coveringShift);
+          }
+        }
+        
+        const deduplicatedShifts = Array.from(uniqueShifts.values());
+        console.log(`[Segment Data] After deduplication: ${deduplicatedShifts.length} unique shifts`);
+        
+        // For EACH segment response, find which shift(s) actually cover its specific time range
+        for (const segResp of generatedSegResponses) {
+          const segStartTime = new Date(segResp.actualStartDateTime.replace(' ', 'T') + 'Z');
+          const segEndTime = new Date(segResp.actualEndDateTime.replace(' ', 'T') + 'Z');
+          
+          console.log(`[Segment Data] Processing segment ${segResp.id}: ${segStartTime.toISOString()} to ${segEndTime.toISOString()}`);
+          
+          // Find shifts that overlap with this specific segment response time range
+          const segmentCoveringShifts = coveringShifts.filter(cs => {
+            // Check if this shift overlaps with the segment response time
+            return cs.startDateTime < segEndTime && cs.endDateTime > segStartTime;
+          });
+          
+          // Deduplicate for this segment (same shift appearing multiple times)
+          const uniqueSegmentShifts = new Map<string, { shift: any; startDateTime: Date; endDateTime: Date }>();
+          for (const coveringShift of segmentCoveringShifts) {
+            const shiftKey = `${coveringShift.shift.id}-${coveringShift.shift.startTime}-${coveringShift.shift.endTime}`;
+            if (!uniqueSegmentShifts.has(shiftKey)) {
+              // Calculate actual overlap with this specific segment
+              const overlapStart = new Date(Math.max(coveringShift.startDateTime.getTime(), segStartTime.getTime()));
+              const overlapEnd = new Date(Math.min(coveringShift.endDateTime.getTime(), segEndTime.getTime()));
+              uniqueSegmentShifts.set(shiftKey, {
+                shift: coveringShift.shift,
+                startDateTime: overlapStart,
+                endDateTime: overlapEnd,
+              });
+            }
+          }
+          
+          const shiftsForThisSegment = Array.from(uniqueSegmentShifts.values());
+          console.log(`[Segment Data] Segment ${segResp.id} matches ${shiftsForThisSegment.length} shift(s)`);
+          
+          // Create segment data records for each matching shift
+          for (const coveringShift of shiftsForThisSegment) {
+            // Create shift record for this segment response
+            const shiftSegmentData: SegmentData = {
+              id: `SEG-DATA-SHIFT-${segResp.id}-${coveringShift.shift.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              segmentResponseId: segResp.id,
+              recordType: 'shift',
+              shiftId: coveringShift.shift.id,
+              startDateTime: coveringShift.startDateTime.toISOString().slice(0, 19).replace('T', ' '),
+              endDateTime: coveringShift.endDateTime.toISOString().slice(0, 19).replace('T', ' '),
+              notes: `${coveringShift.shift.shiftName} (Shift ${coveringShift.shift.shiftNumber})`,
+            };
+            generatedSegmentData.push(shiftSegmentData);
+            console.log(`[Segment Data] Assigned shift ${coveringShift.shift.shiftName} to segment ${segResp.id}`);
+            
+            // Find crew assignments for this shift that are valid at the current date
+            const applicableCrewAssignments = shiftCrewAssignments.filter(sca => {
+              if (sca.shiftId !== coveringShift.shift.id) return false;
+              
+              // Check if assignment is effective at the current date
+              const effectiveDate = new Date(sca.effectiveDate);
+              const expiryDate = sca.expiryDate ? new Date(sca.expiryDate) : new Date('2099-12-31');
+              
+              // Assignment must be valid at current date
+              return currentDate >= effectiveDate && currentDate <= expiryDate;
+            });
+            
+            // Create crew records for each assigned crew for this segment response
+            for (const crewAssignment of applicableCrewAssignments) {
+              const crew = crews.find(c => c.id === crewAssignment.crewId);
+              if (crew) {
+                const crewSegmentData: SegmentData = {
+                  id: `SEG-DATA-CREW-${segResp.id}-${crew.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                  segmentResponseId: segResp.id,
+                  recordType: 'crew',
+                  crewId: crew.id,
+                  startDateTime: coveringShift.startDateTime.toISOString().slice(0, 19).replace('T', ' '),
+                  endDateTime: coveringShift.endDateTime.toISOString().slice(0, 19).replace('T', ' '),
+                  notes: `${crew.crewName} - ${crew.peopleCount} people`,
+                };
+                generatedSegmentData.push(crewSegmentData);
+                console.log(`[Segment Data] Assigned crew ${crew.crewName} to segment ${segResp.id} for shift ${coveringShift.shift.shiftName}`);
+              }
+            }
+          }
+        }
+        
+        console.log(`[Segment Data] Generated ${generatedSegmentData.length} segment data records for ${generatedSegResponses.length} segment responses`);
+      }
+      
+      console.log(`[Segment Data] Total generated: ${generatedSegmentData.length} segment data records (shifts and crews)`);
+      setSegmentData(generatedSegmentData);
+
       // Generate Equipment Property Tracking data
       // Each tracking record is timestamped between the equipment actual's start and end times
       const generatedPropertyTracking: EquipmentPropertyTracking[] = [];
@@ -872,7 +1053,7 @@ const ProcessDataGenerator: React.FC = () => {
       
       setLoading(false);
 
-      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
+      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedSegmentData.length} segment data records, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
     } catch (error) {
       console.error('Error generating actual data:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate actual data';
@@ -891,6 +1072,7 @@ const ProcessDataGenerator: React.FC = () => {
     setEquipmentActuals([]);
     setEquipmentPropertyTracking([]);
     setOperationsEvents([]);
+    setSegmentData([]);
     setTestResults([]);
     setGeneratedMaterialLotsForDisplay([]);
     setGeneratedMaterialSublotsForDisplay([]);
@@ -972,7 +1154,8 @@ const ProcessDataGenerator: React.FC = () => {
         equipmentActuals,
         equipmentPropertyTracking,
         testResults,
-        operationsEvents
+        operationsEvents,
+        segmentData
       );
       
       // Save material lots to master data
@@ -1024,7 +1207,8 @@ const ProcessDataGenerator: React.FC = () => {
         'segmentEquipmentActuals',
         'equipmentPropertyTracking',
         'testResults',
-        'operationsEvents'
+        'operationsEvents',
+        'segmentData'
       ];
       
       for (const store of stores) {
@@ -1166,7 +1350,16 @@ const ProcessDataGenerator: React.FC = () => {
         console.log(`[Delete] Deleted ${events.length} operations events for segment ${segId}`);
       }
       
-      // 4. Delete equipment property tracking
+      // 4. Delete segment data (shifts and crews)
+      for (const segId of segmentResponseIds) {
+        const segData = storedSegmentData.filter(sd => sd.segmentResponseId === segId);
+        for (const sd of segData) {
+          await processDataDB.delete('segmentData', sd.id);
+        }
+        console.log(`[Delete] Deleted ${segData.length} segment data records for segment ${segId}`);
+      }
+      
+      // 5. Delete equipment property tracking
       for (const segId of segmentResponseIds) {
         const tracking = storedEquipmentPropertyTracking.filter(ept => ept.segmentResponseId === segId);
         for (const t of tracking) {
@@ -1175,13 +1368,13 @@ const ProcessDataGenerator: React.FC = () => {
         console.log(`[Delete] Deleted ${tracking.length} equipment property tracking records for segment ${segId}`);
       }
       
-      // 5. Delete segment responses
+      // 6. Delete segment responses
       for (const sr of segmentResponsesToDelete) {
         await processDataDB.delete('segmentResponses', sr.id);
       }
       console.log(`[Delete] Deleted ${segmentResponsesToDelete.length} segment responses`);
       
-      // 6. Delete the operations response itself
+      // 7. Delete the operations response itself
       await processDataDB.delete('operationsResponses', operationsResponseId);
       console.log(`[Delete] Deleted operations response ${operationsResponseId}`);
       
@@ -2225,7 +2418,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Chip label={`${storedMaterialActuals.length} Materials`} size="small" color="warning" />
                         <Chip label={`${storedEquipmentActuals.length} Equipment`} size="small" color="info" />
                         <Chip label={`${storedOperationsEvents.length} Events`} size="small" color="error" />
-                        <Chip label={`${storedTestResults.length} Tests`} size="small" color="secondary" />
+                        <Chip label={`${storedSegmentData.length} Shifts/Crews`} size="small" color="secondary" />
+                        <Chip label={`${storedTestResults.length} Tests`} size="small" color="default" />
                       </Box>
                       
                       <Box sx={{ maxHeight: actualDataExpanded ? 400 : 150, overflowY: 'auto', pr: 1 }}>
@@ -2245,6 +2439,10 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             });
                             const respEvents = storedOperationsEvents.filter(oe => {
                               const segment = storedSegmentResponses.find(sr => sr.id === oe.segmentResponseId);
+                              return segment?.operationsResponseId === resp.id;
+                            });
+                            const respSegmentData = storedSegmentData.filter(sd => {
+                              const segment = storedSegmentResponses.find(sr => sr.id === sd.segmentResponseId);
                               return segment?.operationsResponseId === resp.id;
                             });
                             
@@ -2281,6 +2479,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                                   <Chip label={`${respMaterials.length} Mat`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="warning" />
                                   <Chip label={`${respEquipment.length} Eq`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="info" />
                                   <Chip label={`${respEvents.length} Evt`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="error" />
+                                  <Chip label={`${respSegmentData.length} Shift/Crew`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="secondary" />
                                 </Box>
                                 
                                 {/* Expanded view - show segment responses */}
@@ -2293,6 +2492,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                                       const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
                                       const segMatActs = storedMaterialActuals.filter(ma => ma.segmentResponseId === sr.id);
                                       const segEqActs = storedEquipmentActuals.filter(ea => ea.segmentResponseId === sr.id);
+                                      const segData = storedSegmentData.filter(sd => sd.segmentResponseId === sr.id);
                                       
                                       return (
                                         <Box key={sr.id} sx={{ ml: 1, mb: 0.5, p: 0.5, bgcolor: 'background.default', borderRadius: 0.5, fontSize: '0.7rem' }}>
@@ -2300,7 +2500,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                                             {idx + 1}. {segment?.name || sr.processSegmentId}
                                           </Typography>
                                           <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>
-                                            Qty: {sr.actualQuantity} {sr.quantityUoM} | {segMatActs.length} mat, {segEqActs.length} eq
+                                            Qty: {sr.actualQuantity} {sr.quantityUoM} | {segMatActs.length} mat, {segEqActs.length} eq, {segData.length} shift/crew
                                           </Typography>
                                         </Box>
                                       );
@@ -2493,6 +2693,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Chip label={`${equipmentActuals.length} Equipment Actuals`} color="info" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentPropertyTracking.length} Property Tracking`} color="secondary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${operationsEvents.length} Operations Events`} color="error" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${segmentData.length} Segment Data`} color="primary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialLotsForDisplay.length} Material Lots`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialSublotsForDisplay.length} Material Sublots`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${testResults.length} Test Results`} color="info" sx={{ mb: 1 }} />
@@ -2908,6 +3109,56 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                               </TableCell>
                               <TableCell>{event.effectiveTimestamp}</TableCell>
                               <TableCell>{event.notes}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Segment Data Table (Shifts and Crews) */}
+              {segmentData.length > 0 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'secondary.main', color: 'white' }}>
+                    <Typography variant="subtitle1">Segment Data (Shifts & Crews)</Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>ID</TableCell>
+                          <TableCell>Segment Response</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Shift/Crew</TableCell>
+                          <TableCell>Start DateTime</TableCell>
+                          <TableCell>End DateTime</TableCell>
+                          <TableCell>Notes</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {segmentData.map((sd) => {
+                          const shift = sd.recordType === 'shift' ? shifts.find(s => s.id === sd.shiftId) : null;
+                          const crew = sd.recordType === 'crew' ? crews.find(c => c.id === sd.crewId) : null;
+                          return (
+                            <TableRow key={sd.id}>
+                              <TableCell>{sd.id}</TableCell>
+                              <TableCell>{sd.segmentResponseId}</TableCell>
+                              <TableCell>
+                                <Chip 
+                                  label={sd.recordType.toUpperCase()} 
+                                  size="small"
+                                  color={sd.recordType === 'shift' ? 'primary' : 'secondary'}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {shift && `Shift ${shift.shiftNumber}: ${shift.shiftName}`}
+                                {crew && `${crew.crewName} (${crew.peopleCount} people)`}
+                              </TableCell>
+                              <TableCell>{sd.startDateTime}</TableCell>
+                              <TableCell>{sd.endDateTime}</TableCell>
+                              <TableCell>{sd.notes}</TableCell>
                             </TableRow>
                           );
                         })}

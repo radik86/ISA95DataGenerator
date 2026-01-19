@@ -76,7 +76,9 @@ export enum RuleType {
   PrefixSequence = 'PrefixSequence',
   Enumeration = 'Enumeration',
   IfThen = 'IfThen',
-  Case = 'Case'
+  Case = 'Case',
+  Coalesce = 'Coalesce',
+  Concat = 'Concat'
 }
 
 export type RuleParameters = 
@@ -88,7 +90,9 @@ export type RuleParameters =
   | PrefixSequenceParameters
   | EnumerationParameters
   | IfThenParameters
-  | CaseParameters;
+  | CaseParameters
+  | CoalesceParameters
+  | ConcatParameters;
 
 export interface RangeParameters {
   min: number;
@@ -126,9 +130,10 @@ export interface EnumerationParameters {
 
 export interface IfThenParameters {
   sourceField?: string; // Optional source field to evaluate
+  sourceFields?: string[]; // Optional multiple source fields for complex conditions
   condition: string; // The condition to evaluate (e.g., a field name or value to check)
-  trueValue: any; // Value to use when condition is true
-  falseValue: any; // Value to use when condition is false
+  trueValue: any; // Value to use when condition is true (can reference {field} placeholders)
+  falseValue: any; // Value to use when condition is false (can reference {field} placeholders)
 }
 
 export interface CaseParameters {
@@ -138,6 +143,18 @@ export interface CaseParameters {
     value: any; // The value to return for this case
   }>;
   defaultValue?: any; // Optional default value if no cases match
+}
+
+export interface CoalesceParameters {
+  sourceFields: string[]; // Array of source fields to check in order, returns first non-null/non-empty value
+  defaultValue?: string; // Optional default value if all fields are null/empty
+}
+
+export interface ConcatParameters {
+  sourceFields: string[]; // Array of source fields to concatenate
+  separator?: string; // Optional separator between values (default: '')
+  prefix?: string; // Optional prefix for the result
+  suffix?: string; // Optional suffix for the result
 }
 
 export interface DataGenerationRequest {

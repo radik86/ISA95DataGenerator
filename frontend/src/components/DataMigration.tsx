@@ -53,12 +53,14 @@ import {
   CheckCircle as CheckCircleIcon,
   Description as DescriptionIcon,
   TableChart as TableChartIcon,
+  Visibility as VisibilityIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { masterDataDB } from '../services/masterDataDB';
 import { processDataDB } from '../services/processDataDB';
 import { migrationConfigDB } from '../services/migrationConfigDB';
 import { entitiesApi } from '../api/client';
-import { EntityDefinition, AttributeDefinition, RuleType } from '../types';
+import { EntityDefinition, AttributeDefinition, RuleType, FieldRule } from '../types';
 
 // ISA95 Entity Definitions for migration
 interface ISA95Entity {
@@ -191,6 +193,7 @@ const DataMigration: React.FC = () => {
   
   // IfThen rule parameters
   const [ifThenSourceField, setIfThenSourceField] = useState('');
+  const [ifThenSourceFields, setIfThenSourceFields] = useState<string[]>([]);
   const [ifThenCondition, setIfThenCondition] = useState('');
   const [ifThenTrueValue, setIfThenTrueValue] = useState('');
   const [ifThenFalseValue, setIfThenFalseValue] = useState('');
@@ -199,6 +202,25 @@ const DataMigration: React.FC = () => {
   const [caseSourceField, setCaseSourceField] = useState('');
   const [caseCases, setCaseCases] = useState<Array<{ case: string; value: string }>>([{ case: '', value: '' }]);
   const [caseDefaultValue, setCaseDefaultValue] = useState('');
+  
+  // Coalesce rule parameters
+  const [coalesceSourceFields, setCoalesceSourceFields] = useState<string[]>(['']);
+  const [coalesceDefaultValue, setCoalesceDefaultValue] = useState('');
+  
+  // Concat rule parameters
+  const [concatSourceFields, setConcatSourceFields] = useState<string[]>(['']);
+  const [concatSeparator, setConcatSeparator] = useState('');
+  const [concatPrefix, setConcatPrefix] = useState('');
+  const [concatSuffix, setConcatSuffix] = useState('');
+  
+  // Preview state
+  const [previewDialog, setPreviewDialog] = useState(false);
+  const [previewMappingIndex, setPreviewMappingIndex] = useState<number | null>(null);
+  const [previewData, setPreviewData] = useState<any[]>([]);
+  
+  // Field rule preview state
+  const [fieldRulePreviewData, setFieldRulePreviewData] = useState<Array<{source: any, transformed: string}>>([]);
+  const [showFieldRulePreview, setShowFieldRulePreview] = useState(false);
 
   // Primary Key rule dialog states
   const [pkRuleDialog, setPkRuleDialog] = useState(false);
@@ -339,6 +361,7 @@ const DataMigration: React.FC = () => {
         'equipmentPropertyAssignments', 'plants', 'productionLines',
         'lineEquipment', 'processSegments', 'segmentBOMs', 'equipmentUsages',
         'operationEventDefinitions', 'operationEventDefSegmentAssignments',
+        'shifts', 'crews', 'shiftCrewAssignments',
         'hierarchyScopes', 'hierarchyScopesFlat', 'hierarchyScopeParentChild'
       ];
       
@@ -347,7 +370,7 @@ const DataMigration: React.FC = () => {
         'segmentMaterialRequirements', 'segmentEquipmentRequirements',
         'operationsResponses', 'segmentResponses', 
         'segmentMaterialActuals', 'segmentEquipmentActuals',
-        'equipmentPropertyTracking', 'testResults', 'operationsEvents'
+        'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'segmentData'
       ];
       
       // Load all data dynamically
@@ -527,7 +550,18 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: segmentRequirements[0]?.id },
             { name: 'operationsRequestId', type: 'string', sample: segmentRequirements[0]?.operationsRequestId },
             { name: 'processSegmentId', type: 'string', sample: segmentRequirements[0]?.processSegmentId },
+            { name: 'sequence', type: 'number', sample: segmentRequirements[0]?.sequence?.toString() },
             { name: 'earliestStartDateTime', type: 'datetime', sample: segmentRequirements[0]?.earliestStartDateTime },
+            { name: 'latestEndDateTime', type: 'datetime', sample: segmentRequirements[0]?.latestEndDateTime },
+            { 
+              name: 'durationHours', 
+              type: 'number', 
+              sample: segmentRequirements[0]?.earliestStartDateTime && segmentRequirements[0]?.latestEndDateTime
+                ? ((new Date(segmentRequirements[0].latestEndDateTime).getTime() - new Date(segmentRequirements[0].earliestStartDateTime).getTime()) / (1000 * 60 * 60)).toFixed(2)
+                : '0'
+            },
+            { name: 'targetQuantity', type: 'number', sample: segmentRequirements[0]?.targetQuantity?.toString() },
+            { name: 'quantityUoM', type: 'string', sample: segmentRequirements[0]?.quantityUoM },
           ],
         },
         {
@@ -721,6 +755,25 @@ const DataMigration: React.FC = () => {
         });
       }
 
+      // Add segmentData (shifts and crews) if available
+      if (processDataResults['segmentData']?.length > 0) {
+        const segmentData = processDataResults['segmentData'];
+        additionalTables.push({
+          name: 'segment_data',
+          rowCount: segmentData.length,
+          columns: [
+            { name: 'id', type: 'string', sample: segmentData[0]?.id },
+            { name: 'segmentResponseId', type: 'string', sample: segmentData[0]?.segmentResponseId },
+            { name: 'recordType', type: 'string', sample: segmentData[0]?.recordType },
+            { name: 'shiftId', type: 'string', sample: segmentData[0]?.shiftId },
+            { name: 'crewId', type: 'string', sample: segmentData[0]?.crewId },
+            { name: 'startDateTime', type: 'datetime', sample: segmentData[0]?.startDateTime },
+            { name: 'endDateTime', type: 'datetime', sample: segmentData[0]?.endDateTime },
+            { name: 'notes', type: 'string', sample: segmentData[0]?.notes },
+          ],
+        });
+      }
+
       // Add hierarchyScopes if available
       if (masterDataResults['hierarchyScopes']?.length > 0) {
         const hierarchyScopes = masterDataResults['hierarchyScopes'];
@@ -731,6 +784,55 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: hierarchyScopes[0]?.id },
             { name: 'equipmentID', type: 'string', sample: hierarchyScopes[0]?.equipmentID },
             { name: 'equipmentLevel', type: 'string', sample: hierarchyScopes[0]?.equipmentLevel },
+          ],
+        });
+      }
+
+      // Add shifts if available
+      if (masterDataResults['shifts']?.length > 0) {
+        const shifts = masterDataResults['shifts'];
+        additionalTables.push({
+          name: 'shifts',
+          rowCount: shifts.length,
+          columns: [
+            { name: 'id', type: 'string', sample: shifts[0]?.id },
+            { name: 'shiftNumber', type: 'string', sample: shifts[0]?.shiftNumber },
+            { name: 'shiftName', type: 'string', sample: shifts[0]?.shiftName },
+            { name: 'startTime', type: 'string', sample: shifts[0]?.startTime },
+            { name: 'endTime', type: 'string', sample: shifts[0]?.endTime },
+            { name: 'description', type: 'string', sample: shifts[0]?.description },
+          ],
+        });
+      }
+
+      // Add crews if available
+      if (masterDataResults['crews']?.length > 0) {
+        const crews = masterDataResults['crews'];
+        additionalTables.push({
+          name: 'crews',
+          rowCount: crews.length,
+          columns: [
+            { name: 'id', type: 'string', sample: crews[0]?.id },
+            { name: 'crewName', type: 'string', sample: crews[0]?.crewName },
+            { name: 'peopleCount', type: 'number', sample: crews[0]?.peopleCount },
+            { name: 'skills', type: 'string', sample: crews[0]?.skills },
+            { name: 'description', type: 'string', sample: crews[0]?.description },
+          ],
+        });
+      }
+
+      // Add shift crew assignments if available
+      if (masterDataResults['shiftCrewAssignments']?.length > 0) {
+        const shiftCrewAssignments = masterDataResults['shiftCrewAssignments'];
+        additionalTables.push({
+          name: 'shift_crew_assignments',
+          rowCount: shiftCrewAssignments.length,
+          columns: [
+            { name: 'id', type: 'string', sample: shiftCrewAssignments[0]?.id },
+            { name: 'shiftId', type: 'string', sample: shiftCrewAssignments[0]?.shiftId },
+            { name: 'crewId', type: 'string', sample: shiftCrewAssignments[0]?.crewId },
+            { name: 'effectiveDate', type: 'string', sample: shiftCrewAssignments[0]?.effectiveDate },
+            { name: 'expiryDate', type: 'string', sample: shiftCrewAssignments[0]?.expiryDate },
           ],
         });
       }
@@ -1275,6 +1377,7 @@ const DataMigration: React.FC = () => {
           break;
         case RuleType.IfThen:
           setIfThenSourceField(params?.sourceField || fieldMapping?.sourceColumn || '');
+          setIfThenSourceFields(params?.sourceFields || []);
           setIfThenCondition(params?.condition || '');
           setIfThenTrueValue(params?.trueValue || '');
           setIfThenFalseValue(params?.falseValue || '');
@@ -1283,6 +1386,16 @@ const DataMigration: React.FC = () => {
           setCaseSourceField(params?.sourceField || fieldMapping?.sourceColumn || '');
           setCaseCases(params?.cases || [{ case: '', value: '' }]);
           setCaseDefaultValue(params?.defaultValue || '');
+          break;
+        case RuleType.Coalesce:
+          setCoalesceSourceFields(params?.sourceFields || ['']);
+          setCoalesceDefaultValue(params?.defaultValue || '');
+          break;
+        case RuleType.Concat:
+          setConcatSourceFields(params?.sourceFields || ['']);
+          setConcatSeparator(params?.separator || '');
+          setConcatPrefix(params?.prefix || '');
+          setConcatSuffix(params?.suffix || '');
           break;
       }
     } else {
@@ -1376,12 +1489,20 @@ const DataMigration: React.FC = () => {
         parameters = { value: staticValue };
         break;
       case RuleType.IfThen:
-        if (!ifThenSourceField || !ifThenCondition.trim() || !ifThenTrueValue.trim() || !ifThenFalseValue.trim()) {
-          showSnackbar('Please fill in all If-Then fields including source field', 'error');
+        const hasSourceFields = ifThenSourceFields.length > 0 && ifThenSourceFields.some(f => f.trim());
+        const hasSourceField = ifThenSourceField && ifThenSourceField.trim();
+        
+        if (!hasSourceFields && !hasSourceField) {
+          showSnackbar('Please select at least one source field', 'error');
+          return;
+        }
+        if (!ifThenCondition.trim() || !ifThenTrueValue.trim() || !ifThenFalseValue.trim()) {
+          showSnackbar('Please fill in condition, true value, and false value', 'error');
           return;
         }
         parameters = { 
-          sourceField: ifThenSourceField,
+          sourceField: ifThenSourceField || undefined,
+          sourceFields: hasSourceFields ? ifThenSourceFields.filter(f => f.trim()) : undefined,
           condition: ifThenCondition, 
           trueValue: ifThenTrueValue, 
           falseValue: ifThenFalseValue 
@@ -1401,6 +1522,30 @@ const DataMigration: React.FC = () => {
           sourceField: caseSourceField,
           cases: validCases,
           defaultValue: caseDefaultValue || undefined
+        };
+        break;
+      case RuleType.Coalesce:
+        const validCoalesceFields = coalesceSourceFields.filter(f => f.trim());
+        if (validCoalesceFields.length === 0) {
+          showSnackbar('Please select at least one source field', 'error');
+          return;
+        }
+        parameters = {
+          sourceFields: validCoalesceFields,
+          defaultValue: coalesceDefaultValue || undefined
+        };
+        break;
+      case RuleType.Concat:
+        const validConcatFields = concatSourceFields.filter(f => f.trim());
+        if (validConcatFields.length === 0) {
+          showSnackbar('Please select at least one source field', 'error');
+          return;
+        }
+        parameters = {
+          sourceFields: validConcatFields,
+          separator: concatSeparator || undefined,
+          prefix: concatPrefix || undefined,
+          suffix: concatSuffix || undefined
         };
         break;
       default:
@@ -1652,6 +1797,16 @@ const DataMigration: React.FC = () => {
         return `Sequence(start=${params?.start}, inc=${params?.increment})`;
       case RuleType.PrefixSequence:
         return `${params?.prefix}[${params?.start}-${params?.end}]${params?.suffix || ''}`;
+      case RuleType.IfThen:
+        const fields = params?.sourceFields?.length > 0 ? params.sourceFields.join(', ') : params?.sourceField;
+        return `If ${fields} ${params?.condition} ? ${params?.trueValue} : ${params?.falseValue}`;
+      case RuleType.Case:
+        return `Case(${params?.sourceField}, ${params?.cases?.length || 0} cases)`;
+      case RuleType.Coalesce:
+        return `Coalesce(${params?.sourceFields?.slice(0, 3).join(', ')}${params?.sourceFields?.length > 3 ? '...' : ''})`;
+      case RuleType.Concat:
+        const sep = params?.separator ? `'${params.separator}'` : "''";
+        return `Concat(${params?.sourceFields?.slice(0, 3).join(', ')}${params?.sourceFields?.length > 3 ? '...' : ''} with ${sep})`;
       case 'Composite':
         return `Composite(${params?.fields?.join(params?.separator || '-')})`;
       default:
@@ -1688,14 +1843,437 @@ const DataMigration: React.FC = () => {
       case RuleType.Enumeration:
         return params?.value || 'Enum';
       case RuleType.IfThen:
-        const ifThenSource = params?.sourceField ? `[${params.sourceField}] ` : '';
-        return `${ifThenSource}If(${params?.condition}) ? ${params?.trueValue} : ${params?.falseValue}`;
+        const ifThenFields = params?.sourceFields?.length > 0 
+          ? `[${params.sourceFields.slice(0, 2).join(', ')}${params.sourceFields.length > 2 ? '...' : ''}]`
+          : params?.sourceField ? `[${params.sourceField}]` : '';
+        return `${ifThenFields} If(${params?.condition}) ? ${params?.trueValue} : ${params?.falseValue}`;
       case RuleType.Case:
         const caseCount = params?.cases?.length || 0;
         const caseSource = params?.sourceField ? `[${params.sourceField}] ` : '';
         return `${caseSource}${caseCount} case${caseCount !== 1 ? 's' : ''}${params?.defaultValue ? ' + default' : ''}`;
+      case RuleType.Coalesce:
+        const coalesceFields = params?.sourceFields?.slice(0, 3).join(', ') || '';
+        return `First of: ${coalesceFields}${params?.sourceFields?.length > 3 ? '...' : ''}`;
+      case RuleType.Concat:
+        const concatFields = params?.sourceFields?.slice(0, 3).join(', ') || '';
+        const sep = params?.separator ? ` with '${params.separator}'` : '';
+        return `Concat: ${concatFields}${params?.sourceFields?.length > 3 ? '...' : ''}${sep}`;
       default:
         return fieldRule.ruleType;
+    }
+  };
+
+  const generatePreviewData = async (mappingIndex: number) => {
+    const mapping = tableMappings[mappingIndex];
+    if (!mapping) return;
+
+    const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
+    if (!sourceTable) return;
+
+    try {
+      // Get source data - this function is defined later in the file
+      const getTableDataFunc = async (tableName: string): Promise<any[]> => {
+        const masterStoreMap: { [key: string]: string } = {
+          'material_classes': 'materialClasses',
+          'materials': 'materials',
+          'material_lots': 'materialLots',
+          'material_sublots': 'materialSublots',
+          'equipment_classes': 'equipmentClasses',
+          'equipment': 'equipment',
+          'equipment_properties': 'equipmentProperties',
+          'equipment_property_assignments': 'equipmentPropertyAssignments',
+          'plants': 'plants',
+          'production_lines': 'productionLines',
+          'process_segments': 'processSegments',
+          'line_equipment': 'lineEquipment',
+          'segment_boms': 'segmentBOMs',
+          'equipment_usages': 'equipmentUsages',
+          'operation_event_definitions': 'operationEventDefinitions',
+          'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+          'hierarchy_scopes': 'hierarchyScopes',
+          'shifts': 'shifts',
+          'crews': 'crews',
+          'shift_crew_assignments': 'shiftCrewAssignments',
+        };
+
+        const processStoreMap: { [key: string]: string } = {
+          'operations_requests': 'operationsRequests',
+          'segment_requirements': 'segmentRequirements',
+          'segment_material_requirements': 'segmentMaterialRequirements',
+          'segment_equipment_requirements': 'segmentEquipmentRequirements',
+          'operations_responses': 'operationsResponses',
+          'segment_responses': 'segmentResponses',
+          'segment_material_actuals': 'segmentMaterialActuals',
+          'segment_equipment_actuals': 'segmentEquipmentActuals',
+          'equipment_property_tracking': 'equipmentPropertyTracking',
+          'test_results': 'testResults',
+          'operations_events': 'operationsEvents',
+          'segment_data': 'segmentData',
+        };
+
+        const masterStoreName = masterStoreMap[tableName];
+        if (masterStoreName) {
+          return await masterDataDB.getAll(masterStoreName);
+        }
+
+        const processStoreName = processStoreMap[tableName];
+        if (processStoreName) {
+          return await processDataDB.getAll(processStoreName);
+        }
+
+        // Check imported tables
+        if (importedTablesData[tableName]) {
+          return importedTablesData[tableName];
+        }
+
+        return [];
+      };
+
+      const sourceData = await getTableDataFunc(mapping.sourceTable);
+      const previewRows = sourceData.slice(0, 5); // Preview first 5 rows
+
+      // Generate preview with field mappings applied
+      const previews = previewRows.map((row, idx) => {
+        const previewRow: any = { _sourceRow: idx + 1 };
+        
+        // Apply primary key rule if configured
+        if (mapping.primaryKeyRule) {
+          previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx);
+        }
+
+        // Apply each field mapping
+        mapping.fieldMappings.forEach(fieldMapping => {
+          if (!fieldMapping.generate) return;
+
+          if (fieldMapping.sourceColumn) {
+            // Direct column mapping
+            previewRow[fieldMapping.fieldName] = row[fieldMapping.sourceColumn];
+          } else if (fieldMapping.fieldRule) {
+            // Apply rule
+            previewRow[fieldMapping.fieldName] = applyFieldRuleForPreview(fieldMapping.fieldRule, row, idx);
+          } else {
+            previewRow[fieldMapping.fieldName] = '';
+          }
+        });
+
+        return previewRow;
+      });
+
+      setPreviewData(previews);
+      setPreviewMappingIndex(mappingIndex);
+      setPreviewDialog(true);
+    } catch (error) {
+      console.error('Error generating preview:', error);
+      showSnackbar('Error generating preview', 'error');
+    }
+  };
+
+  const applyFieldRuleForPreview = (fieldRule: FieldRuleConfig, sourceRow: any, rowIndex: number): any => {
+    const params = fieldRule.parameters as any;
+    
+    switch (fieldRule.ruleType) {
+      case RuleType.Static:
+        return params?.value || '';
+      
+      case RuleType.Sequence:
+        return (params?.start || 1) + (rowIndex * (params?.increment || 1));
+      
+      case RuleType.PrefixSequence:
+        const seqNum = (params?.start || 1) + rowIndex;
+        const paddedNum = params?.padding ? String(seqNum).padStart(params.padding, '0') : String(seqNum);
+        return `${params?.prefix || ''}${paddedNum}${params?.suffix || ''}`;
+      
+      case RuleType.Range:
+        const min = params?.min || 0;
+        const max = params?.max || 100;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      
+      case RuleType.Examples:
+        const values = params?.values || [];
+        return values[rowIndex % values.length] || '';
+      
+      case RuleType.Pattern:
+        return `[Pattern: ${params?.regex || ''}]`;
+      
+      case RuleType.Enumeration:
+        return params?.value || '';
+      
+      case RuleType.IfThen:
+        // Check sourceFields array first (primary source field), then fall back to sourceField
+        let sourceField = '';
+        let sourceValue = '';
+        
+        if (params?.sourceFields && params.sourceFields.length > 0) {
+          // Use first field from sourceFields array (matches actual migration logic)
+          sourceField = params.sourceFields[0];
+          sourceValue = sourceField ? String(sourceRow[sourceField] || '') : '';
+        } else if (params?.sourceField) {
+          sourceField = params.sourceField;
+          sourceValue = String(sourceRow[sourceField] || '');
+        }
+        
+        const condition = params?.condition || '';
+        const matches = evaluateCondition(sourceValue, condition);
+        return matches ? (params?.trueValue || '') : (params?.falseValue || '');
+      
+      case RuleType.Case:
+        const caseSourceField = params?.sourceField;
+        const caseSourceValue = caseSourceField ? sourceRow[caseSourceField] : '';
+        const cases = params?.cases || [];
+        
+        for (const caseItem of cases) {
+          if (String(caseSourceValue).toLowerCase() === String(caseItem.case).toLowerCase()) {
+            return caseItem.value;
+          }
+        }
+        return params?.defaultValue || '';
+      
+      case RuleType.Coalesce:
+        // Return first non-null, non-empty value from source fields
+        if (!sourceRow || !params?.sourceFields) {
+          return params?.defaultValue || '';
+        }
+        for (const field of params.sourceFields) {
+          const value = sourceRow[field];
+          if (value !== undefined && value !== null && String(value).trim()) {
+            return value;
+          }
+        }
+        return params?.defaultValue || '';
+      
+      case RuleType.Concat:
+        // Concatenate multiple source fields
+        if (!sourceRow || !params?.sourceFields) {
+          return '';
+        }
+        const concatValues = params.sourceFields
+          .map((field: string) => String(sourceRow[field] || ''))
+          .filter((v: string) => v.trim()); // Only include non-empty values
+        
+        const concatenated = concatValues.join(params?.separator || '');
+        return `${params?.prefix || ''}${concatenated}${params?.suffix || ''}`;
+      
+      default:
+        return '';
+    }
+  };
+
+  const evaluateCondition = (value: any, condition: string): boolean => {
+    const strValue = String(value).toLowerCase();
+    const conditionLower = condition.toLowerCase();
+
+    if (conditionLower.startsWith('contains:')) {
+      const searchTerm = conditionLower.substring(9).trim();
+      return strValue.includes(searchTerm);
+    }
+    if (conditionLower.startsWith('equals:')) {
+      const compareValue = conditionLower.substring(7).trim();
+      return strValue === compareValue;
+    }
+    if (conditionLower.startsWith('startswith:')) {
+      const prefix = conditionLower.substring(11).trim();
+      return strValue.startsWith(prefix);
+    }
+    if (conditionLower.startsWith('endswith:')) {
+      const suffix = conditionLower.substring(9).trim();
+      return strValue.endsWith(suffix);
+    }
+
+    // Numeric comparisons
+    const numericValue = parseFloat(value);
+    if (!isNaN(numericValue)) {
+      if (condition.startsWith('>=')) {
+        const compareValue = parseFloat(condition.substring(2).trim());
+        return !isNaN(compareValue) && numericValue >= compareValue;
+      }
+      if (condition.startsWith('<=')) {
+        const compareValue = parseFloat(condition.substring(2).trim());
+        return !isNaN(compareValue) && numericValue <= compareValue;
+      }
+      if (condition.startsWith('>')) {
+        const compareValue = parseFloat(condition.substring(1).trim());
+        return !isNaN(compareValue) && numericValue > compareValue;
+      }
+      if (condition.startsWith('<')) {
+        const compareValue = parseFloat(condition.substring(1).trim());
+        return !isNaN(compareValue) && numericValue < compareValue;
+      }
+    }
+
+    return false;
+  };
+
+  const generateFieldRulePreview = async () => {
+    if (!selectedFieldForRule) {
+      return;
+    }
+
+    const mappingIndex = selectedFieldForRule.mappingIndex;
+    const mapping = tableMappings[mappingIndex];
+    if (!mapping) {
+      return;
+    }
+
+    const sourceTableName = mapping.sourceTable;
+    if (!sourceTableName) {
+      return;
+    }
+
+    try {
+      // Get sample data from source table (first 5 rows) - using same logic as generatePreviewData
+      const getTableDataFunc = async (tableName: string): Promise<any[]> => {
+        const masterStoreMap: { [key: string]: string } = {
+          'material_classes': 'materialClasses',
+          'materials': 'materials',
+          'material_lots': 'materialLots',
+          'material_sublots': 'materialSublots',
+          'equipment_classes': 'equipmentClasses',
+          'equipment': 'equipment',
+          'equipment_properties': 'equipmentProperties',
+          'equipment_property_assignments': 'equipmentPropertyAssignments',
+          'plants': 'plants',
+          'production_lines': 'productionLines',
+          'process_segments': 'processSegments',
+          'line_equipment': 'lineEquipment',
+          'segment_boms': 'segmentBOMs',
+          'equipment_usages': 'equipmentUsages',
+          'operation_event_definitions': 'operationEventDefinitions',
+          'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+          'hierarchy_scopes': 'hierarchyScopes',
+          'shifts': 'shifts',
+          'crews': 'crews',
+          'shift_crew_assignments': 'shiftCrewAssignments',
+        };
+
+        const processStoreMap: { [key: string]: string } = {
+          'operations_requests': 'operationsRequests',
+          'segment_requirements': 'segmentRequirements',
+          'segment_material_requirements': 'segmentMaterialRequirements',
+          'segment_equipment_requirements': 'segmentEquipmentRequirements',
+          'operations_responses': 'operationsResponses',
+          'segment_responses': 'segmentResponses',
+          'segment_material_actuals': 'segmentMaterialActuals',
+          'segment_equipment_actuals': 'segmentEquipmentActuals',
+          'equipment_property_tracking': 'equipmentPropertyTracking',
+          'test_results': 'testResults',
+          'operations_events': 'operationsEvents',
+          'segment_data': 'segmentData',
+        };
+
+        const masterStoreName = masterStoreMap[tableName];
+        if (masterStoreName) {
+          return await masterDataDB.getAll(masterStoreName);
+        }
+
+        const processStoreName = processStoreMap[tableName];
+        if (processStoreName) {
+          return await processDataDB.getAll(processStoreName);
+        }
+
+        // Check imported tables
+        if (importedTablesData[tableName]) {
+          return importedTablesData[tableName];
+        }
+
+        return [];
+      };
+
+      const sourceData = await getTableDataFunc(sourceTableName);
+      const previewRows = sourceData.slice(0, 5); // Preview first 5 rows
+
+      // Create a temporary field rule from current dialog state
+      const tempRule: FieldRuleConfig = {
+        ruleType: fieldRuleType,
+        parameters: {}
+      };
+
+      // Set rule parameters based on selected rule type
+      switch (fieldRuleType) {
+        case RuleType.Static:
+          tempRule.parameters = { value: staticValue };
+          break;
+        case RuleType.Range:
+          tempRule.parameters = {
+            min: rangeMin,
+            max: rangeMax
+          };
+          break;
+        case RuleType.Examples:
+          tempRule.parameters = {
+            values: exampleValues
+          };
+          break;
+        case RuleType.Pattern:
+          tempRule.parameters = {
+            regex: pattern
+          };
+          break;
+        case RuleType.Sequence:
+          tempRule.parameters = {
+            start: sequenceStart,
+            increment: sequenceIncrement
+          };
+          break;
+        case RuleType.PrefixSequence:
+          tempRule.parameters = {
+            prefix: prefixValue,
+            suffix: suffixValue,
+            start: seqStart,
+            end: seqEnd,
+            padding: seqPadding
+          };
+          break;
+        case RuleType.Enumeration:
+          tempRule.parameters = {
+            value: staticValue  // Uses staticValue for selected enum
+          };
+          break;
+        case RuleType.IfThen:
+          const hasIfThenSourceFields = ifThenSourceFields.length > 0 && ifThenSourceFields.some(f => f.trim());
+          tempRule.parameters = {
+            sourceField: ifThenSourceField || undefined,
+            sourceFields: hasIfThenSourceFields ? ifThenSourceFields.filter(f => f.trim()) : undefined,
+            condition: ifThenCondition,
+            trueValue: ifThenTrueValue,
+            falseValue: ifThenFalseValue
+          };
+          break;
+        case RuleType.Case:
+          tempRule.parameters = {
+            sourceField: caseSourceField,
+            cases: caseCases,
+            defaultValue: caseDefaultValue
+          };
+          break;
+        case RuleType.Coalesce:
+          tempRule.parameters = {
+            sourceFields: coalesceSourceFields.filter(f => f),
+            defaultValue: coalesceDefaultValue
+          };
+          break;
+        case RuleType.Concat:
+          tempRule.parameters = {
+            sourceFields: concatSourceFields.filter(f => f),
+            separator: concatSeparator,
+            prefix: concatPrefix,
+            suffix: concatSuffix
+          };
+          break;
+      }
+
+      // Generate preview data by applying the rule to each source row
+      const preview = previewRows.map((row, idx) => {
+        const transformed = applyFieldRuleForPreview(tempRule, row, idx);
+        return {
+          source: row,
+          transformed: transformed
+        };
+      });
+
+      setFieldRulePreviewData(preview);
+      setShowFieldRulePreview(true);
+    } catch (error) {
+      console.error('Error generating field rule preview:', error);
     }
   };
 
@@ -1731,29 +2309,30 @@ const DataMigration: React.FC = () => {
           continue;
         }
 
-        log(`Processing: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
+        try {
+          log(`Processing: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
 
-        // Get source data
-        const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
-        if (!sourceTable) {
-          log(`Error: Source table ${mapping.sourceTable} not found`);
-          continue;
-        }
+          // Get source data
+          const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
+          if (!sourceTable) {
+            log(`❌ Error: Source table ${mapping.sourceTable} not found`);
+            continue;
+          }
 
-        // Load actual data from IndexedDB or imported source
-        const sourceData = await loadSourceData(mapping.sourceTable);
-        log(`Loaded ${sourceData.length} records from ${mapping.sourceTable}`);
+          // Load actual data from IndexedDB or imported source
+          const sourceData = await loadSourceData(mapping.sourceTable);
+          log(`Loaded ${sourceData.length} records from ${mapping.sourceTable}`);
 
-        // Get entity for file naming
-        const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
+          // Get entity for file naming
+          const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
 
-        // Initialize sequence counters for PK rule
-        let pkSequenceCounter = 0;
-        if (mapping.primaryKeyRule) {
-          const pkParams = mapping.primaryKeyRule.parameters as any;
-          if (mapping.primaryKeyRule.ruleType === RuleType.Sequence) {
-            pkSequenceCounter = pkParams?.start || 1;
-          } else if (mapping.primaryKeyRule.ruleType === RuleType.PrefixSequence) {
+          // Initialize sequence counters for PK rule
+          let pkSequenceCounter = 0;
+          if (mapping.primaryKeyRule) {
+            const pkParams = mapping.primaryKeyRule.parameters as any;
+            if (mapping.primaryKeyRule.ruleType === RuleType.Sequence) {
+              pkSequenceCounter = pkParams?.start || 1;
+            } else if (mapping.primaryKeyRule.ruleType === RuleType.PrefixSequence) {
             pkSequenceCounter = pkParams?.start || 1;
           }
         }
@@ -1863,14 +2442,26 @@ const DataMigration: React.FC = () => {
         log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
 
         setMigrationProgress(((i + 1) / tableMappings.length) * 100);
+        } catch (mappingError) {
+          // Log error for this specific mapping but continue with others
+          const errorMessage = mappingError instanceof Error ? mappingError.message : String(mappingError);
+          log(`❌ Failed to process ${mapping.sourceTable} -> ${mapping.targetEntity}: ${errorMessage}`);
+          console.error(`Mapping error for ${mapping.sourceTable}:`, mappingError);
+          // Continue with next mapping
+        }
       }
 
       log('Migration completed successfully!');
       showSnackbar('Migration completed successfully', 'success');
     } catch (error) {
       console.error('Migration failed:', error);
-      log(`Error: Migration failed - ${error}`);
-      showSnackbar('Migration failed', 'error');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+      log(`❌ Error: Migration failed - ${errorMessage}`);
+      if (errorStack) {
+        log(`Stack trace: ${errorStack}`);
+      }
+      showSnackbar(`Migration failed: ${errorMessage}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -1902,16 +2493,36 @@ const DataMigration: React.FC = () => {
         const numStr = padding > 0 ? String(start).padStart(padding, '0') : String(start);
         return `${params?.prefix || ''}${numStr}${params?.suffix || ''}`;
       case RuleType.IfThen:
-        // Evaluate condition using source field value
-        if (!sourceRecord || !params?.sourceField) {
+        // Enhanced IfThen with multiple source fields support
+        if (!sourceRecord) {
           return params?.falseValue || '';
         }
-        const sourceValue = sourceRecord[params.sourceField];
-        if (sourceValue === undefined) {
+        
+        // Support for multiple source fields
+        let sourceValueForCondition = '';
+        if (params?.sourceFields && params.sourceFields.length > 0) {
+          // Use first non-empty field value for condition evaluation
+          for (const field of params.sourceFields) {
+            const val = sourceRecord[field];
+            if (val !== undefined && val !== null && String(val).trim()) {
+              sourceValueForCondition = String(val);
+              break;
+            }
+          }
+        } else if (params?.sourceField) {
+          sourceValueForCondition = String(sourceRecord[params.sourceField] || '');
+        }
+        
+        if (!sourceValueForCondition) {
           return params?.falseValue || '';
         }
-        const conditionMet = evaluateCondition(String(sourceValue), params?.condition || '');
-        return conditionMet ? (params?.trueValue || '') : (params?.falseValue || '');
+        
+        const conditionMet = evaluateCondition(sourceValueForCondition, params?.condition || '');
+        
+        // Process true/false values with field placeholders
+        const resultValue = conditionMet ? (params?.trueValue || '') : (params?.falseValue || '');
+        return replaceFieldPlaceholders(resultValue, sourceRecord);
+        
       case RuleType.Case:
         // Match source field value against cases
         if (!sourceRecord || !params?.sourceField) {
@@ -1939,58 +2550,45 @@ const DataMigration: React.FC = () => {
         // No match found, return default
         console.log('No case matched, using default:', params?.defaultValue);
         return params?.defaultValue || '';
+        
+      case RuleType.Coalesce:
+        // Return first non-null, non-empty value from source fields
+        if (!sourceRecord || !params?.sourceFields) {
+          return params?.defaultValue || '';
+        }
+        for (const field of params.sourceFields) {
+          const value = sourceRecord[field];
+          if (value !== undefined && value !== null && String(value).trim()) {
+            return value;
+          }
+        }
+        return params?.defaultValue || '';
+        
+      case RuleType.Concat:
+        // Concatenate multiple source fields
+        if (!sourceRecord || !params?.sourceFields) {
+          return '';
+        }
+        const concatValues = params.sourceFields
+          .map((field: string) => String(sourceRecord[field] || ''))
+          .filter((v: string) => v.trim()); // Only include non-empty values
+        
+        const concatenated = concatValues.join(params?.separator || '');
+        return `${params?.prefix || ''}${concatenated}${params?.suffix || ''}`;
+        
       default:
         return '';
     }
   };
 
-  const evaluateCondition = (sourceValue: string, condition: string): boolean => {
-    if (!condition) return false;
+  // Helper function to replace {fieldName} placeholders with actual field values
+  const replaceFieldPlaceholders = (template: string, sourceRecord: any): string => {
+    if (!template || !sourceRecord) return template;
     
-    condition = condition.trim();
-    
-    // Check for comparison operators
-    if (condition.startsWith('==')) {
-      const compareValue = condition.substring(2).trim();
-      return sourceValue.toLowerCase() === compareValue.toLowerCase();
-    }
-    
-    if (condition.startsWith('!=')) {
-      const compareValue = condition.substring(2).trim();
-      return sourceValue.toLowerCase() !== compareValue.toLowerCase();
-    }
-    
-    if (condition.toLowerCase().startsWith('contains')) {
-      const searchValue = condition.substring(8).trim();
-      return sourceValue.toLowerCase().includes(searchValue.toLowerCase());
-    }
-    
-    // Try numeric comparisons
-    const numericValue = parseFloat(sourceValue);
-    if (!isNaN(numericValue)) {
-      if (condition.startsWith('>=')) {
-        const compareValue = parseFloat(condition.substring(2).trim());
-        return !isNaN(compareValue) && numericValue >= compareValue;
-      }
-      
-      if (condition.startsWith('<=')) {
-        const compareValue = parseFloat(condition.substring(2).trim());
-        return !isNaN(compareValue) && numericValue <= compareValue;
-      }
-      
-      if (condition.startsWith('>')) {
-        const compareValue = parseFloat(condition.substring(1).trim());
-        return !isNaN(compareValue) && numericValue > compareValue;
-      }
-      
-      if (condition.startsWith('<')) {
-        const compareValue = parseFloat(condition.substring(1).trim());
-        return !isNaN(compareValue) && numericValue < compareValue;
-      }
-    }
-    
-    // Default: exact match (case-insensitive)
-    return sourceValue.toLowerCase() === condition.toLowerCase();
+    return template.replace(/\{([^}]+)\}/g, (match, fieldName) => {
+      const value = sourceRecord[fieldName.trim()];
+      return value !== undefined && value !== null ? String(value) : '';
+    });
   };
 
   const loadSourceData = async (tableName: string): Promise<any[]> => {
@@ -2012,8 +2610,16 @@ const DataMigration: React.FC = () => {
       'plants': 'plants',
       'production_lines': 'productionLines',
       'process_segments': 'processSegments',
+      'line_equipment': 'lineEquipment',
+      'segment_boms': 'segmentBOMs',
+      'equipment_usages': 'equipmentUsages',
       'operation_event_definitions': 'operationEventDefinitions',
       'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+      'hierarchy_scopes': 'hierarchyScopes',
+      'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
+      'shifts': 'shifts',
+      'crews': 'crews',
+      'shift_crew_assignments': 'shiftCrewAssignments',
     };
 
     const processStoreMap: { [key: string]: string } = {
@@ -2027,6 +2633,8 @@ const DataMigration: React.FC = () => {
       'segment_equipment_actuals': 'segmentEquipmentActuals',
       'equipment_property_tracking': 'equipmentPropertyTracking',
       'test_results': 'testResults',
+      'operations_events': 'operationsEvents',
+      'segment_data': 'segmentData',
     };
 
     const masterStoreName = masterStoreMap[tableName];
@@ -2036,7 +2644,19 @@ const DataMigration: React.FC = () => {
 
     const processStoreName = processStoreMap[tableName];
     if (processStoreName) {
-      return await processDataDB.getAll(processStoreName);
+      const data = await processDataDB.getAll(processStoreName);
+      
+      // Add computed fields for segment_requirements
+      if (tableName === 'segment_requirements') {
+        return data.map((record: any) => ({
+          ...record,
+          durationHours: record.earliestStartDateTime && record.latestEndDateTime
+            ? (new Date(record.latestEndDateTime).getTime() - new Date(record.earliestStartDateTime).getTime()) / (1000 * 60 * 60)
+            : 0
+        }));
+      }
+      
+      return data;
     }
 
     throw new Error(`Unknown table: ${tableName}`);
@@ -2103,14 +2723,8 @@ const DataMigration: React.FC = () => {
       await writable.close();
     } catch (error) {
       console.error('Failed to save CSV:', error);
-      // Fallback to download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to save CSV file "${fileName}": ${errorMessage}`);
     }
   };
 
@@ -2569,6 +3183,17 @@ const DataMigration: React.FC = () => {
                           size="small" 
                           variant="outlined"
                         />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            generatePreviewData(originalIndex);
+                          }}
+                          sx={{ mr: 1 }}
+                        >
+                          Preview
+                        </Button>
                         <IconButton
                           size="small"
                           onClick={(e) => {
@@ -2615,6 +3240,16 @@ const DataMigration: React.FC = () => {
                             >
                               {mapping.primaryKeyRule ? 'Edit Primary Key Rule' : 'Configure Primary Key Rule'}
                             </Button>
+                            {mapping.primaryKeyRule && (
+                              <Tooltip title={getFieldRuleSummary(mapping.primaryKeyRule)}>
+                                <Chip 
+                                  label={mapping.primaryKeyRule.ruleType} 
+                                  size="small" 
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                              </Tooltip>
+                            )}
                           </Box>
                         </Box>
                       ) : (
@@ -2637,6 +3272,16 @@ const DataMigration: React.FC = () => {
                             >
                               {mapping.primaryKeyRule ? 'Edit Primary Key Rule' : 'Configure Primary Key Rule'}
                             </Button>
+                            {mapping.primaryKeyRule && (
+                              <Tooltip title={getFieldRuleSummary(mapping.primaryKeyRule)}>
+                                <Chip 
+                                  label={mapping.primaryKeyRule.ruleType} 
+                                  size="small" 
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                              </Tooltip>
+                            )}
                           </Box>
 
                           <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
@@ -3152,6 +3797,8 @@ const DataMigration: React.FC = () => {
                 <MenuItem value={RuleType.Enumeration}>Enumeration</MenuItem>
                 <MenuItem value={RuleType.IfThen}>If-Then (Conditional)</MenuItem>
                 <MenuItem value={RuleType.Case}>Case (Switch/Case)</MenuItem>
+                <MenuItem value={RuleType.Coalesce}>Coalesce (First Non-Empty)</MenuItem>
+                <MenuItem value={RuleType.Concat}>Concatenate Fields</MenuItem>
               </Select>
             </FormControl>
 
@@ -3357,62 +4004,127 @@ const DataMigration: React.FC = () => {
                 f => f.fieldName === selectedFieldForRule.fieldName
               );
               const hasSourceColumn = !!fieldMapping?.sourceColumn;
+              const sourceTable = dataSource?.tables.find(t => t.name === tableMappings[mappingIndex]?.sourceTable);
               
               return (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {hasSourceColumn ? (
-                    <Alert severity="success">
-                      Using source field: <strong>{fieldMapping.sourceColumn}</strong>
-                    </Alert>
-                  ) : (
-                    <Alert severity="info">
-                      Select the source field to evaluate and define the values to use when the condition is true or false.
-                    </Alert>
-                  )}
+                  <Alert severity="info">
+                    <strong>IfThen Rule:</strong> Conditional logic based on source field values.
+                    {hasSourceColumn && (
+                      <>
+                        <br /><br />
+                        <strong>⚠️ Condition evaluates against:</strong> <code>{fieldMapping.sourceColumn}</code>
+                      </>
+                    )}
+                    <br /><br />
+                    <strong>Condition formats:</strong>
+                    <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                      <li><code>equals:value</code> - Exact match (e.g., equals:Active)</li>
+                      <li><code>isnull</code> - Checks if field is null or empty (e.g., isnull)</li>
+                      <li><code>isnotnull</code> - Checks if field has a value (e.g., isnotnull)</li>
+                      <li><code>contains:text</code> - Contains substring (e.g., contains:error)</li>
+                      <li><code>startswith:text</code> - Starts with (e.g., startswith:PRD-)</li>
+                      <li><code>endswith:text</code> - Ends with (e.g., endswith:.com)</li>
+                      <li><code>&gt; 100</code> - Greater than (numeric)</li>
+                      <li><code>&lt; 50</code> - Less than (numeric)</li>
+                      <li><code>&gt;= 100</code> - Greater or equal (numeric)</li>
+                      <li><code>&lt;= 50</code> - Less or equal (numeric)</li>
+                    </ul>
+                    <strong>Field placeholders:</strong> Use <code>{'{fieldName}'}</code> in true/false values to reference any source field.
+                    <br />
+                    <strong>Example:</strong> Condition: <code>contains:error</code>, True Value: <code>Failed - {'{status}'}</code>, False Value: <code>Success - {'{result}'}</code>
+                  </Alert>
+                  
                   {!hasSourceColumn && (
-                    <FormControl fullWidth>
-                      <InputLabel>Source Field</InputLabel>
-                      <Select
-                        value={ifThenSourceField}
-                        onChange={(e) => setIfThenSourceField(e.target.value)}
-                        label="Source Field"
-                      >
-                        <MenuItem value="">
-                          <em>Select a source field</em>
-                        </MenuItem>
-                    {importedTables
-                      .find((t: SourceTable) => t.name === tableMappings[mappingIndex]?.sourceTable)
-                      ?.columns.map((col: any) => (
-                        <MenuItem key={col.name} value={col.name}>
-                          {col.name} ({col.type})
-                        </MenuItem>
+                    <>
+                      <FormControl fullWidth>
+                        <InputLabel>Primary Source Field</InputLabel>
+                        <Select
+                          value={ifThenSourceField}
+                          onChange={(e) => setIfThenSourceField(e.target.value)}
+                          label="Primary Source Field"
+                        >
+                          <MenuItem value="">
+                            <em>Select a source field</em>
+                          </MenuItem>
+                          {sourceTable?.columns.map((col) => (
+                            <MenuItem key={col.name} value={col.name}>
+                              {col.name} ({col.type})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      
+                      <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>
+                        Additional Fields (Optional)
+                      </Typography>
+                      {ifThenSourceFields.map((field, index) => (
+                        <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Additional Field {index + 1}</InputLabel>
+                            <Select
+                              value={field}
+                              onChange={(e) => {
+                                const newFields = [...ifThenSourceFields];
+                                newFields[index] = e.target.value;
+                                setIfThenSourceFields(newFields);
+                              }}
+                              label={`Additional Field ${index + 1}`}
+                            >
+                              <MenuItem value="">
+                                <em>Select a field</em>
+                              </MenuItem>
+                              {sourceTable?.columns.map((col) => (
+                                <MenuItem key={col.name} value={col.name}>
+                                  {col.name} ({col.type})
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <IconButton
+                            onClick={() => {
+                              setIfThenSourceFields(ifThenSourceFields.filter((_, i) => i !== index));
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
                       ))}
-                  </Select>
-                </FormControl>
+                      <Button
+                        variant="outlined"
+                        startIcon={<AddIcon />}
+                        onClick={() => setIfThenSourceFields([...ifThenSourceFields, ''])}
+                        size="small"
+                      >
+                        Add Additional Field
+                      </Button>
+                    </>
                   )}
+                  
                 <TextField
                   fullWidth
-                  label="Condition"
+                  label={`Condition (evaluates ${hasSourceColumn ? `"${fieldMapping.sourceColumn}"` : 'primary source field'})`}
                   value={ifThenCondition}
                   onChange={(e) => setIfThenCondition(e.target.value)}
-                  placeholder="e.g., 'Active', '> 100', etc."
-                  helperText="Condition to check against the source field value"
+                  placeholder="e.g., equals:Active, isnull, contains:error, > 100"
+                  helperText="Format: equals:value | isnull | isnotnull | contains:text | startswith:text | endswith:text | > 100 | < 50 | >= 100 | <= 50"
+                  sx={{ mt: 2 }}
                 />
                 <TextField
                   fullWidth
                   label="Value if True"
                   value={ifThenTrueValue}
                   onChange={(e) => setIfThenTrueValue(e.target.value)}
-                  placeholder="Value when condition is true"
-                  helperText="Value to use when the condition evaluates to true"
+                  placeholder="e.g., High Priority, {status}-Completed"
+                  helperText="Use {fieldName} syntax to insert field values. Example: Status: {status}, Result: {result}"
                 />
                 <TextField
                   fullWidth
                   label="Value if False"
                   value={ifThenFalseValue}
                   onChange={(e) => setIfThenFalseValue(e.target.value)}
-                  placeholder="Value when condition is false"
-                  helperText="Value to use when the condition evaluates to false"
+                  placeholder="e.g., Normal, {status}-Pending"
+                  helperText="Use {fieldName} syntax to insert field values. Example: Default - {name}"
                 />
               </Box>
               );
@@ -3573,6 +4285,246 @@ const DataMigration: React.FC = () => {
               </Box>
               );
             })()}
+
+            {/* Coalesce Parameters */}
+            {fieldRuleType === RuleType.Coalesce && selectedFieldForRule && (() => {
+              const mappingIndex = selectedFieldForRule.mappingIndex;
+              const sourceTable = dataSource?.tables.find(t => t.name === tableMappings[mappingIndex]?.sourceTable);
+              
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Alert severity="info">
+                    The Coalesce rule returns the first non-null, non-empty value from the selected fields.
+                  </Alert>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Source Fields (in priority order)
+                  </Typography>
+                  {coalesceSourceFields.map((field, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <Typography variant="caption" sx={{ minWidth: 30 }}>
+                        {index + 1}.
+                      </Typography>
+                      <FormControl fullWidth>
+                        <InputLabel>Field {index + 1}</InputLabel>
+                        <Select
+                          value={field}
+                          onChange={(e) => {
+                            const newFields = [...coalesceSourceFields];
+                            newFields[index] = e.target.value;
+                            setCoalesceSourceFields(newFields);
+                          }}
+                          label={`Field ${index + 1}`}
+                        >
+                          <MenuItem value="">
+                            <em>Select a field</em>
+                          </MenuItem>
+                          {sourceTable?.columns.map((col) => (
+                            <MenuItem key={col.name} value={col.name}>
+                              {col.name} ({col.type})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <IconButton
+                        onClick={() => {
+                          setCoalesceSourceFields(coalesceSourceFields.filter((_, i) => i !== index));
+                        }}
+                        disabled={coalesceSourceFields.length <= 1}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => setCoalesceSourceFields([...coalesceSourceFields, ''])}
+                    size="small"
+                  >
+                    Add Field
+                  </Button>
+                  <TextField
+                    fullWidth
+                    label="Default Value (Optional)"
+                    value={coalesceDefaultValue}
+                    onChange={(e) => setCoalesceDefaultValue(e.target.value)}
+                    placeholder="Value if all fields are null/empty"
+                    helperText="Optional: Value to use if all fields are null or empty"
+                  />
+                </Box>
+              );
+            })()}
+
+            {/* Concat Parameters */}
+            {fieldRuleType === RuleType.Concat && selectedFieldForRule && (() => {
+              const mappingIndex = selectedFieldForRule.mappingIndex;
+              const sourceTable = dataSource?.tables.find(t => t.name === tableMappings[mappingIndex]?.sourceTable);
+              
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Alert severity="info">
+                    The Concat rule concatenates values from multiple source fields.
+                  </Alert>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Source Fields to Concatenate
+                  </Typography>
+                  {concatSourceFields.map((field, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <Typography variant="caption" sx={{ minWidth: 30 }}>
+                        {index + 1}.
+                      </Typography>
+                      <FormControl fullWidth>
+                        <InputLabel>Field {index + 1}</InputLabel>
+                        <Select
+                          value={field}
+                          onChange={(e) => {
+                            const newFields = [...concatSourceFields];
+                            newFields[index] = e.target.value;
+                            setConcatSourceFields(newFields);
+                          }}
+                          label={`Field ${index + 1}`}
+                        >
+                          <MenuItem value="">
+                            <em>Select a field</em>
+                          </MenuItem>
+                          {sourceTable?.columns.map((col) => (
+                            <MenuItem key={col.name} value={col.name}>
+                              {col.name} ({col.type})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <IconButton
+                        onClick={() => {
+                          setConcatSourceFields(concatSourceFields.filter((_, i) => i !== index));
+                        }}
+                        disabled={concatSourceFields.length <= 1}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => setConcatSourceFields([...concatSourceFields, ''])}
+                    size="small"
+                  >
+                    Add Field
+                  </Button>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Separator (Optional)"
+                      value={concatSeparator}
+                      onChange={(e) => setConcatSeparator(e.target.value)}
+                      placeholder="e.g., ' ', '-', ','"
+                      helperText="Character(s) to insert between values"
+                    />
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Prefix (Optional)"
+                      value={concatPrefix}
+                      onChange={(e) => setConcatPrefix(e.target.value)}
+                      placeholder="Text before result"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Suffix (Optional)"
+                      value={concatSuffix}
+                      onChange={(e) => setConcatSuffix(e.target.value)}
+                      placeholder="Text after result"
+                    />
+                  </Box>
+                </Box>
+              );
+            })()}
+          </Box>
+
+          {/* Field Rule Preview Section */}
+          <Box sx={{ mt: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={generateFieldRulePreview}
+                startIcon={<VisibilityIcon />}
+              >
+                Generate Preview
+              </Button>
+              {showFieldRulePreview && (
+                <IconButton
+                  size="small"
+                  onClick={() => setShowFieldRulePreview(false)}
+                  title="Hide preview"
+                >
+                  <CloseIcon />
+                </IconButton>
+              )}
+            </Box>
+
+            {showFieldRulePreview && fieldRulePreviewData.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Preview - First {fieldRulePreviewData.length} rows
+                </Typography>
+                <TableContainer component={Paper} sx={{ maxHeight: 300 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Source Data</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Transformed Value</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {fieldRulePreviewData.map((row, index) => {
+                        // Determine which source fields to display based on rule type
+                        let sourceFieldsToShow: string[] = [];
+                        if (fieldRuleType === RuleType.IfThen) {
+                          sourceFieldsToShow = ifThenSourceFields.filter(f => f);
+                        } else if (fieldRuleType === RuleType.Coalesce) {
+                          sourceFieldsToShow = coalesceSourceFields.filter(f => f);
+                        } else if (fieldRuleType === RuleType.Concat) {
+                          sourceFieldsToShow = concatSourceFields.filter(f => f);
+                        } else if (fieldRuleType === RuleType.Case) {
+                          sourceFieldsToShow = caseSourceField ? [caseSourceField] : [];
+                        }
+                        
+                        return (
+                          <TableRow key={index}>
+                            <TableCell>
+                              <Box sx={{ fontSize: '0.875rem' }}>
+                                {fieldRuleType === RuleType.Sequence || fieldRuleType === RuleType.Static ? (
+                                  <em style={{ color: '#666' }}>N/A (generated value)</em>
+                                ) : sourceFieldsToShow.length > 0 ? (
+                                  sourceFieldsToShow.map((field, idx) => (
+                                    <div key={idx}>
+                                      <strong>{field}:</strong> {String(row.source[field] ?? 'null')}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <em style={{ color: '#666' }}>Complete configuration to see source data</em>
+                                )}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <strong>{row.transformed}</strong>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {showFieldRulePreview && fieldRulePreviewData.length === 0 && (
+              <Alert severity="info">
+                No source data available for preview.
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -4117,6 +5069,64 @@ const DataMigration: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setImportDialog(false)}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog
+        open={previewDialog}
+        onClose={() => setPreviewDialog(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          Mapping Preview
+          {previewMappingIndex !== null && tableMappings[previewMappingIndex] && (
+            <Typography variant="body2" color="text.secondary">
+              {tableMappings[previewMappingIndex].sourceTable} → {
+                isa95Entities.find(e => e.tableName === tableMappings[previewMappingIndex].targetEntity)?.name || 
+                tableMappings[previewMappingIndex].targetEntity
+              }
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Preview of first 5 rows showing how source data will be transformed to ISA95 entities
+          </Alert>
+          {previewData.length > 0 ? (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold', bgcolor: 'grey.100' }}>Row</TableCell>
+                    {Object.keys(previewData[0]).filter(k => k !== '_sourceRow').map(key => (
+                      <TableCell key={key} sx={{ fontWeight: 'bold', bgcolor: 'grey.100' }}>
+                        {key}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {previewData.map((row, idx) => (
+                    <TableRow key={idx} hover>
+                      <TableCell>{row._sourceRow}</TableCell>
+                      {Object.keys(row).filter(k => k !== '_sourceRow').map(key => (
+                        <TableCell key={key}>
+                          {row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Alert severity="warning">No preview data available</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
         </>

@@ -57,6 +57,11 @@ interface ProcessDataDB extends DBSchema {
     value: OperationsEventRecord;
     indexes: { 'by-segment-resp': string; 'by-event-def': string; 'by-updated': Date };
   };
+  segmentData: {
+    key: string;
+    value: SegmentDataRecord;
+    indexes: { 'by-segment-resp': string; 'by-shift': string; 'by-crew': string; 'by-updated': Date };
+  };
 }
 
 // Record Interfaces with metadata
@@ -180,8 +185,19 @@ export interface OperationsEventRecord extends BaseRecord {
   comment?: string;
 }
 
+export interface SegmentDataRecord extends BaseRecord {
+  id: string;
+  segmentResponseId: string;
+  recordType: 'shift' | 'crew';
+  shiftId?: string;
+  crewId?: string;
+  startDateTime: string;
+  endDateTime: string;
+  notes?: string;
+}
+
 const DB_NAME = 'process-data-db';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 class ProcessDataDBService {
   private db: IDBPDatabase<ProcessDataDB> | null = null;
@@ -279,6 +295,15 @@ class ProcessDataDBService {
           opsEventsStore.createIndex('by-segment-resp', 'segmentResponseId');
           opsEventsStore.createIndex('by-event-def', 'operationsEventDefinitionId');
           opsEventsStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Segment Data (Shift and Crew Assignments)
+        if (!db.objectStoreNames.contains('segmentData')) {
+          const segDataStore = db.createObjectStore('segmentData', { keyPath: 'id' });
+          segDataStore.createIndex('by-segment-resp', 'segmentResponseId');
+          segDataStore.createIndex('by-shift', 'shiftId');
+          segDataStore.createIndex('by-crew', 'crewId');
+          segDataStore.createIndex('by-updated', 'updatedAt');
         }
       },
     });
@@ -431,11 +456,12 @@ class ProcessDataDBService {
     equipmentActuals: Omit<SegmentEquipmentActualRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     equipmentPropertyTracking: Omit<EquipmentPropertyTrackingRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     testResults: Omit<TestResultRecord, 'createdAt' | 'updatedAt' | 'version'>[],
-    operationsEvents: Omit<OperationsEventRecord, 'createdAt' | 'updatedAt' | 'version'>[]
+    operationsEvents: Omit<OperationsEventRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    segmentData: Omit<SegmentDataRecord, 'createdAt' | 'updatedAt' | 'version'>[]
   ): Promise<void> {
     const db = await this.init();
     const tx = db.transaction(
-      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents'],
+      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'segmentData'],
       'readwrite'
     );
 
@@ -503,6 +529,16 @@ class ProcessDataDBService {
     for (const oe of operationsEvents) {
       await tx.objectStore('operationsEvents').put({
         ...oe,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      });
+    }
+
+    // Save segment data (shifts and crews)
+    for (const sd of segmentData) {
+      await tx.objectStore('segmentData').put({
+        ...sd,
         createdAt: now,
         updatedAt: now,
         version: 1,

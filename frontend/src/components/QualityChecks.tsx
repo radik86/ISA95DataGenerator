@@ -38,22 +38,21 @@ import {
   PlayArrow as RunIcon,
   ExpandMore as ExpandMoreIcon,
   Code as CodeIcon,
+  AutoFixHigh as AutoGenerateIcon,
+  Visibility as PreviewIcon,
 } from '@mui/icons-material';
+import { 
+  generateQualityCheckRules, 
+  generateConsolidatedSQLScript,
+  generateRelationshipMatrix,
+  extractEntityRelationships,
+  extractEnumerationFields,
+  QualityCheckRule
+} from '../services/qualityCheckService';
+import { EntityDefinition } from '../types';
 
-// Quality Rule Interfaces
-interface QualityRule {
-  id: string;
-  name: string;
-  category: 'Range Validation' | 'Enumeration Validation' | 'Relationship Validation' | 'Reference Integrity' | 'Custom';
-  description: string;
-  sqlCode: string;
-  severity: 'Error' | 'Warning' | 'Info';
-  isActive: boolean;
-  entityName?: string;
-  fieldName?: string;
-  createdDate: string;
-  lastModified: string;
-}
+// Quality Rule Interfaces (alias to match service)
+type QualityRule = QualityCheckRule;
 
 const QualityChecks: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -62,10 +61,49 @@ const QualityChecks: React.FC = () => {
   const [editingRule, setEditingRule] = useState<QualityRule | null>(null);
   const [sqlPreview, setSqlPreview] = useState('');
   const [showSqlDialog, setShowSqlDialog] = useState(false);
+  const [entities, setEntities] = useState<EntityDefinition[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [relationshipMatrix, setRelationshipMatrix] = useState<Record<string, string[]>>({});
+  const [showRelationshipMatrix, setShowRelationshipMatrix] = useState(false);
 
   useEffect(() => {
     generateDefaultRules();
+    loadEntities();
   }, []);
+
+  const loadEntities = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/metadata/entities');
+      if (response.ok) {
+        const entityData = await response.json();
+        setEntities(entityData);
+        
+        // Generate relationship matrix
+        const matrix = generateRelationshipMatrix(entityData);
+        setRelationshipMatrix(matrix);
+      }
+    } catch (error) {
+      console.error('Error loading entities:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAutoGenerateRules = () => {
+    if (entities.length === 0) {
+      alert('Please load entities first');
+      return;
+    }
+
+    if (!confirm('This will add auto-generated rules based on entity definitions. Continue?')) {
+      return;
+    }
+
+    const generatedRules = generateQualityCheckRules(entities);
+    setQualityRules(prev => [...prev, ...generatedRules]);
+    alert(`Generated ${generatedRules.length} quality check rules`);
+  };
 
   const generateDefaultRules = () => {
     const defaultRules: QualityRule[] = [
@@ -632,39 +670,7 @@ WHERE ms.materialLotId IS NOT NULL AND ml.id IS NULL;`,
 
   const generateSqlScript = () => {
     const activeRules = qualityRules.filter(r => r.isActive);
-    let script = `-- ISA-95 Data Quality Check Views\n`;
-    script += `-- Generated: ${new Date().toLocaleString()}\n`;
-    script += `-- Total Rules: ${activeRules.length}\n\n`;
-
-    activeRules.forEach((rule, index) => {
-      script += `-- ============================================\n`;
-      script += `-- Rule ${index + 1}: ${rule.name}\n`;
-      script += `-- Category: ${rule.category}\n`;
-      script += `-- Severity: ${rule.severity}\n`;
-      script += `-- Description: ${rule.description}\n`;
-      script += `-- ============================================\n\n`;
-      script += `${rule.sqlCode}\n\n`;
-    });
-
-    // Add summary view
-    script += `-- ============================================\n`;
-    script += `-- Summary View: All Quality Check Results\n`;
-    script += `-- ============================================\n\n`;
-    script += `CREATE VIEW vw_QC_Summary AS\n`;
-    
-    const unionQueries = activeRules.map((rule, index) => {
-      const viewName = rule.sqlCode.match(/CREATE VIEW (\w+)/)?.[1] || `vw_${rule.id}`;
-      return `${index > 0 ? 'UNION ALL\n' : ''}SELECT 
-    '${rule.id}' AS RuleId,
-    '${rule.name}' AS RuleName,
-    '${rule.category}' AS Category,
-    '${rule.severity}' AS Severity,
-    *
-FROM ${viewName}`;
-    });
-
-    script += unionQueries.join('\n') + ';\n\n';
-
+    const script = generateConsolidatedSQLScript(activeRules);
     setSqlPreview(script);
     setShowSqlDialog(true);
   };
@@ -692,6 +698,23 @@ FROM ${viewName}`;
         <Box>
           <Button
             variant="outlined"
+            startIcon={<AutoGenerateIcon />}
+            onClick={handleAutoGenerateRules}
+            disabled={loading || entities.length === 0}
+            sx={{ mr: 2 }}
+          >
+            Auto-Generate Rules
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<PreviewIcon />}
+            onClick={() => setShowRelationshipMatrix(!showRelationshipMatrix)}
+            sx={{ mr: 2 }}
+          >
+            Relationship Matrix
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={<CodeIcon />}
             onClick={generateSqlScript}
             sx={{ mr: 2 }}
@@ -711,7 +734,46 @@ FROM ${viewName}`;
       <Alert severity="info" sx={{ mb: 3 }}>
         Quality checks validate data integrity, enumeration values, relationships, and business rules.
         Active rules: {qualityRules.filter(r => r.isActive).length} / {qualityRules.length}
+        {entities.length > 0 && (
+          <><br />Entities loaded: {entities.length} | Total possible relationships: {Object.values(relationshipMatrix).flat().length}</>
+        )}
       </Alert>
+
+      {showRelationshipMatrix && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Entity Relationship Matrix</Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Shows all possible relationships between entities based on DTDL schema definitions
+          </Typography>
+          <TableContainer sx={{ maxHeight: 400 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Source Entity</strong></TableCell>
+                  <TableCell><strong>Can Relate To</strong></TableCell>
+                  <TableCell align="center"><strong>Count</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {Object.entries(relationshipMatrix)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([source, targets]) => (
+                    <TableRow key={source}>
+                      <TableCell><Chip label={source} size="small" color="primary" /></TableCell>
+                      <TableCell>
+                        {targets.length > 0 
+                          ? targets.map(t => <Chip key={t} label={t} size="small" sx={{ m: 0.5 }} />) 
+                          : <Typography variant="caption" color="text.secondary">No relationships</Typography>
+                        }
+                      </TableCell>
+                      <TableCell align="center"><Chip label={targets.length} size="small" /></TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
 
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
