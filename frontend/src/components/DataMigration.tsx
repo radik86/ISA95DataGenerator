@@ -2460,7 +2460,7 @@ const DataMigration: React.FC = () => {
                     break;
                   case 'Composite':
                     const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
-                      return transformed[fieldName] || '';
+                      return record[fieldName] || '';
                     });
                     pkValue = fieldValues.join(pkParams?.separator || '-');
                     break;
@@ -2541,9 +2541,9 @@ const DataMigration: React.FC = () => {
                   break;
                 case 'Composite':
                   // Composite key: concatenate values from specified fields
-                  console.log(`[${mapping.targetEntity}] Using Composite rule, fields:`, pkParams?.fields, 'separator:', pkParams?.separator, 'transformed object keys:', Object.keys(transformed));
+                  console.log(`[${mapping.targetEntity}] Using Composite rule, fields:`, pkParams?.fields, 'separator:', pkParams?.separator, 'source record keys:', Object.keys(record));
                   const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
-                    const value = transformed[fieldName] || '';
+                    const value = record[fieldName] || '';
                     console.log(`[${mapping.targetEntity}] Composite field '${fieldName}' value:`, value);
                     return value;
                   });
