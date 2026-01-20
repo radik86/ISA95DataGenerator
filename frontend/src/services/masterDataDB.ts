@@ -77,6 +77,11 @@ interface MasterDataDB extends DBSchema {
     value: OperationEventDefinitionRecord;
     indexes: { 'by-category': string; 'by-code': string; 'by-updated': Date };
   };
+  operationsEventClasses: {
+    key: string;
+    value: OperationsEventClassRecord;
+    indexes: { 'by-updated': Date };
+  };
   hierarchyScopes: {
     key: string;
     value: HierarchyScopeRecord;
@@ -301,6 +306,12 @@ export interface ShiftCrewAssignmentRecord extends BaseRecord {
   expiryDate: string;
 }
 
+export interface OperationsEventClassRecord extends BaseRecord {
+  OperationsEventClassID: string;
+  ClassName: string;
+  Description: string;
+}
+
 class MasterDataDatabase {
   private dbPromise: Promise<IDBPDatabase<MasterDataDB>>;
 
@@ -309,7 +320,7 @@ class MasterDataDatabase {
   }
 
   private async initDB(): Promise<IDBPDatabase<MasterDataDB>> {
-    return openDB<MasterDataDB>('master-data-db', 10, {
+    return openDB<MasterDataDB>('master-data-db', 11, {
       upgrade(db, oldVersion) {
         // Material Classes
         if (!db.objectStoreNames.contains('materialClasses')) {
@@ -470,6 +481,12 @@ class MasterDataDatabase {
           scaStore.createIndex('by-crew', 'crewId');
           scaStore.createIndex('by-updated', 'updatedAt');
         }
+
+        // Operations Event Classes (version 11)
+        if (!db.objectStoreNames.contains('operationsEventClasses')) {
+          const oecStore = db.createObjectStore('operationsEventClasses', { keyPath: 'OperationsEventClassID' });
+          oecStore.createIndex('by-updated', 'updatedAt');
+        }
       },
     });
   }
@@ -537,6 +554,14 @@ class MasterDataDatabase {
     const tx = db.transaction(storeName, 'readwrite');
     const now = new Date();
 
+    // Define keyPath mapping for each store
+    const keyPathMap: { [key: string]: string } = {
+      'operationsEventClasses': 'OperationsEventClassID',
+      // All other stores use 'id' as keyPath
+    };
+
+    const keyPath = keyPathMap[storeName as string] || 'id';
+
     for (const data of records) {
       const record = {
         ...data,
@@ -545,10 +570,10 @@ class MasterDataDatabase {
         version: 1,
       } as MasterDataDB[T]['value'];
       
-      // Validate that the record has an id
-      if (!record.id) {
-        console.error(`Record missing id in ${storeName}:`, record);
-        throw new Error(`Record missing id in ${storeName}`);
+      // Validate that the record has the required key
+      if (!(record as any)[keyPath]) {
+        console.error(`Record missing ${keyPath} in ${storeName}:`, record);
+        throw new Error(`Record missing ${keyPath} in ${storeName}`);
       }
       
       await tx.store.put(record);
@@ -602,6 +627,13 @@ class MasterDataDatabase {
     productionLines?: any[];
     lineEquipment?: any[];
     operationEventDefinitions?: any[];
+    operationEventDefSegmentAssignments?: any[];
+    operationsEventClasses?: any[];
+    hierarchyScopes?: any[];
+    hierarchyScopesFlat?: any[];
+    shifts?: any[];
+    crews?: any[];
+    shiftCrewAssignments?: any[];
   }): Promise<void> {
     if (csvData.materialClasses) {
       await this.bulkAdd('materialClasses', csvData.materialClasses);
@@ -667,6 +699,11 @@ class MasterDataDatabase {
     if (csvData.operationEventDefSegmentAssignments) {
       console.log('Importing operation event def segment assignments:', csvData.operationEventDefSegmentAssignments.length);
       await this.bulkAdd('operationEventDefSegmentAssignments', csvData.operationEventDefSegmentAssignments);
+    }
+
+    if (csvData.operationsEventClasses) {
+      console.log('Importing operations event classes:', csvData.operationsEventClasses.length);
+      await this.bulkAdd('operationsEventClasses', csvData.operationsEventClasses);
     }
 
     if (csvData.hierarchyScopes) {

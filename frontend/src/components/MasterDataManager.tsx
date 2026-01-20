@@ -28,6 +28,8 @@ import {
   CircularProgress,
   Snackbar,
   Divider,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -170,6 +172,12 @@ interface OperationEventDefinition {
   causesDowntime: boolean;
   causesScrap: boolean;
   rootCauseType: string;
+}
+
+interface OperationsEventClass {
+  OperationsEventClassID: string;
+  ClassName: string;
+  Description: string;
 }
 
 interface HierarchyScope {
@@ -336,6 +344,11 @@ const MasterDataManager: React.FC = () => {
   const [operationEventDefSegmentAssignmentDialog, setOperationEventDefSegmentAssignmentDialog] = useState(false);
   const [editingOperationEventDefSegmentAssignment, setEditingOperationEventDefSegmentAssignment] = useState<OperationEventDefSegmentAssignment | null>(null);
 
+  // Operations Event Class State
+  const [operationsEventClasses, setOperationsEventClasses] = useState<OperationsEventClass[]>([]);
+  const [operationsEventClassDialog, setOperationsEventClassDialog] = useState(false);
+  const [editingOperationsEventClass, setEditingOperationsEventClass] = useState<OperationsEventClass | null>(null);
+
   // Personnel Information State
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [shiftDialog, setShiftDialog] = useState(false);
@@ -368,7 +381,7 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, sh, cr, sca] = await Promise.all([
+      const [mc, m, ml, ms, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, sh, cr, sca, oec] = await Promise.all([
         masterDataDB.getAll('materialClasses'),
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('materialLots'),
@@ -391,6 +404,7 @@ const MasterDataManager: React.FC = () => {
         masterDataDB.getAll('shifts'),
         masterDataDB.getAll('crews'),
         masterDataDB.getAll('shiftCrewAssignments'),
+        masterDataDB.getAll('operationsEventClasses'),
       ]);
 
       setMaterialClasses(mc);
@@ -415,6 +429,7 @@ const MasterDataManager: React.FC = () => {
       setShifts(sh);
       setCrews(cr);
       setShiftCrewAssignments(sca);
+      setOperationsEventClasses(oec);
       
       console.log('Loaded data counts:', {
         equipmentProperties: ep.length,
@@ -1040,6 +1055,58 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete crew:', error);
       showSnackbar('Failed to delete crew', 'error');
+    }
+  };
+
+  // Operation Event Definition Handlers
+  const handleSaveOperationEventDefinition = async (data: OperationEventDefinition) => {
+    try {
+      if (editingOperationEventDefinition) {
+        await masterDataDB.update('operationEventDefinitions', data);
+        setOperationEventDefinitions(prev => prev.map(oed => oed.id === data.id ? data : oed));
+        showSnackbar('Operation Event Definition updated', 'success');
+      } else {
+        await masterDataDB.add('operationEventDefinitions', data);
+        setOperationEventDefinitions(prev => [...prev, data]);
+        showSnackbar('Operation Event Definition added', 'success');
+      }
+      setOperationEventDefinitionDialog(false);
+      setEditingOperationEventDefinition(null);
+    } catch (error) {
+      console.error('Failed to save operation event definition:', error);
+      showSnackbar('Failed to save operation event definition', 'error');
+    }
+  };
+
+  // Operations Event Class Handlers
+  const handleSaveOperationsEventClass = async (data: OperationsEventClass) => {
+    try {
+      if (editingOperationsEventClass) {
+        await masterDataDB.update('operationsEventClasses', data);
+        setOperationsEventClasses(prev => prev.map(o => o.OperationsEventClassID === data.OperationsEventClassID ? data : o));
+        showSnackbar('Operations Event Class updated', 'success');
+      } else {
+        await masterDataDB.add('operationsEventClasses', data);
+        setOperationsEventClasses(prev => [...prev, data]);
+        showSnackbar('Operations Event Class added', 'success');
+      }
+      setOperationsEventClassDialog(false);
+      setEditingOperationsEventClass(null);
+    } catch (error) {
+      console.error('Failed to save operations event class:', error);
+      showSnackbar('Failed to save operations event class', 'error');
+    }
+  };
+
+  const handleDeleteOperationsEventClass = async (id: string) => {
+    if (!confirm('Delete this operations event class?')) return;
+    try {
+      await masterDataDB.delete('operationsEventClasses', id);
+      setOperationsEventClasses(prev => prev.filter(o => o.OperationsEventClassID !== id));
+      showSnackbar('Operations Event Class deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete operations event class:', error);
+      showSnackbar('Failed to delete operations event class', 'error');
     }
   };
 
@@ -1877,6 +1944,7 @@ const MasterDataManager: React.FC = () => {
           <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
             <Tab label="Operation Event Definitions" />
             <Tab label="Event-Segment Assignments" />
+            <Tab label="Operations Event Classes" />
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -1909,6 +1977,51 @@ const MasterDataManager: React.FC = () => {
                 }}
                 onDelete={handleDeleteOperationEventDefSegmentAssignment}
               />
+            )}
+            {tabValue === 2 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Operations Event Classes</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingOperationsEventClass(null);
+                    setOperationsEventClassDialog(true);
+                  }}>
+                    Add Operations Event Class
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Class ID</TableCell>
+                        <TableCell>Class Name</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {operationsEventClasses.map((oec) => (
+                        <TableRow key={oec.OperationsEventClassID}>
+                          <TableCell><Chip label={oec.OperationsEventClassID} size="small" /></TableCell>
+                          <TableCell>{oec.ClassName}</TableCell>
+                          <TableCell>{oec.Description}</TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingOperationsEventClass(oec);
+                              setOperationsEventClassDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => handleDeleteOperationsEventClass(oec.OperationsEventClassID)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
             )}
           </Box>
         </Box>
@@ -2298,6 +2411,26 @@ const MasterDataManager: React.FC = () => {
           setEditingCrew(null);
         }}
         onSave={handleSaveCrew}
+      />
+
+      <OperationsEventClassDialog
+        open={operationsEventClassDialog}
+        data={editingOperationsEventClass}
+        onClose={() => {
+          setOperationsEventClassDialog(false);
+          setEditingOperationsEventClass(null);
+        }}
+        onSave={handleSaveOperationsEventClass}
+      />
+
+      <OperationEventDefinitionDialog
+        open={operationEventDefinitionDialog}
+        data={editingOperationEventDefinition}
+        onClose={() => {
+          setOperationEventDefinitionDialog(false);
+          setEditingOperationEventDefinition(null);
+        }}
+        onSave={handleSaveOperationEventDefinition}
       />
 
       <ShiftCrewAssignmentDialog
@@ -5342,6 +5475,206 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               multiline
               rows={2}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Operations Event Class Dialog Component
+interface OperationsEventClassDialogProps {
+  open: boolean;
+  data: OperationsEventClass | null;
+  onClose: () => void;
+  onSave: (data: OperationsEventClass) => void;
+}
+
+const OperationsEventClassDialog: React.FC<OperationsEventClassDialogProps> = ({ open, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState<OperationsEventClass>(
+    data || { OperationsEventClassID: '', ClassName: '', Description: '' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ OperationsEventClassID: '', ClassName: '', Description: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.OperationsEventClassID || !formData.ClassName) {
+      alert('Class ID and Class Name are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Operations Event Class</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Class ID"
+              value={formData.OperationsEventClassID}
+              onChange={(e) => setFormData({ ...formData, OperationsEventClassID: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Class Name"
+              value={formData.ClassName}
+              onChange={(e) => setFormData({ ...formData, ClassName: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.Description}
+              onChange={(e) => setFormData({ ...formData, Description: e.target.value })}
+              multiline
+              rows={3}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Operation Event Definition Dialog Component
+interface OperationEventDefinitionDialogProps {
+  open: boolean;
+  data: OperationEventDefinition | null;
+  onClose: () => void;
+  onSave: (data: OperationEventDefinition) => void;
+}
+
+const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogProps> = ({ open, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState<OperationEventDefinition>(
+    data || { 
+      id: '', 
+      eventCategory: '', 
+      eventCode: '', 
+      description: '', 
+      causesDowntime: false, 
+      causesScrap: false, 
+      rootCauseType: '' 
+    }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ 
+        id: '', 
+        eventCategory: '', 
+        eventCode: '', 
+        description: '', 
+        causesDowntime: false, 
+        causesScrap: false, 
+        rootCauseType: '' 
+      });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.eventCode) {
+      alert('ID and Event Code are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Operation Event Definition</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Event Definition ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Event Code"
+              value={formData.eventCode}
+              onChange={(e) => setFormData({ ...formData, eventCode: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Event Category"
+              value={formData.eventCategory}
+              onChange={(e) => setFormData({ ...formData, eventCategory: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Root Cause Type"
+              value={formData.rootCauseType}
+              onChange={(e) => setFormData({ ...formData, rootCauseType: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.causesDowntime}
+                  onChange={(e) => setFormData({ ...formData, causesDowntime: e.target.checked })}
+                />
+              }
+              label="Causes Downtime"
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.causesScrap}
+                  onChange={(e) => setFormData({ ...formData, causesScrap: e.target.checked })}
+                />
+              }
+              label="Causes Scrap"
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              multiline
+              rows={3}
             />
           </Grid>
         </Grid>

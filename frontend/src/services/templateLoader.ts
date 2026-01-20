@@ -21,6 +21,7 @@ export class TemplateDataLoader {
       { name: 'line_equipment.csv', parser: 'lineEquipment' },
       { name: 'operation_event_definitions.csv', parser: 'operationEventDefinitions' },
       { name: 'operations_event_definition_segment_assignments.csv', parser: 'operationEventDefSegmentAssignments' },
+      { name: 'operations_event_classes.csv', parser: 'operationsEventClasses' },
       { name: 'hierarchy_scope.csv', parser: 'hierarchyScopes' },
       { name: 'hierarchy_scope_flat.csv', parser: 'hierarchyScopesFlat' },
       { name: 'shifts.csv', parser: 'shifts' },
@@ -78,6 +79,9 @@ export class TemplateDataLoader {
             break;
           case 'operationEventDefSegmentAssignments':
             result.operationEventDefSegmentAssignments = csvParser.parseOperationEventDefSegmentAssignments(csvText);
+            break;
+          case 'operationsEventClasses':
+            result.operationsEventClasses = csvParser.parseOperationsEventClasses(csvText);
             break;
           case 'hierarchyScopes':
             result.hierarchyScopes = csvParser.parseHierarchyScopes(csvText);

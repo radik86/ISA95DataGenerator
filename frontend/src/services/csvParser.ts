@@ -247,6 +247,15 @@ class CSVParser {
     }));
   }
 
+  parseOperationsEventClasses(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      OperationsEventClassID: r.OperationsEventClassID,
+      ClassName: r.ClassName,
+      Description: r.Description,
+    }));
+  }
+
   parseHierarchyScopes(csvText: string): any[] {
     const records = this.parseCSV(csvText);
     console.log('[CSV Parser] Hierarchy Scopes - Sample record:', records[0]);

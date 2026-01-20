@@ -1,0 +1,9 @@
+OperationsEventClassID,ClassName,Description
+UnplannedDowntime,UnplannedDowntime,Unplanned Downtime
+UtilityFailure,UtilityFailure,Utility Failure
+QualityScrap,QualityScrap,Quality Scrap
+Quality,Quality,Quality
+ProcessDeviation,ProcessDeviation,Process Deviation
+MaterialIssue,MaterialIssue,Material Issue
+Environmental,Environmental,Environmental
+Planning,Planning,Planning

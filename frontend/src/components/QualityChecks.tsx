@@ -47,6 +47,10 @@ import {
   generateRelationshipMatrix,
   extractEntityRelationships,
   extractEnumerationFields,
+  extractEnumerationsFromDTDL,
+  generateEnumerationValidationScript,
+  generateQualityCheckRulesFromDTDL,
+  generateGeneralEnumerationValidationScript,
   QualityCheckRule
 } from '../services/qualityCheckService';
 import { EntityDefinition } from '../types';
@@ -65,11 +69,97 @@ const QualityChecks: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [relationshipMatrix, setRelationshipMatrix] = useState<Record<string, string[]>>({});
   const [showRelationshipMatrix, setShowRelationshipMatrix] = useState(false);
+  const [dtdlSchemas, setDtdlSchemas] = useState<any[]>([]);
+  const [enumerationStats, setEnumerationStats] = useState({ total: 0, entities: 0 });
 
   useEffect(() => {
     generateDefaultRules();
     loadEntities();
+    loadDTDLSchemas();
   }, []);
+
+  const loadDTDLSchemas = async () => {
+    try {
+      // List of DTDL schema files to load
+      const dtdlFiles = [
+        'BaseModel.json', 'Equipment.json', 'EquipmentActual.json', 'EquipmentActualproperty.json',
+        'EquipmentAssetMapping.json', 'EquipmentCapability.json', 'EquipmentCapabilityproperty.json',
+        'EquipmentClass.json', 'EquipmentClassProperty.json', 'EquipmentProperty.json',
+        'Equipmentrequirement.json', 'Equipmentrequirementproperty.json', 'EquipmentSegmentSpecification.json',
+        'EquipmentSegmentSpecificationProperty.json', 'Equipmentspecification.json', 'Equipmentspecificationproperty.json',
+        'Evaluatedproperty.json', 'FromResourceReference.json', 'FromResourceReferenceProperty.json',
+        'HierarchyScope.json', 'JobList.json', 'JobOrder.json', 'Joborderparameter.json',
+        'Jobresponse.json', 'Jobresponsedata.json', 'Jobresponselist.json', 'LangStringSet.json',
+        'MaterialActual.json', 'MaterialActualproperty.json', 'MaterialCapability.json',
+        'MaterialCapabilityproperty.json', 'MaterialClass.json', 'MaterialClassProperty.json',
+        'MaterialDefinition.json', 'MaterialDefinitionProperty.json', 'MaterialLot.json',
+        'MaterialLotProperty.json', 'Materialrequirement.json', 'Materialrequirementproperty.json',
+        'MaterialSegmentSpecification.json', 'MaterialSegmentSpecificationProperty.json', 'Materialspecification.json',
+        'Materialspecificationproperty.json', 'MaterialSublot.json', 'Operationallocation.json',
+        'Operationallocationclass.json', 'Operationallocationclassproperty.json', 'Operationallocationproperty.json',
+        'OperationsCapability.json', 'OperationsDefinition.json', 'Operationsevent.json',
+        'Operationseventclass.json', 'Operationseventclassproperty.json', 'OperationsEventClassRecordSpecification.json',
+        'Operationseventdefinition.json', 'Operationseventdefinitionproperty.json', 'OperationsEventDefinitionRecordSpecification.json',
+        'Operationseventproperty.json', 'OperationsEventRecord.json', 'OperationsEventRecordEntry.json',
+        'OperationsMaterialBill.json', 'OperationsMaterialBillItem.json', 'OperationsPerformance.json',
+        'OperationsRecordEntryTemplate.json', 'OperationsRecordSpecificationTemplate.json', 'OperationsRecordTemplate.json',
+        'OperationsRequest.json', 'OperationsResponse.json', 'OperationsSchedule.json',
+        'OperationsSegment.json', 'Operationssegmentcapability.json', 'OperationsTestRequirement.json',
+        'Person.json', 'PersonnelActual.json', 'PersonnelActualproperty.json',
+        'PersonnelCapability.json', 'PersonnelCapabilityproperty.json', 'PersonnelClass.json',
+        'PersonnelClassProperty.json', 'Personnelrequirement.json', 'Personnelrequirementproperty.json',
+        'PersonnelSegmentSpecification.json', 'PersonnelSegmentSpecificationProperty.json', 'Personnelspecification.json',
+        'Personnelspecificationproperty.json', 'PersonProperty.json', 'PhysicalAsset.json',
+        'PhysicalAssetActual.json', 'PhysicalAssetActualproperty.json', 'PhysicalAssetCapability.json',
+        'PhysicalAssetCapabilityproperty.json', 'PhysicalAssetClass.json', 'PhysicalAssetClassProperty.json',
+        'PhysicalAssetProperty.json', 'PhysicalAssetrequirement.json', 'PhysicalAssetrequirementproperty.json',
+        'PhysicalAssetSegmentSpecification.json', 'PhysicalAssetSegmentSpecificationProperty.json', 'PhysicalAssetspecification.json',
+        'PhysicalAssetspecificationproperty.json', 'ProcessSegment.json', 'Processsegmentcapability.json',
+        'ProcessSegmentDependency.json', 'ProcessSegmentParameter.json', 'Propertymeasurement.json',
+        'Resource.json', 'ResourceActual.json', 'ResourceClass.json', 'ResourceClassProperty.json',
+        'ResourceNetworkConnection.json', 'ResourceNetworkConnectionProperty.json', 'ResourceNetworkConnectionType.json',
+        'ResourceNetworkConnectionTypeProperty.json', 'ResourceProperty.json', 'ResourceRelationshipNetwork.json',
+        'ResourceRelationshipNetworkProperty.json', 'SegmentData.json', 'SegmentRequirement.json',
+        'SegmentResponse.json', 'SpatialDefinition.json', 'Tags.json', 'TestableObject.json',
+        'TestableObjectProperty.json', 'Testresult.json', 'Testspecification.json',
+        'Testspecificationcriteria.json', 'Testspecificationproperty.json', 'ToResourceReference.json',
+        'ToResourceReferenceProperty.json', 'WorkAlert.json', 'WorkAlertDefinition.json',
+        'WorkAlertDefinitionProperty.json', 'WorkAlertProperty.json', 'Workcalendar.json',
+        'Workcalendardefinition.json', 'Workcalendardefinitionentry.json', 'Workcalendardefinitionentryproperty.json',
+        'Workcalendardefinitionproperty.json', 'Workcalendarentry.json', 'Workcalendarentryproperty.json',
+        'Workcalendarproperty.json', 'WorkCapability.json', 'WorkDefinition.json',
+        'workdirective.json', 'workmaster.json', 'WorkMasterCapability.json',
+        'workPerformance.json', 'workrequest.json', 'workResponse.json', 'workschedule.json'
+      ];
+      
+      // Load each schema file
+      const schemas = await Promise.all(
+        dtdlFiles.map(async (file) => {
+          try {
+            const schemaResponse = await fetch(`/InbuiltEntitiesDTDL/${file}`);
+            if (schemaResponse.ok) {
+              return await schemaResponse.json();
+            }
+          } catch (err) {
+            console.error(`Error loading ${file}:`, err);
+          }
+          return null;
+        })
+      );
+      
+      const validSchemas = schemas.filter(s => s !== null);
+      setDtdlSchemas(validSchemas);
+      
+      // Calculate enumeration statistics
+      const enums = extractEnumerationsFromDTDL(validSchemas);
+      const uniqueEntities = new Set(enums.map(e => e.entityName));
+      setEnumerationStats({ total: enums.length, entities: uniqueEntities.size });
+      
+      console.log(`Loaded ${validSchemas.length} DTDL schemas with ${enums.length} enumeration fields`);
+    } catch (error) {
+      console.error('Error loading DTDL schemas:', error);
+    }
+  };
 
   const loadEntities = async () => {
     try {
@@ -103,6 +193,45 @@ const QualityChecks: React.FC = () => {
     const generatedRules = generateQualityCheckRules(entities);
     setQualityRules(prev => [...prev, ...generatedRules]);
     alert(`Generated ${generatedRules.length} quality check rules`);
+  };
+
+  const handleGenerateEnumerationRules = () => {
+    if (dtdlSchemas.length === 0) {
+      alert('Please wait for DTDL schemas to load');
+      return;
+    }
+
+    if (!confirm('This will add enumeration validation rules from DTDL schemas. Continue?')) {
+      return;
+    }
+
+    const generatedRules = generateQualityCheckRulesFromDTDL(dtdlSchemas);
+    setQualityRules(prev => [...prev, ...generatedRules]);
+    alert(`Generated ${generatedRules.length} enumeration validation rules from ${enumerationStats.entities} entities`);
+  };
+
+  const handleGenerateEnumerationSQL = () => {
+    if (dtdlSchemas.length === 0) {
+      alert('Please wait for DTDL schemas to load');
+      return;
+    }
+
+    const enumerations = extractEnumerationsFromDTDL(dtdlSchemas);
+    const script = generateEnumerationValidationScript(enumerations);
+    setSqlPreview(script);
+    setShowSqlDialog(true);
+  };
+
+  const handleGenerateGeneralEnumerationSQL = () => {
+    if (dtdlSchemas.length === 0) {
+      alert('Please wait for DTDL schemas to load');
+      return;
+    }
+
+    const enumerations = extractEnumerationsFromDTDL(dtdlSchemas);
+    const script = generateGeneralEnumerationValidationScript(enumerations);
+    setSqlPreview(script);
+    setShowSqlDialog(true);
   };
 
   const generateDefaultRules = () => {
@@ -701,15 +830,46 @@ WHERE ms.materialLotId IS NOT NULL AND ml.id IS NULL;`,
             startIcon={<AutoGenerateIcon />}
             onClick={handleAutoGenerateRules}
             disabled={loading || entities.length === 0}
-            sx={{ mr: 2 }}
+            sx={{ mr: 1 }}
           >
-            Auto-Generate Rules
+            Auto-Generate All
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<AutoGenerateIcon />}
+            onClick={handleGenerateEnumerationRules}
+            disabled={dtdlSchemas.length === 0}
+            color="secondary"
+            sx={{ mr: 1 }}
+          >
+            Enum Rules ({enumerationStats.total})
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<CodeIcon />}
+            onClick={handleGenerateEnumerationSQL}
+            disabled={dtdlSchemas.length === 0}
+            color="secondary"
+            sx={{ mr: 1 }}
+          >
+            Enum SQL Only
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<CodeIcon />}
+            onClick={handleGenerateGeneralEnumerationSQL}
+            disabled={dtdlSchemas.length === 0}
+            color="primary"
+            sx={{ mr: 1 }}
+            title={dtdlSchemas.length === 0 ? 'Loading DTDL schemas...' : `Generate general validation with ${enumerationStats.total} fields`}
+          >
+            General Enum SQL ({enumerationStats.total})
           </Button>
           <Button
             variant="outlined"
             startIcon={<PreviewIcon />}
             onClick={() => setShowRelationshipMatrix(!showRelationshipMatrix)}
-            sx={{ mr: 2 }}
+            sx={{ mr: 1 }}
           >
             Relationship Matrix
           </Button>
@@ -717,7 +877,7 @@ WHERE ms.materialLotId IS NOT NULL AND ml.id IS NULL;`,
             variant="outlined"
             startIcon={<CodeIcon />}
             onClick={generateSqlScript}
-            sx={{ mr: 2 }}
+            sx={{ mr: 1 }}
           >
             Generate SQL Script
           </Button>
@@ -733,9 +893,13 @@ WHERE ms.materialLotId IS NOT NULL AND ml.id IS NULL;`,
 
       <Alert severity="info" sx={{ mb: 3 }}>
         Quality checks validate data integrity, enumeration values, relationships, and business rules.
+        <br />
         Active rules: {qualityRules.filter(r => r.isActive).length} / {qualityRules.length}
         {entities.length > 0 && (
-          <><br />Entities loaded: {entities.length} | Total possible relationships: {Object.values(relationshipMatrix).flat().length}</>
+          <> | Entities loaded: {entities.length} | Total possible relationships: {Object.values(relationshipMatrix).flat().length}</>
+        )}
+        {dtdlSchemas.length > 0 && (
+          <> | DTDL Schemas: {dtdlSchemas.length} | Enumeration fields: {enumerationStats.total} ({enumerationStats.entities} entities)</>
         )}
       </Alert>
 
