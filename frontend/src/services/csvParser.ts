@@ -15,6 +15,10 @@ export interface ParsedCSVData {
   productionLines?: any[];
   lineEquipment?: any[];
   operationEventDefinitions?: any[];
+  operationEventDefSegmentAssignments?: any[];
+  operationsEventClasses?: any[];
+  operationsEventRecords?: any[];
+  operationsEventEntries?: any[];
   hierarchyScopes?: any[];
   hierarchyScopesFlat?: any[];
   shifts?: any[];
@@ -24,23 +28,41 @@ export interface ParsedCSVData {
 
 class CSVParser {
   parseCSV(csvText: string): any[] {
-    const lines = csvText.trim().split('\n');
-    if (lines.length < 2) return [];
+    // Normalize line endings - replace CRLF with LF
+    const normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedText.trim().split('\n');
+    
+    console.log('[CSV Parser] Total lines:', lines.length);
+    
+    if (lines.length < 2) {
+      console.log('[CSV Parser] Not enough lines');
+      return [];
+    }
 
-    const headers = lines[0].split(',').map(h => h.trim());
+    const headers = lines[0].split(',').map(h => h.trim().replace(/\r/g, ''));
+    console.log('[CSV Parser] Headers:', headers);
+    
     const records: any[] = [];
 
     for (let i = 1; i < lines.length; i++) {
       const values = this.parseCSVLine(lines[i]);
+      console.log(`[CSV Parser] Line ${i} values:`, values, 'length:', values.length, 'headers length:', headers.length);
+      
       if (values.length === headers.length) {
         const record: any = {};
         headers.forEach((header, index) => {
           record[header] = values[index];
         });
+        if (i === 1) {
+          console.log('[CSV Parser] First record:', record);
+        }
         records.push(record);
+      } else {
+        console.log(`[CSV Parser] Skipping line ${i} - length mismatch: ${values.length} vs ${headers.length}`);
       }
     }
 
+    console.log('[CSV Parser] Total records parsed:', records.length);
     return records;
   }
 
@@ -252,6 +274,44 @@ class CSVParser {
     return records.map(r => ({
       OperationsEventClassID: r.OperationsEventClassID,
       ClassName: r.ClassName,
+      Description: r.Description,
+    }));
+  }
+
+  parseOperationsEventRecords(csvText: string): any[] {
+    console.log('[parseOperationsEventRecords] CSV text length:', csvText?.length);
+    console.log('[parseOperationsEventRecords] First 200 chars:', csvText?.substring(0, 200));
+    const records = this.parseCSV(csvText);
+    console.log('[CSV Parser] Operations Event Records - Raw records:', records.length);
+    if (records.length > 0) {
+      console.log('[CSV Parser] Operations Event Records - Sample:', records[0]);
+    }
+    const mapped = records.map(r => ({
+      id: r.OperationsEventRecordID,
+      OperationsEventRecordID: r.OperationsEventRecordID,
+      OperationsEventDefinitionID: r.OperationsEventDefinitionID,
+      Severity: r.Severity,
+      Status: r.Status,
+      Comments: r.Comments,
+    }));
+    console.log('[parseOperationsEventRecords] Mapped records:', mapped.length);
+    if (mapped.length > 0) {
+      console.log('[parseOperationsEventRecords] First mapped record:', mapped[0]);
+    }
+    return mapped;
+  }
+
+  parseOperationsEventEntries(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    console.log('[CSV Parser] Operations Event Entries - Raw records:', records.length);
+    if (records.length > 0) {
+      console.log('[CSV Parser] Operations Event Entries - Sample:', records[0]);
+    }
+    return records.map(r => ({
+      id: r.OperationsEventEntryID,
+      OperationsEventEntryID: r.OperationsEventEntryID,
+      OperationsEventRecordID: r.OperationsEventRecordID,
+      EntryType: r.EntryType,
       Description: r.Description,
     }));
   }

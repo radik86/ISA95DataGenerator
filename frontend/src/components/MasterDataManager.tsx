@@ -180,6 +180,23 @@ interface OperationsEventClass {
   Description: string;
 }
 
+interface OperationsEventRecord {
+  id: string;
+  OperationsEventRecordID: string;
+  OperationsEventDefinitionID: string;
+  Severity: string;
+  Status: string;
+  Comments: string;
+}
+
+interface OperationsEventEntry {
+  id: string;
+  OperationsEventEntryID: string;
+  OperationsEventRecordID: string;
+  EntryType: string;
+  Description: string;
+}
+
 interface HierarchyScope {
   id: string;
   equipmentID: string;
@@ -349,6 +366,16 @@ const MasterDataManager: React.FC = () => {
   const [operationsEventClassDialog, setOperationsEventClassDialog] = useState(false);
   const [editingOperationsEventClass, setEditingOperationsEventClass] = useState<OperationsEventClass | null>(null);
 
+  // Operations Event Record State
+  const [operationsEventRecords, setOperationsEventRecords] = useState<OperationsEventRecord[]>([]);
+  const [operationsEventRecordDialog, setOperationsEventRecordDialog] = useState(false);
+  const [editingOperationsEventRecord, setEditingOperationsEventRecord] = useState<OperationsEventRecord | null>(null);
+
+  // Operations Event Entry State
+  const [operationsEventEntries, setOperationsEventEntries] = useState<OperationsEventEntry[]>([]);
+  const [operationsEventEntryDialog, setOperationsEventEntryDialog] = useState(false);
+  const [editingOperationsEventEntry, setEditingOperationsEventEntry] = useState<OperationsEventEntry | null>(null);
+
   // Personnel Information State
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [shiftDialog, setShiftDialog] = useState(false);
@@ -381,7 +408,7 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, sh, cr, sca, oec] = await Promise.all([
+      const [mc, m, ml, ms, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, sh, cr, sca, oec, oer, oee] = await Promise.all([
         masterDataDB.getAll('materialClasses'),
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('materialLots'),
@@ -405,6 +432,8 @@ const MasterDataManager: React.FC = () => {
         masterDataDB.getAll('crews'),
         masterDataDB.getAll('shiftCrewAssignments'),
         masterDataDB.getAll('operationsEventClasses'),
+        masterDataDB.getAll('operationsEventRecords'),
+        masterDataDB.getAll('operationsEventEntries'),
       ]);
 
       setMaterialClasses(mc);
@@ -430,6 +459,8 @@ const MasterDataManager: React.FC = () => {
       setCrews(cr);
       setShiftCrewAssignments(sca);
       setOperationsEventClasses(oec);
+      setOperationsEventRecords(oer);
+      setOperationsEventEntries(oee);
       
       console.log('Loaded data counts:', {
         equipmentProperties: ep.length,
@@ -1107,6 +1138,70 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete operations event class:', error);
       showSnackbar('Failed to delete operations event class', 'error');
+    }
+  };
+
+  // Operations Event Record Handlers
+  const handleSaveOperationsEventRecord = async (data: OperationsEventRecord) => {
+    try {
+      if (editingOperationsEventRecord) {
+        await masterDataDB.update('operationsEventRecords', data);
+        setOperationsEventRecords(prev => prev.map(o => o.id === data.id ? data : o));
+        showSnackbar('Operations Event Record updated', 'success');
+      } else {
+        await masterDataDB.add('operationsEventRecords', data);
+        setOperationsEventRecords(prev => [...prev, data]);
+        showSnackbar('Operations Event Record added', 'success');
+      }
+      setOperationsEventRecordDialog(false);
+      setEditingOperationsEventRecord(null);
+    } catch (error) {
+      console.error('Failed to save operations event record:', error);
+      showSnackbar('Failed to save operations event record', 'error');
+    }
+  };
+
+  const handleDeleteOperationsEventRecord = async (id: string) => {
+    if (!confirm('Delete this operations event record?')) return;
+    try {
+      await masterDataDB.delete('operationsEventRecords', id);
+      setOperationsEventRecords(prev => prev.filter(o => o.id !== id));
+      showSnackbar('Operations Event Record deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete operations event record:', error);
+      showSnackbar('Failed to delete operations event record', 'error');
+    }
+  };
+
+  // Operations Event Entry Handlers
+  const handleSaveOperationsEventEntry = async (data: OperationsEventEntry) => {
+    try {
+      if (editingOperationsEventEntry) {
+        await masterDataDB.update('operationsEventEntries', data);
+        setOperationsEventEntries(prev => prev.map(o => o.id === data.id ? data : o));
+        showSnackbar('Operations Event Entry updated', 'success');
+      } else {
+        await masterDataDB.add('operationsEventEntries', data);
+        setOperationsEventEntries(prev => [...prev, data]);
+        showSnackbar('Operations Event Entry added', 'success');
+      }
+      setOperationsEventEntryDialog(false);
+      setEditingOperationsEventEntry(null);
+    } catch (error) {
+      console.error('Failed to save operations event entry:', error);
+      showSnackbar('Failed to save operations event entry', 'error');
+    }
+  };
+
+  const handleDeleteOperationsEventEntry = async (id: string) => {
+    if (!confirm('Delete this operations event entry?')) return;
+    try {
+      await masterDataDB.delete('operationsEventEntries', id);
+      setOperationsEventEntries(prev => prev.filter(o => o.id !== id));
+      showSnackbar('Operations Event Entry deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete operations event entry:', error);
+      showSnackbar('Failed to delete operations event entry', 'error');
     }
   };
 
@@ -1945,6 +2040,8 @@ const MasterDataManager: React.FC = () => {
             <Tab label="Operation Event Definitions" />
             <Tab label="Event-Segment Assignments" />
             <Tab label="Operations Event Classes" />
+            <Tab label="Operations Event Records" />
+            <Tab label="Operations Event Entries" />
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -2018,6 +2115,108 @@ const MasterDataManager: React.FC = () => {
                           </TableCell>
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+            {tabValue === 3 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Operations Event Records</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingOperationsEventRecord(null);
+                    setOperationsEventRecordDialog(true);
+                  }}>
+                    Add Operations Event Record
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Record ID</TableCell>
+                        <TableCell>Event Definition</TableCell>
+                        <TableCell>Severity</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Comments</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {operationsEventRecords.map((oer) => {
+                        const eventDef = operationEventDefinitions.find(oed => oed.id === oer.OperationsEventDefinitionID);
+                        return (
+                          <TableRow key={oer.id}>
+                            <TableCell><Chip label={oer.OperationsEventRecordID} size="small" /></TableCell>
+                            <TableCell>{eventDef?.description || oer.OperationsEventDefinitionID}</TableCell>
+                            <TableCell><Chip label={oer.Severity} size="small" color={oer.Severity === 'Critical' ? 'error' : oer.Severity === 'High' ? 'warning' : 'default'} /></TableCell>
+                            <TableCell><Chip label={oer.Status} size="small" color={oer.Status === 'Open' ? 'warning' : 'success'} /></TableCell>
+                            <TableCell>{oer.Comments}</TableCell>
+                            <TableCell align="right">
+                              <IconButton size="small" onClick={() => {
+                                setEditingOperationsEventRecord(oer);
+                                setOperationsEventRecordDialog(true);
+                              }}>
+                                <EditIcon />
+                              </IconButton>
+                              <IconButton size="small" onClick={() => handleDeleteOperationsEventRecord(oer.id)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+            {tabValue === 4 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Operations Event Entries</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingOperationsEventEntry(null);
+                    setOperationsEventEntryDialog(true);
+                  }}>
+                    Add Operations Event Entry
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Entry ID</TableCell>
+                        <TableCell>Event Record</TableCell>
+                        <TableCell>Entry Type</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {operationsEventEntries.map((oee) => {
+                        const eventRecord = operationsEventRecords.find(oer => oer.OperationsEventRecordID === oee.OperationsEventRecordID);
+                        return (
+                          <TableRow key={oee.id}>
+                            <TableCell><Chip label={oee.OperationsEventEntryID} size="small" /></TableCell>
+                            <TableCell>{eventRecord?.OperationsEventRecordID || oee.OperationsEventRecordID}</TableCell>
+                            <TableCell><Chip label={oee.EntryType} size="small" color="primary" /></TableCell>
+                            <TableCell>{oee.Description}</TableCell>
+                            <TableCell align="right">
+                              <IconButton size="small" onClick={() => {
+                                setEditingOperationsEventEntry(oee);
+                                setOperationsEventEntryDialog(true);
+                              }}>
+                                <EditIcon />
+                              </IconButton>
+                              <IconButton size="small" onClick={() => handleDeleteOperationsEventEntry(oee.id)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -2421,6 +2620,28 @@ const MasterDataManager: React.FC = () => {
           setEditingOperationsEventClass(null);
         }}
         onSave={handleSaveOperationsEventClass}
+      />
+
+      <OperationsEventRecordDialog
+        open={operationsEventRecordDialog}
+        data={editingOperationsEventRecord}
+        operationEventDefinitions={operationEventDefinitions}
+        onClose={() => {
+          setOperationsEventRecordDialog(false);
+          setEditingOperationsEventRecord(null);
+        }}
+        onSave={handleSaveOperationsEventRecord}
+      />
+
+      <OperationsEventEntryDialog
+        open={operationsEventEntryDialog}
+        data={editingOperationsEventEntry}
+        operationsEventRecords={operationsEventRecords}
+        onClose={() => {
+          setOperationsEventEntryDialog(false);
+          setEditingOperationsEventEntry(null);
+        }}
+        onSave={handleSaveOperationsEventEntry}
       />
 
       <OperationEventDefinitionDialog
@@ -5548,6 +5769,237 @@ const OperationsEventClassDialog: React.FC<OperationsEventClassDialogProps> = ({
               onChange={(e) => setFormData({ ...formData, Description: e.target.value })}
               multiline
               rows={3}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Operations Event Record Dialog Component
+interface OperationsEventRecordDialogProps {
+  open: boolean;
+  data: OperationsEventRecord | null;
+  operationEventDefinitions: OperationEventDefinition[];
+  onClose: () => void;
+  onSave: (data: OperationsEventRecord) => void;
+}
+
+const OperationsEventRecordDialog: React.FC<OperationsEventRecordDialogProps> = ({ open, data, operationEventDefinitions, onClose, onSave }) => {
+  const [formData, setFormData] = useState<OperationsEventRecord>(data || { 
+    id: '', 
+    OperationsEventRecordID: '', 
+    OperationsEventDefinitionID: '', 
+    Severity: '', 
+    Status: '', 
+    Comments: '' 
+  });
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      const newId = `OER-${Date.now()}`;
+      setFormData({ 
+        id: newId, 
+        OperationsEventRecordID: newId, 
+        OperationsEventDefinitionID: '', 
+        Severity: '', 
+        Status: '', 
+        Comments: '' 
+      });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.OperationsEventRecordID || !formData.OperationsEventDefinitionID) {
+      alert('Record ID and Event Definition are required');
+      return;
+    }
+    onSave({ ...formData, id: formData.OperationsEventRecordID });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Operations Event Record</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Record ID"
+              value={formData.OperationsEventRecordID}
+              onChange={(e) => setFormData({ ...formData, OperationsEventRecordID: e.target.value, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Event Definition</InputLabel>
+              <Select
+                value={formData.OperationsEventDefinitionID}
+                onChange={(e) => setFormData({ ...formData, OperationsEventDefinitionID: e.target.value })}
+                label="Event Definition"
+              >
+                {operationEventDefinitions.map((oed) => (
+                  <MenuItem key={oed.id} value={oed.id}>
+                    {oed.description} ({oed.eventCode})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl fullWidth>
+              <InputLabel>Severity</InputLabel>
+              <Select
+                value={formData.Severity}
+                onChange={(e) => setFormData({ ...formData, Severity: e.target.value })}
+                label="Severity"
+              >
+                <MenuItem value="Low">Low</MenuItem>
+                <MenuItem value="Medium">Medium</MenuItem>
+                <MenuItem value="High">High</MenuItem>
+                <MenuItem value="Critical">Critical</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={formData.Status}
+                onChange={(e) => setFormData({ ...formData, Status: e.target.value })}
+                label="Status"
+              >
+                <MenuItem value="Open">Open</MenuItem>
+                <MenuItem value="In Progress">In Progress</MenuItem>
+                <MenuItem value="Resolved">Resolved</MenuItem>
+                <MenuItem value="Closed">Closed</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Comments"
+              value={formData.Comments}
+              onChange={(e) => setFormData({ ...formData, Comments: e.target.value })}
+              multiline
+              rows={3}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Operations Event Entry Dialog Component
+interface OperationsEventEntryDialogProps {
+  open: boolean;
+  data: OperationsEventEntry | null;
+  operationsEventRecords: OperationsEventRecord[];
+  onClose: () => void;
+  onSave: (data: OperationsEventEntry) => void;
+}
+
+const OperationsEventEntryDialog: React.FC<OperationsEventEntryDialogProps> = ({ open, data, operationsEventRecords, onClose, onSave }) => {
+  const [formData, setFormData] = useState<OperationsEventEntry>(data || { 
+    id: '', 
+    OperationsEventEntryID: '', 
+    OperationsEventRecordID: '', 
+    EntryType: '', 
+    Description: '' 
+  });
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      const newId = `OEE-${Date.now()}`;
+      setFormData({ 
+        id: newId, 
+        OperationsEventEntryID: newId, 
+        OperationsEventRecordID: '', 
+        EntryType: '', 
+        Description: '' 
+      });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.OperationsEventEntryID || !formData.OperationsEventRecordID) {
+      alert('Entry ID and Event Record are required');
+      return;
+    }
+    onSave({ ...formData, id: formData.OperationsEventEntryID });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Operations Event Entry</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Entry ID"
+              value={formData.OperationsEventEntryID}
+              onChange={(e) => setFormData({ ...formData, OperationsEventEntryID: e.target.value, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Event Record</InputLabel>
+              <Select
+                value={formData.OperationsEventRecordID}
+                onChange={(e) => setFormData({ ...formData, OperationsEventRecordID: e.target.value })}
+                label="Event Record"
+              >
+                {operationsEventRecords.map((oer) => (
+                  <MenuItem key={oer.OperationsEventRecordID} value={oer.OperationsEventRecordID}>
+                    {oer.OperationsEventRecordID} - {oer.Status}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Entry Type</InputLabel>
+              <Select
+                value={formData.EntryType}
+                onChange={(e) => setFormData({ ...formData, EntryType: e.target.value })}
+                label="Entry Type"
+              >
+                <MenuItem value="Note">Note</MenuItem>
+                <MenuItem value="Action">Action</MenuItem>
+                <MenuItem value="Resolution">Resolution</MenuItem>
+                <MenuItem value="Follow-up">Follow-up</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.Description}
+              onChange={(e) => setFormData({ ...formData, Description: e.target.value })}
+              multiline
+              rows={4}
             />
           </Grid>
         </Grid>

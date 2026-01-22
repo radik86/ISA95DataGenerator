@@ -5,6 +5,7 @@ export class TemplateDataLoader {
   private readonly TEMPLATE_BASE_PATH = '/templates/masterdata';
 
   async loadAllTemplates(): Promise<ParsedCSVData> {
+    console.log('[TemplateLoader] Starting to load all templates');
     const files = [
       { name: 'material_classes.csv', parser: 'materialClasses' },
       { name: 'materials.csv', parser: 'materials' },
@@ -22,6 +23,8 @@ export class TemplateDataLoader {
       { name: 'operation_event_definitions.csv', parser: 'operationEventDefinitions' },
       { name: 'operations_event_definition_segment_assignments.csv', parser: 'operationEventDefSegmentAssignments' },
       { name: 'operations_event_classes.csv', parser: 'operationsEventClasses' },
+      { name: 'operations_event_records_template.csv', parser: 'operationsEventRecords' },
+      { name: 'operations_event_entries_template.csv', parser: 'operationsEventEntries' },
       { name: 'hierarchy_scope.csv', parser: 'hierarchyScopes' },
       { name: 'hierarchy_scope_flat.csv', parser: 'hierarchyScopesFlat' },
       { name: 'shifts.csv', parser: 'shifts' },
@@ -33,7 +36,9 @@ export class TemplateDataLoader {
 
     for (const file of files) {
       try {
+        console.log(`[TemplateLoader] Loading file: ${file.name}, parser: ${file.parser}`);
         const csvText = await this.fetchCSV(file.name);
+        console.log(`[TemplateLoader] Loaded ${file.name}, length: ${csvText?.length}`);
         switch (file.parser) {
           case 'materialClasses':
             result.materialClasses = csvParser.parseMaterialClasses(csvText);
@@ -82,6 +87,12 @@ export class TemplateDataLoader {
             break;
           case 'operationsEventClasses':
             result.operationsEventClasses = csvParser.parseOperationsEventClasses(csvText);
+            break;
+          case 'operationsEventRecords':
+            result.operationsEventRecords = csvParser.parseOperationsEventRecords(csvText);
+            break;
+          case 'operationsEventEntries':
+            result.operationsEventEntries = csvParser.parseOperationsEventEntries(csvText);
             break;
           case 'hierarchyScopes':
             result.hierarchyScopes = csvParser.parseHierarchyScopes(csvText);

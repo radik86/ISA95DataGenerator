@@ -13,18 +13,25 @@ import {
   TableRow,
   Chip,
   Box,
+  Button,
+  Menu,
+  MenuItem,
+  Divider,
+  CircularProgress,
 } from '@mui/material';
-import { InfoOutlined as InfoIcon } from '@mui/icons-material';
+import { InfoOutlined as InfoIcon, Add as AddIcon, CallMade as OutboundIcon, CallReceived as InboundIcon } from '@mui/icons-material';
+import { useEntities } from '../api/hooks';
 import { EntityDefinition, AttributeDefinition, RelationshipDefinition } from '../types';
 
 export interface EntityNodeData {
   entity: EntityDefinition;
   isRoot?: boolean;
+  onAddRelationship?: (entity: EntityDefinition, anchorEl: HTMLElement) => void;
 }
 
 const EntityNode: React.FC<NodeProps> = ({ data }) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const { entity, isRoot } = data as unknown as EntityNodeData;
+  const { entity, isRoot, onAddRelationship } = data as unknown as EntityNodeData;
 
   const handleInfoClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -75,6 +82,22 @@ const EntityNode: React.FC<NodeProps> = ({ data }) => {
             <InfoIcon fontSize="small" />
           </IconButton>
         </Box>
+
+        {onAddRelationship && (
+          <Button
+            fullWidth
+            size="small"
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddRelationship(entity, e.currentTarget);
+            }}
+            sx={{ mt: 1, fontSize: '0.75rem' }}
+          >
+            Add Relationship
+          </Button>
+        )}
 
         {isRoot && (
           <Chip

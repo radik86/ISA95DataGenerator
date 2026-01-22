@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { masterDataDB } from '../services/masterDataDB';
 import { processDataDB } from '../services/processDataDB';
+import * as XLSX from 'xlsx';
 
 // Interfaces
 interface OperationsRequest {
@@ -1717,6 +1718,96 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
     window.URL.revokeObjectURL(url);
   };
 
+  const exportToExcel = () => {
+    if (!generatedOperationsRequest || segmentRequirements.length === 0) {
+      showSnackbar('No data to export', 'error');
+      return;
+    }
+
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      // Operations Request Sheet
+      const orData = [{
+        'Operations Request ID': generatedOperationsRequest.id,
+        'Description': generatedOperationsRequest.description,
+        'Plant ID': generatedOperationsRequest.plantId,
+        'Line ID': generatedOperationsRequest.lineId,
+        'Product Material ID': generatedOperationsRequest.productMaterialId,
+        'Planned Quantity': generatedOperationsRequest.plannedQuantity,
+        'Quantity UoM': generatedOperationsRequest.quantityUoM,
+        'Planned Start Date Time': generatedOperationsRequest.plannedStartDateTime,
+        'Planned End Date Time': generatedOperationsRequest.plannedEndDateTime,
+        'Priority': generatedOperationsRequest.priority,
+        'Status': generatedOperationsRequest.status
+      }];
+      const orSheet = XLSX.utils.json_to_sheet(orData);
+      XLSX.utils.book_append_sheet(workbook, orSheet, 'Operations Request');
+
+      // Segment Requirements Sheet
+      const srData = segmentRequirements.map(sr => {
+        const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
+        return {
+          'Segment Requirement ID': sr.id,
+          'Operations Request ID': sr.operationsRequestId,
+          'Process Segment ID': sr.processSegmentId,
+          'Process Segment Name': segment?.name || '',
+          'Sequence': sr.sequence,
+          'Earliest Start Date Time': sr.earliestStartDateTime,
+          'Latest End Date Time': sr.latestEndDateTime,
+          'Target Quantity': sr.targetQuantity,
+          'Quantity UoM': sr.quantityUoM
+        };
+      });
+      const srSheet = XLSX.utils.json_to_sheet(srData);
+      XLSX.utils.book_append_sheet(workbook, srSheet, 'Segment Requirements');
+
+      // Material Requirements Sheet
+      const mrData = materialRequirements.map(mr => {
+        const material = materials.find(m => m.id === mr.materialId);
+        return {
+          'Segment Material Req ID': mr.id,
+          'Segment Requirement ID': mr.segmentRequirementId,
+          'Material ID': mr.materialId,
+          'Material Name': material?.name || '',
+          'Required Qty': mr.requiredQty,
+          'Qty UoM': mr.qtyUoM,
+          'Requirement Type': mr.requirementType
+        };
+      });
+      const mrSheet = XLSX.utils.json_to_sheet(mrData);
+      XLSX.utils.book_append_sheet(workbook, mrSheet, 'Material Requirements');
+
+      // Equipment Requirements Sheet
+      const erData = equipmentRequirements.map(er => {
+        const equipmentItem = equipment.find(e => e.id === er.equipmentId);
+        return {
+          'Segment Equipment Req ID': er.id,
+          'Segment Requirement ID': er.segmentRequirementId,
+          'Line ID': er.lineId,
+          'Equipment Class ID': er.equipmentClassId,
+          'Equipment ID': er.equipmentId,
+          'Equipment Name': equipmentItem?.name || '',
+          'Requirement Type': er.requirementType,
+          'Planned Duration Hours': er.plannedDurationHours
+        };
+      });
+      const erSheet = XLSX.utils.json_to_sheet(erData);
+      XLSX.utils.book_append_sheet(workbook, erSheet, 'Equipment Requirements');
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `Plan_Data_${generatedOperationsRequest.id}_${timestamp}.xlsx`;
+
+      // Write the file
+      XLSX.writeFile(workbook, filename);
+      showSnackbar('Plan data exported to Excel successfully', 'success');
+    } catch (error) {
+      console.error('Failed to export to Excel:', error);
+      showSnackbar('Failed to export to Excel', 'error');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       id: '',
@@ -1789,9 +1880,21 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             startIcon={<DownloadIcon />}
             onClick={() => activeTab === 0 ? exportToCSV('all') : exportActualToCSV('all')}
             disabled={activeTab === 0 ? segmentRequirements.length === 0 : segmentResponses.length === 0}
+            sx={{ mr: 1 }}
           >
             Export All CSV
           </Button>
+          {activeTab === 0 && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<GetAppIcon />}
+              onClick={exportToExcel}
+              disabled={segmentRequirements.length === 0}
+            >
+              Export to Excel
+            </Button>
+          )}
         </Box>
       </Box>
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   ReactFlow,
   Node,
@@ -12,8 +12,26 @@ import {
   NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useEntityGraph } from '../api/hooks';
-import { Box, CircularProgress, Alert, Tooltip } from '@mui/material';
+import { useEntityGraph, useEntities } from '../api/hooks';
+import { 
+  Box, 
+  CircularProgress, 
+  Alert, 
+  Button,
+  Menu,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Typography,
+  Divider,
+} from '@mui/material';
+import { CallMade as OutboundIcon, CallReceived as InboundIcon } from '@mui/icons-material';
 import { EntityDefinition, Cardinality } from '../types';
 import EntityNode, { EntityNodeData } from './EntityNode';
 
@@ -192,11 +210,114 @@ const getLayoutedNodes = (entities: Record<string, EntityDefinition>, rootEntity
 
 const EntityGraph: React.FC<EntityGraphProps> = ({ entityName, maxDepth = 2 }) => {
   const { data: graphData, isLoading, error } = useEntityGraph(entityName, maxDepth);
+  const { data: allEntities } = useEntities();
+  
+  // State for relationship management
+  const [relationshipMenuAnchor, setRelationshipMenuAnchor] = useState<null | HTMLElement>(null);
+  const [relationshipDialog, setRelationshipDialog] = useState<{ open: boolean; direction: 'inbound' | 'outbound' | null }>({ 
+    open: false, 
+    direction: null 
+  });
+  const [loadingInbound, setLoadingInbound] = useState(false);
+  const [availableRelationships, setAvailableRelationships] = useState<any[]>([]);
+  const [entityStructureCache, setEntityStructureCache] = useState<Record<string, any>>({});
+  const [selectedEntityForRelationships, setSelectedEntityForRelationships] = useState<EntityDefinition | null>(null);
+
+  // Fetch entity structure from API
+  const fetchEntityStructure = async (entityName: string) => {
+    try {
+      const response = await fetch(`http://localhost:5237/api/entities/${entityName}/structure`);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (error) {
+      console.error('Failed to fetch entity structure:', error);
+    }
+    return null;
+  };
+
+  // Load inbound relationships - matches GraphDataGeneration logic
+  const loadInboundRelationships = useCallback(async (entity: EntityDefinition) => {
+    if (!graphData || !graphData[entity.name]) return;
+    
+    setLoadingInbound(true);
+    const inboundRels: any[] = [];
+    
+    try {
+      const rootEntityData = graphData[entity.name];
+      const rootEntityId = rootEntityData.id;
+      
+      // Check all entities in the system (not just those in graphData)
+      for (const otherEntity of allEntities || []) {
+        // Skip the selected entity itself
+        if (otherEntity.name === entity.name) continue;
+        
+        // Get or fetch entity structure
+        let entityStructure = entityStructureCache[otherEntity.name];
+        
+        if (!entityStructure) {
+          // Check if already in graphData
+          if (graphData[otherEntity.name]) {
+            entityStructure = graphData[otherEntity.name];
+          } else {
+            // Fetch structure from API
+            entityStructure = await fetchEntityStructure(otherEntity.name);
+          }
+          
+          // Cache it
+          if (entityStructure) {
+            setEntityStructureCache(prev => ({ ...prev, [otherEntity.name]: entityStructure }));
+          }
+        }
+        
+        // Check if this entity has relationships pointing to our selected entity
+        if (entityStructure?.relationships) {
+          entityStructure.relationships.forEach((rel: any) => {
+            const targetId = rel.target || rel.targetEntityId || rel.TargetEntityId || '';
+            // Check if this relationship points to our selected entity
+            if (targetId === rootEntityId) {
+              inboundRels.push({
+                name: rel.name,
+                displayName: rel.displayName || rel.name,
+                sourceEntityName: otherEntity.name,
+                sourceEntityDisplayName: otherEntity.displayName || otherEntity.name,
+                targetEntityId: rootEntityId,
+                targetEntityName: entity.name,
+                direction: 'inbound',
+                type: rel.type || 'Relationship',
+              });
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error loading inbound relationships:', err);
+    }
+    
+    setAvailableRelationships(inboundRels);
+    setLoadingInbound(false);
+  }, [graphData, allEntities, entityStructureCache]);
+
+  // Handle add relationship button click
+  const handleAddRelationship = useCallback((entity: EntityDefinition, anchorEl: HTMLElement) => {
+    setSelectedEntityForRelationships(entity);
+    loadInboundRelationships(entity);
+    setRelationshipMenuAnchor(anchorEl);
+  }, [loadInboundRelationships]);
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     if (!graphData) return { nodes: [], edges: [] };
     try {
-      return getLayoutedNodes(graphData, entityName);
+      const layout = getLayoutedNodes(graphData, entityName);
+      // Add onAddRelationship callback to each node
+      const nodesWithCallbacks = layout.nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          onAddRelationship: handleAddRelationship,
+        },
+      }));
+      return { nodes: nodesWithCallbacks, edges: layout.edges };
     } catch (err) {
       console.error('Error creating graph layout:', err);
       return { nodes: [], edges: [] };
@@ -209,11 +330,79 @@ const EntityGraph: React.FC<EntityGraphProps> = ({ entityName, maxDepth = 2 }) =
   // Update nodes and edges when data changes
   React.useEffect(() => {
     if (graphData) {
-      const { nodes: newNodes, edges: newEdges } = getLayoutedNodes(graphData, entityName);
-      setNodes(newNodes);
-      setEdges(newEdges);
+      const layout = getLayoutedNodes(graphData, entityName);
+      const nodesWithCallbacks = layout.nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          onAddRelationship: handleAddRelationship,
+        },
+      }));
+      setNodes(nodesWithCallbacks);
+      setEdges(layout.edges);
     }
-  }, [graphData, entityName, setNodes, setEdges]);
+  }, [graphData, entityName, setNodes, setEdges, handleAddRelationship]);
+
+  // Load outbound relationships
+  const loadOutboundRelationships = useCallback(() => {
+    if (!selectedEntityForRelationships || !graphData || !graphData[selectedEntityForRelationships.name]) return;
+    
+    const entity = graphData[selectedEntityForRelationships.name];
+    const relationships = entity.relationships?.map((rel: any) => {
+      const targetId = rel.targetEntityId || rel.TargetEntityId || rel.target;
+      const targetEntity = allEntities?.find(e => e.id === targetId);
+      
+      return {
+        name: rel.name,
+        displayName: rel.displayName || rel.name,
+        targetEntityId: targetId,
+        targetEntityName: targetEntity?.name || '',
+        targetEntityDisplayName: targetEntity?.displayName || targetEntity?.name || '',
+        type: rel.type || 'Relationship',
+      };
+    }).filter((rel: any) => rel.targetEntityName) || [];
+    
+    setAvailableRelationships(relationships);
+  }, [selectedEntityForRelationships, graphData, allEntities]);
+
+  // Handle relationship menu
+  const handleRelationshipMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+    setRelationshipMenuAnchor(event.currentTarget);
+  };
+
+  const handleRelationshipMenuClose = () => {
+    setRelationshipMenuAnchor(null);
+  };
+
+  // Handle showing outbound relationships
+  const handleShowOutbound = () => {
+    handleRelationshipMenuClose();
+    loadOutboundRelationships();
+    setRelationshipDialog({ open: true, direction: 'outbound' });
+  };
+
+  // Handle showing inbound relationships
+  const handleShowInbound = () => {
+    handleRelationshipMenuClose();
+    // Inbound relationships are already loading when menu opened
+    setRelationshipDialog({ open: true, direction: 'inbound' });
+  };
+
+  // Handle relationship dialog close
+  const handleRelationshipDialogClose = () => {
+    setRelationshipDialog({ open: false, direction: null });
+    setAvailableRelationships([]);
+  };
+
+  // Handle navigate to related entity
+  const handleNavigateToEntity = (targetEntityName: string) => {
+    handleRelationshipDialogClose();
+    // Update the selected entity in the global store
+    const store = (window as any).__entityBrowserStore;
+    if (store?.setSelectedEntity) {
+      store.setSelectedEntity(targetEntityName);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -266,6 +455,114 @@ const EntityGraph: React.FC<EntityGraphProps> = ({ entityName, maxDepth = 2 }) =
         <Controls />
         <MiniMap />
       </ReactFlow>
+      
+      {/* Relationship Menu */}
+      <Menu
+        anchorEl={relationshipMenuAnchor}
+        open={Boolean(relationshipMenuAnchor)}
+        onClose={handleRelationshipMenuClose}
+      >
+        <MenuItem disabled>
+          <Typography variant="caption" fontWeight="bold">
+            Outbound Relationships
+          </Typography>
+        </MenuItem>
+        <MenuItem onClick={handleShowOutbound}>
+          <OutboundIcon sx={{ mr: 1 }} fontSize="small" />
+          Show Outbound
+        </MenuItem>
+        <Divider sx={{ my: 1 }} />
+        <MenuItem disabled>
+          <Typography variant="caption" fontWeight="bold">
+            Inbound Relationships {loadingInbound && '(Loading...)'}
+          </Typography>
+        </MenuItem>
+        <MenuItem onClick={handleShowInbound} disabled={loadingInbound}>
+          <InboundIcon sx={{ mr: 1 }} fontSize="small" />
+          Show Inbound
+        </MenuItem>
+      </Menu>
+      
+      {/* Relationship Dialog */}
+      <Dialog
+        open={relationshipDialog.open}
+        onClose={handleRelationshipDialogClose}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {relationshipDialog.direction === 'outbound' ? 'Outbound Relationships' : 'Inbound Relationships'}
+          {relationshipDialog.direction === 'outbound' && selectedEntityForRelationships && (
+            <Typography variant="caption" display="block" color="text.secondary">
+              Relationships from {selectedEntityForRelationships.displayName || selectedEntityForRelationships.name} to other entities
+            </Typography>
+          )}
+          {relationshipDialog.direction === 'inbound' && selectedEntityForRelationships && (
+            <Typography variant="caption" display="block" color="text.secondary">
+              Relationships from other entities to {selectedEntityForRelationships.displayName || selectedEntityForRelationships.name}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {loadingInbound && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress size={40} />
+            </Box>
+          )}
+          
+          {!loadingInbound && availableRelationships.length === 0 && (
+            <Alert severity="info">
+              No {relationshipDialog.direction} relationships available
+            </Alert>
+          )}
+          
+          {!loadingInbound && availableRelationships.length > 0 && (
+            <List>
+              {availableRelationships.map((rel, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 && <Divider />}
+                  <ListItem disablePadding>
+                    <ListItemButton
+                      onClick={() => {
+                        const targetEntity = relationshipDialog.direction === 'outbound' 
+                          ? rel.targetEntityName 
+                          : rel.sourceEntityName;
+                        handleNavigateToEntity(targetEntity);
+                      }}
+                    >
+                      <ListItemText
+                        primary={rel.displayName || rel.name}
+                        secondary={
+                          <Box component="span">
+                            <Typography variant="caption" component="span" display="block">
+                              {relationshipDialog.direction === 'outbound' && (
+                                <>
+                                  <strong>To:</strong> {rel.targetEntityDisplayName || rel.targetEntityName}
+                                </>
+                              )}
+                              {relationshipDialog.direction === 'inbound' && (
+                                <>
+                                  <strong>From:</strong> {rel.sourceEntityDisplayName || rel.sourceEntityName}
+                                </>
+                              )}
+                            </Typography>
+                            <Typography variant="caption" component="span" color="text.secondary">
+                              Type: {rel.type}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRelationshipDialogClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Legend */}
       <Box

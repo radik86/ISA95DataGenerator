@@ -26,6 +26,14 @@ const EntityBrowser: React.FC = () => {
   const { data: entities, isLoading, error } = useEntities();
   const { selectedEntity, setSelectedEntity } = useStore();
 
+  // Expose store to EntityGraph for navigation
+  React.useEffect(() => {
+    (window as any).__entityBrowserStore = { setSelectedEntity };
+    return () => {
+      delete (window as any).__entityBrowserStore;
+    };
+  }, [setSelectedEntity]);
+
   console.log('EntityBrowser render:', { entities: entities?.length, isLoading, error });
 
   const filteredEntities = useMemo(() => {

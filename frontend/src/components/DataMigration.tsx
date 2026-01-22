@@ -2486,15 +2486,25 @@ const DataMigration: React.FC = () => {
                   fieldRuleType: fm.fieldRule?.ruleType
                 });
                 
-                // Priority: Field rule first, then direct mapping
+                // Priority: Field rule first, then direct mapping, then empty value
                 if (fm.fieldRule) {
                   // Generate value using field rule, passing source record for conditional rules
                   console.log(`[${mapping.targetEntity}] Using field rule for ${fm.fieldName}:`, fm.fieldRule);
                   transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, record);
-                } else if (fm.sourceColumn && record[fm.sourceColumn] !== undefined) {
+                } else if (fm.sourceColumn) {
+                  // Map from source column, use empty string if undefined/null
                   let value = record[fm.sourceColumn];
-                  console.log(`[${mapping.targetEntity}] Direct mapping: ${fm.fieldName} = ${value} (from ${fm.sourceColumn})`);
+                  if (value === undefined || value === null) {
+                    value = '';
+                    console.log(`[${mapping.targetEntity}] Direct mapping (empty): ${fm.fieldName} from ${fm.sourceColumn} (source value was undefined/null)`);
+                  } else {
+                    console.log(`[${mapping.targetEntity}] Direct mapping: ${fm.fieldName} = ${value} (from ${fm.sourceColumn})`);
+                  }
                   transformed[fm.fieldName] = value;
+                } else {
+                  // No source column or rule, but field is marked for generation - include empty value
+                  console.log(`[${mapping.targetEntity}] No mapping source for ${fm.fieldName}, including empty value`);
+                  transformed[fm.fieldName] = '';
                 }
               }
             });
@@ -2824,7 +2834,28 @@ const DataMigration: React.FC = () => {
         if (value === null || value === undefined) {
           return '';
         }
+        
+        // Special handling for Date objects - convert to full ISO 8601 string with seconds
+        if (value instanceof Date) {
+          return value.toISOString();
+        }
+        
+        // Check if it's a datetime string and ensure it has full timestamp with seconds
         const stringValue = String(value);
+        
+        // If it looks like a datetime string (contains T or has datetime pattern), ensure it has seconds
+        if (stringValue.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/)) {
+          try {
+            const date = new Date(stringValue);
+            if (!isNaN(date.getTime())) {
+              // Convert to ISO string to ensure full format with seconds
+              return date.toISOString();
+            }
+          } catch (e) {
+            // If parsing fails, just use the original string
+          }
+        }
+        
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
           return `"${stringValue.replace(/"/g, '""')}"`;
         }

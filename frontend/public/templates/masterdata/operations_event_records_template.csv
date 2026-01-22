@@ -1,0 +1,8 @@
+OperationsEventRecordID,OperationsEventDefinitionID,Severity,Status,Comments
+OER-T-001,OED-UD-OVERTEMP,High,Closed,Oven temperature exceeded safety limit
+OER-T-002,OED-UD-MIXFAIL,High,Closed,Mixer stopped due to mechanical failure
+OER-T-003,OED-UTIL-GAS,High,Closed,Gas supply interruption
+OER-T-004,OED-SCR-BURN,Medium,Closed,Product burned during baking
+OER-T-005,OED-QC-LABEL,Low,Closed,Incorrect labeling detected
+OER-T-006,OED-MAT-EXPIRED,High,Closed,Expired yeast detected
+OER-T-007,OED-PLAN-DELAY,Low,Closed,Production start delayed

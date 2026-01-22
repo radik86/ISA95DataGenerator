@@ -82,6 +82,16 @@ interface MasterDataDB extends DBSchema {
     value: OperationsEventClassRecord;
     indexes: { 'by-updated': Date };
   };
+  operationsEventRecords: {
+    key: string;
+    value: OperationsEventRecordRecord;
+    indexes: { 'by-definition': string; 'by-updated': Date };
+  };
+  operationsEventEntries: {
+    key: string;
+    value: OperationsEventEntryRecord;
+    indexes: { 'by-record': string; 'by-updated': Date };
+  };
   hierarchyScopes: {
     key: string;
     value: HierarchyScopeRecord;
@@ -312,6 +322,23 @@ export interface OperationsEventClassRecord extends BaseRecord {
   Description: string;
 }
 
+export interface OperationsEventRecordRecord extends BaseRecord {
+  id: string;
+  OperationsEventRecordID: string;
+  OperationsEventDefinitionID: string;
+  Severity: string;
+  Status: string;
+  Comments: string;
+}
+
+export interface OperationsEventEntryRecord extends BaseRecord {
+  id: string;
+  OperationsEventEntryID: string;
+  OperationsEventRecordID: string;
+  EntryType: string;
+  Description: string;
+}
+
 class MasterDataDatabase {
   private dbPromise: Promise<IDBPDatabase<MasterDataDB>>;
 
@@ -486,6 +513,20 @@ class MasterDataDatabase {
         if (!db.objectStoreNames.contains('operationsEventClasses')) {
           const oecStore = db.createObjectStore('operationsEventClasses', { keyPath: 'OperationsEventClassID' });
           oecStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operations Event Records (version 12)
+        if (!db.objectStoreNames.contains('operationsEventRecords')) {
+          const oerStore = db.createObjectStore('operationsEventRecords', { keyPath: 'id' });
+          oerStore.createIndex('by-definition', 'OperationsEventDefinitionID');
+          oerStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operations Event Entries (version 12)
+        if (!db.objectStoreNames.contains('operationsEventEntries')) {
+          const oeeStore = db.createObjectStore('operationsEventEntries', { keyPath: 'id' });
+          oeeStore.createIndex('by-record', 'OperationsEventRecordID');
+          oeeStore.createIndex('by-updated', 'updatedAt');
         }
       },
     });
@@ -704,6 +745,22 @@ class MasterDataDatabase {
     if (csvData.operationsEventClasses) {
       console.log('Importing operations event classes:', csvData.operationsEventClasses.length);
       await this.bulkAdd('operationsEventClasses', csvData.operationsEventClasses);
+    }
+
+    if (csvData.operationsEventRecords) {
+      console.log('Clearing old operations event records...');
+      await this.clear('operationsEventRecords');
+      console.log('Importing operations event records:', csvData.operationsEventRecords.length);
+      console.log('First record:', csvData.operationsEventRecords[0]);
+      console.log('First record keys:', Object.keys(csvData.operationsEventRecords[0]));
+      await this.bulkAdd('operationsEventRecords', csvData.operationsEventRecords);
+    }
+
+    if (csvData.operationsEventEntries) {
+      console.log('Clearing old operations event entries...');
+      await this.clear('operationsEventEntries');
+      console.log('Importing operations event entries:', csvData.operationsEventEntries.length);
+      await this.bulkAdd('operationsEventEntries', csvData.operationsEventEntries);
     }
 
     if (csvData.hierarchyScopes) {
