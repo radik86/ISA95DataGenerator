@@ -1,27 +1,33 @@
 OperationsEventDefinitionID,EventCategory,EventCode,Description,CausesDowntime,CausesScrap,RootCauseType
-OED-UD-OVERTEMP,UnplannedDowntime,OvenOverTemperature,Oven temperature exceeds safe limit,true,false,Equipment
-OED-UD-MIXFAIL,UnplannedDowntime,MixerFailure,Mixer mechanical or electrical failure,true,false,Equipment
-OED-UD-POWER,UnplannedDowntime,PowerLoss,External power outage,true,false,Utility
-OED-UD-BEARING,UnplannedDowntime,BearingOverheat,Mixer bearing temperature exceeded,true,false,Equipment
-OED-UD-BELT,UnplannedDowntime,DriveBeltFailure,Drive belt snapped,true,false,Equipment
-OED-UD-SENSOR,UnplannedDowntime,SensorFailure,Critical process sensor failure,true,false,Equipment
-OED-UD-LUBE,UnplannedDowntime,LubricationFault,Insufficient lubrication detected,true,false,Equipment
-OED-UTIL-GAS,UtilityFailure,GasSupplyLoss,Gas supply interrupted,true,false,Utility
-OED-UTIL-WATER,UtilityFailure,WaterPressureLow,Insufficient water pressure,true,false,Utility
-OED-SCR-BURN,QualityScrap,BurnedProduct,Product burned during baking,false,true,Process
-OED-SCR-UNDER,QualityScrap,UnderbakedProduct,Product underbaked,false,true,Process
-OED-SCR-CONT,QualityScrap,Contamination,Foreign material contamination,false,true,Quality
-OED-QC-FAIL,Quality,QualityCheckFailure,Final quality inspection failed,false,true,Quality
-OED-QC-ALLERGEN,Quality,AllergenRisk,Potential allergen cross-contamination,true,true,Quality
-OED-QC-LABEL,Quality,LabelingError,Incorrect product labeling,false,true,Quality
-OED-PROC-TEMPDEV,ProcessDeviation,TemperatureDeviation,Process temperature outside tolerance,false,true,Process
-OED-PROC-TIMEDEV,ProcessDeviation,ProcessTimeDeviation,Process time exceeded limits,false,true,Process
-OED-PROC-MIXERR,ProcessDeviation,MixingError,Incorrect mixing parameters,false,true,Process
-OED-PROC-FLOW,ProcessDeviation,IngredientFlowError,Incorrect ingredient dosing,false,true,Process
-OED-MAT-SHORT,MaterialIssue,MaterialShortage,Required material not available,true,false,Material
-OED-MAT-EXPIRED,MaterialIssue,MaterialExpired,Expired raw material detected,true,true,Material
-OED-MAT-CONT,MaterialIssue,MaterialContaminated,Raw material contamination,true,true,Material
-OED-ENV-TEMP,Environmental,AmbientTempHigh,Ambient temperature exceeded limits,false,true,Environment
-OED-PLAN-DELAY,Planning,ScheduleDelay,Production started later than planned,false,false,Planning
-OED-PLAN-OVERRUN,Planning,RunTimeOverrun,Segment execution exceeded planned duration,false,false,Planning
-OED-PLAN-CANCEL,Planning,OrderCancelled,Operations request cancelled,true,false,Planning
+OED-UD-OVERTEMP,UnplannedDowntime,OvenOverTemperature,Oven temperature exceeds safe limit,TRUE,FALSE,Equipment
+OED-UD-MIXFAIL,UnplannedDowntime,MixerFailure,Mixer mechanical or electrical failure,TRUE,FALSE,Equipment
+OED-UD-POWER,UnplannedDowntime,PowerLoss,External power outage,TRUE,FALSE,Utility
+OED-UD-BEARING,UnplannedDowntime,BearingOverheat,Mixer bearing temperature exceeded,TRUE,FALSE,Equipment
+OED-UD-BELT,UnplannedDowntime,DriveBeltFailure,Drive belt snapped,TRUE,FALSE,Equipment
+OED-UD-SENSOR,UnplannedDowntime,SensorFailure,Critical process sensor failure,TRUE,FALSE,Equipment
+OED-UD-LUBE,UnplannedDowntime,LubricationFault,Insufficient lubrication detected,TRUE,FALSE,Equipment
+OED-UTIL-GAS,UtilityFailure,GasSupplyLoss,Gas supply interrupted,TRUE,FALSE,Utility
+OED-UTIL-WATER,UtilityFailure,WaterPressureLow,Insufficient water pressure,TRUE,FALSE,Utility
+OED-SCR-BURN,QualityScrap,BurnedProduct,Product burned during baking,FALSE,TRUE,Process
+OED-SCR-UNDER,QualityScrap,UnderbakedProduct,Product underbaked,FALSE,TRUE,Process
+OED-SCR-CONT,QualityScrap,Contamination,Foreign material contamination,FALSE,TRUE,Quality
+OED-QC-FAIL,Quality,QualityCheckFailure,Final quality inspection failed,FALSE,TRUE,Quality
+OED-QC-ALLERGEN,Quality,AllergenRisk,Potential allergen cross-contamination,TRUE,TRUE,Quality
+OED-QC-LABEL,Quality,LabelingError,Incorrect product labeling,FALSE,TRUE,Quality
+OED-PROC-TEMPDEV,ProcessDeviation,TemperatureDeviation,Process temperature outside tolerance,FALSE,TRUE,Process
+OED-PROC-TIMEDEV,ProcessDeviation,ProcessTimeDeviation,Process time exceeded limits,FALSE,TRUE,Process
+OED-PROC-MIXERR,ProcessDeviation,MixingError,Incorrect mixing parameters,FALSE,TRUE,Process
+OED-PROC-FLOW,ProcessDeviation,IngredientFlowError,Incorrect ingredient dosing,FALSE,TRUE,Process
+OED-MAT-SHORT,MaterialIssue,MaterialShortage,Required material not available,TRUE,FALSE,Material
+OED-MAT-EXPIRED,MaterialIssue,MaterialExpired,Expired raw material detected,TRUE,TRUE,Material
+OED-MAT-CONT,MaterialIssue,MaterialContaminated,Raw material contamination,TRUE,TRUE,Material
+OED-ENV-TEMP,Environmental,AmbientTempHigh,Ambient temperature exceeded limits,FALSE,TRUE,Environment
+OED-PLAN-DELAY,Planning,ScheduleDelay,Production started later than planned,FALSE,FALSE,Planning
+OED-PLAN-OVERRUN,Planning,RunTimeOverrun,Segment execution exceeded planned duration,FALSE,FALSE,Planning
+OED-PLAN-CANCEL,Planning,OrderCancelled,Operations request cancelled,TRUE,FALSE,Planning
+OED-PROD-MIX-START,Production,MixingStart,Start of Mixing,FALSE,FALSE,Production
+OED-PROD-MIX-END,Production,MixingEnd,End of Mixing,FALSE,FALSE,Production
+OED-PROD-BAKE-START,Production,BAKEingStart,Start of BAKEing,FALSE,FALSE,Production
+OED-PROD-BAKE-END,Production,BAKEingEnd,End of BAKEing,FALSE,FALSE,Production
+OED-PROD-PACK-START,Production,PACKingStart,Start of PACKing,FALSE,FALSE,Production
+OED-PROD-PACK-END,Production,PACKingEnd,End of PACKing,FALSE,FALSE,Production

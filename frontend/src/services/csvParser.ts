@@ -4,6 +4,8 @@ export interface ParsedCSVData {
   materialClasses?: any[];
   materials?: any[];
   materialLots?: any[];
+  materialDefinitionProperties?: any[];
+  materialDefinitionPropertyAssignments?: any[];
   equipmentClasses?: any[];
   equipment?: any[];
   equipmentProperties?: any[];
@@ -122,6 +124,71 @@ class CSVParser {
       supplierOrProducerName: r.SupplierOrProducerName || undefined,
       producedByProcessSegmentId: r.ProducedByProcessSegmentID || undefined,
     }));
+  }
+
+  parseMaterialDefinitionProperties(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    console.log('Parsing material definition properties, raw records:', records.length);
+    
+    // Filter out empty rows (where id field is empty or whitespace-only)
+    const validRecords = records.filter(r => {
+      const id = r.id || r.Id || r.ID || '';
+      return id.trim().length > 0;
+    });
+    console.log('Valid records after filtering empty rows:', validRecords.length);
+    
+    const parsed = validRecords.map((r, index) => {
+      // Try all possible key variations
+      const id = r.id || r.Id || r.ID;
+      const value = r.Value || r.value;
+      const description = r.Description || r.description || '';
+      const valueUnitOfMeasure = r.ValueUnitOfMeasure || r.valueUnitOfMeasure || '';
+      
+      return {
+        id,
+        value,
+        description,
+        valueUnitOfMeasure,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+      };
+    });
+    console.log('Parsed material definition properties:', parsed.length);
+    return parsed;
+  }
+
+  parseMaterialDefinitionPropertyAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    console.log('Parsing material definition property assignments, raw records:', records.length);
+    
+    // Filter out empty rows (where id field is empty or whitespace-only)
+    const validRecords = records.filter(r => {
+      const id = r.id || r.Id || r.ID || '';
+      return id.trim().length > 0;
+    });
+    console.log('Valid records after filtering empty rows:', validRecords.length);
+    
+    const parsed = validRecords.map((r, index) => {
+      const id = r.id || r.Id || r.ID;
+      const materialDefinitionId = r.MaterialDefinitionId || r.materialDefinitionId;
+      const value = r.Value || r.value;
+      const description = r.Description || r.description || '';
+      const valueUnitOfMeasure = r.ValueUnitOfMeasure || r.valueUnitOfMeasure || '';
+      
+      return {
+        id,
+        materialDefinitionId,
+        value,
+        description,
+        valueUnitOfMeasure,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+      };
+    });
+    console.log('Parsed material definition property assignments:', parsed.length);
+    return parsed;
   }
 
   parseEquipmentClasses(csvText: string): any[] {
@@ -247,15 +314,46 @@ class CSVParser {
 
   parseOperationEventDefinitions(csvText: string): any[] {
     const records = this.parseCSV(csvText);
-    return records.map(r => ({
-      id: r.OperationsEventDefinitionID,
-      eventCategory: r.EventCategory,
-      eventCode: r.EventCode,
-      description: r.Description,
-      causesDowntime: r.CausesDowntime === 'True' || r.CausesDowntime === 'true',
-      causesScrap: r.CausesScrap === 'True' || r.CausesScrap === 'true',
-      rootCauseType: r.RootCauseType,
-    }));
+    console.log('[CSV Parser] Parsing operation event definitions, total records:', records.length);
+    if (records.length > 0) {
+      const first = records[0];
+      console.log('[CSV Parser] First record ALL fields:', first);
+      console.log('[CSV Parser] First record CausesDowntime:', {
+        value: first.CausesDowntime,
+        type: typeof first.CausesDowntime,
+        length: first.CausesDowntime?.length,
+        charCodes: first.CausesDowntime ? Array.from(first.CausesDowntime).map((c: string) => c.charCodeAt(0)) : [],
+        equals_TRUE: first.CausesDowntime === 'TRUE',
+        equals_True: first.CausesDowntime === 'True',
+        equals_true: first.CausesDowntime === 'true',
+        equals_FALSE: first.CausesDowntime === 'FALSE',
+      });
+      console.log('[CSV Parser] First record CausesScrap:', {
+        value: first.CausesScrap,
+        type: typeof first.CausesScrap,
+        length: first.CausesScrap?.length,
+        charCodes: first.CausesScrap ? Array.from(first.CausesScrap).map((c: string) => c.charCodeAt(0)) : [],
+        equals_TRUE: first.CausesScrap === 'TRUE',
+        equals_False: first.CausesScrap === 'FALSE',
+      });
+    }
+    const parsed = records.map(r => {
+      const causesDowntime = r.CausesDowntime === 'TRUE' || r.CausesDowntime === 'True' || r.CausesDowntime === 'true' || r.CausesDowntime === true;
+      const causesScrap = r.CausesScrap === 'TRUE' || r.CausesScrap === 'True' || r.CausesScrap === 'true' || r.CausesScrap === true;
+      return {
+        id: r.OperationsEventDefinitionID,
+        eventCategory: r.EventCategory,
+        eventCode: r.EventCode,
+        description: r.Description,
+        causesDowntime,
+        causesScrap,
+        rootCauseType: r.RootCauseType,
+      };
+    });
+    console.log('[CSV Parser] First parsed record:', parsed[0]);
+    console.log('[CSV Parser] Sample of events with causesScrap=true:', parsed.filter(p => p.causesScrap).slice(0, 3).map(p => p.eventCode));
+    console.log('[CSV Parser] Sample of events with causesDowntime=true:', parsed.filter(p => p.causesDowntime).slice(0, 3).map(p => p.eventCode));
+    return parsed;
   }
 
   parseOperationEventDefSegmentAssignments(csvText: string): any[] {
@@ -264,7 +362,9 @@ class CSVParser {
       id: r.OperationsEventDefSegAssignID,
       operationsEventDefinitionId: r.OperationsEventDefinitionID,
       processSegmentId: r.ProcessSegmentID,
-      isPrimarySegment: r.IsPrimarySegment === 'True' || r.IsPrimarySegment === 'true',
+      startOrEndEvent: r.StartOrEndEvent || 'Start',
+      isMandatory: r.IsMandatory === 'TRUE' || r.IsMandatory === 'true' || r.IsMandatory === 'True',
+      isPrimarySegment: r.IsPrimarySegment === 'TRUE' || r.IsPrimarySegment === 'true' || r.IsPrimarySegment === 'True',
       notes: r.Notes,
     }));
   }

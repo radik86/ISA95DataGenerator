@@ -176,6 +176,11 @@ const DataMigration: React.FC = () => {
   const [expandedMappings, setExpandedMappings] = useState<Set<number>>(new Set());
   const [expandedBridgeMappings, setExpandedBridgeMappings] = useState<Set<number>>(new Set());
   
+  // Table filtering and sorting
+  const [tableFilter, setTableFilter] = useState('');
+  const [tableSortBy, setTableSortBy] = useState<'name' | 'rows'>('name');
+  const [tableSortOrder, setTableSortOrder] = useState<'asc' | 'desc'>('asc');
+  
   // Rule parameters matching FieldRuleEditor
   const [rangeMin, setRangeMin] = useState(0);
   const [rangeMax, setRangeMax] = useState(100);
@@ -382,6 +387,7 @@ const DataMigration: React.FC = () => {
       // Get all available stores dynamically from both databases
       const masterDataStores = [
         'materialClasses', 'materials', 'materialLots', 'materialSublots',
+        'materialDefinitionProperties', 'materialDefinitionPropertyAssignments',
         'equipmentClasses', 'equipment', 'equipmentProperties', 
         'equipmentPropertyAssignments', 'plants', 'productionLines',
         'lineEquipment', 'processSegments', 'segmentBOMs', 'equipmentUsages',
@@ -396,7 +402,8 @@ const DataMigration: React.FC = () => {
         'segmentMaterialRequirements', 'segmentEquipmentRequirements',
         'operationsResponses', 'segmentResponses', 
         'segmentMaterialActuals', 'segmentEquipmentActuals',
-        'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'segmentData'
+        'equipmentPropertyTracking', 'testResults', 'operationsEvents', 
+        'operationsEventRecords', 'operationsEventEntries', 'segmentData'
       ];
       
       // Load all data dynamically
@@ -425,6 +432,8 @@ const DataMigration: React.FC = () => {
       const materials = masterDataResults['materials'];
       const materialLots = masterDataResults['materialLots'];
       const materialSublots = masterDataResults['materialSublots'];
+      const materialDefinitionProperties = masterDataResults['materialDefinitionProperties'];
+      const materialDefinitionPropertyAssignments = masterDataResults['materialDefinitionPropertyAssignments'];
       const equipmentClasses = masterDataResults['equipmentClasses'];
       const equipment = masterDataResults['equipment'];
       const equipmentProperties = masterDataResults['equipmentProperties'];
@@ -442,6 +451,10 @@ const DataMigration: React.FC = () => {
       const segmentEquipmentActuals = processDataResults['segmentEquipmentActuals'];
       const equipmentPropertyTracking = processDataResults['equipmentPropertyTracking'];
       const testResults = processDataResults['testResults'];
+      const operationsEvents = processDataResults['operationsEvents'];
+      const operationsEventRecords = processDataResults['operationsEventRecords'];
+      const operationsEventEntries = processDataResults['operationsEventEntries'];
+      const segmentData = processDataResults['segmentData'];
 
       const tables: SourceTable[] = [
         // Master Data Tables
@@ -488,6 +501,27 @@ const DataMigration: React.FC = () => {
             { name: 'storageLocation', type: 'string', sample: materialSublots[0]?.storageLocation },
             { name: 'status', type: 'string', sample: materialSublots[0]?.status },
             { name: 'disposition', type: 'string', sample: materialSublots[0]?.disposition },
+          ],
+        },
+        {
+          name: 'material_definition_properties',
+          rowCount: materialDefinitionProperties?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: materialDefinitionProperties?.[0]?.id },
+            { name: 'value', type: 'string', sample: materialDefinitionProperties?.[0]?.value },
+            { name: 'description', type: 'string', sample: materialDefinitionProperties?.[0]?.description },
+            { name: 'valueUnitOfMeasure', type: 'string', sample: materialDefinitionProperties?.[0]?.valueUnitOfMeasure },
+          ],
+        },
+        {
+          name: 'material_definition_property_assignments',
+          rowCount: materialDefinitionPropertyAssignments?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.id },
+            { name: 'materialDefinitionId', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.materialDefinitionId },
+            { name: 'value', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.value },
+            { name: 'description', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.description },
+            { name: 'valueUnitOfMeasure', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.valueUnitOfMeasure },
           ],
         },
         {
@@ -599,6 +633,7 @@ const DataMigration: React.FC = () => {
             { name: 'materialId', type: 'string', sample: segmentMaterialRequirements[0]?.materialId },
             { name: 'requiredQty', type: 'number', sample: segmentMaterialRequirements[0]?.requiredQty?.toString() },
             { name: 'qtyUoM', type: 'string', sample: segmentMaterialRequirements[0]?.qtyUoM },
+            { name: 'requirementType', type: 'string', sample: segmentMaterialRequirements[0]?.requirementType },
           ],
         },
         {
@@ -680,6 +715,59 @@ const DataMigration: React.FC = () => {
             { name: 'evaluatedCriterionResult', type: 'string', sample: testResults[0]?.evaluatedCriterionResult },
           ],
         },
+        {
+          name: 'operations_events',
+          rowCount: operationsEvents?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: operationsEvents?.[0]?.id },
+            { name: 'segmentResponseId', type: 'string', sample: operationsEvents?.[0]?.segmentResponseId },
+            { name: 'operationsEventDefinitionId', type: 'string', sample: operationsEvents?.[0]?.operationsEventDefinitionId },
+            { name: 'effectiveTimestamp', type: 'datetime', sample: operationsEvents?.[0]?.effectiveTimestamp },
+            { name: 'notes', type: 'string', sample: operationsEvents?.[0]?.notes },
+          ],
+        },
+        {
+          name: 'operations_event_records',
+          rowCount: operationsEventRecords?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: operationsEventRecords?.[0]?.id },
+            { name: 'operationsEventId', type: 'string', sample: operationsEventRecords?.[0]?.operationsEventId },
+            { name: 'operationsEventDefinitionId', type: 'string', sample: operationsEventRecords?.[0]?.operationsEventDefinitionId },
+            { name: 'severity', type: 'string', sample: operationsEventRecords?.[0]?.severity },
+            { name: 'status', type: 'string', sample: operationsEventRecords?.[0]?.status },
+            { name: 'effectiveTime', type: 'datetime', sample: operationsEventRecords?.[0]?.effectiveTime },
+            { name: 'segmentResponseId', type: 'string', sample: operationsEventRecords?.[0]?.segmentResponseId },
+            { name: 'equipmentId', type: 'string', sample: operationsEventRecords?.[0]?.equipmentId },
+            { name: 'comments', type: 'string', sample: operationsEventRecords?.[0]?.comments },
+          ],
+        },
+        {
+          name: 'operations_event_entries',
+          rowCount: operationsEventEntries?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: operationsEventEntries?.[0]?.id },
+            { name: 'operationsEventRecordId', type: 'string', sample: operationsEventEntries?.[0]?.operationsEventRecordId },
+            { name: 'entryType', type: 'string', sample: operationsEventEntries?.[0]?.entryType },
+            { name: 'effectiveTime', type: 'datetime', sample: operationsEventEntries?.[0]?.effectiveTime },
+            { name: 'segmentResponseId', type: 'string', sample: operationsEventEntries?.[0]?.segmentResponseId },
+            { name: 'equipmentId', type: 'string', sample: operationsEventEntries?.[0]?.equipmentId },
+            { name: 'description', type: 'string', sample: operationsEventEntries?.[0]?.description },
+          ],
+        },
+        {
+          name: 'segment_data',
+          rowCount: segmentData?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: segmentData?.[0]?.id },
+            { name: 'segmentResponseId', type: 'string', sample: segmentData?.[0]?.segmentResponseId },
+            { name: 'recordType', type: 'string', sample: segmentData?.[0]?.recordType },
+            { name: 'shiftId', type: 'string', sample: segmentData?.[0]?.shiftId },
+            { name: 'crewId', type: 'string', sample: segmentData?.[0]?.crewId },
+            { name: 'startDateTime', type: 'datetime', sample: segmentData?.[0]?.startDateTime },
+            { name: 'endDateTime', type: 'datetime', sample: segmentData?.[0]?.endDateTime },
+            { name: 'notes', type: 'string', sample: segmentData?.[0]?.notes },
+          ],
+        },
       ];
       
       // Add additional tables from newly loaded stores
@@ -759,6 +847,10 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: assignments[0]?.id },
             { name: 'operationEventDefinitionId', type: 'string', sample: assignments[0]?.operationEventDefinitionId },
             { name: 'processSegmentId', type: 'string', sample: assignments[0]?.processSegmentId },
+            { name: 'startOrEndEvent', type: 'string', sample: assignments[0]?.startOrEndEvent },
+            { name: 'isMandatory', type: 'boolean', sample: assignments[0]?.isMandatory },
+            { name: 'isPrimarySegment', type: 'boolean', sample: assignments[0]?.isPrimarySegment },
+            { name: 'notes', type: 'string', sample: assignments[0]?.notes },
           ],
         });
       }
@@ -1928,6 +2020,8 @@ const DataMigration: React.FC = () => {
           'materials': 'materials',
           'material_lots': 'materialLots',
           'material_sublots': 'materialSublots',
+          'material_definition_properties': 'materialDefinitionProperties',
+          'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
           'equipment_classes': 'equipmentClasses',
           'equipment': 'equipment',
           'equipment_properties': 'equipmentProperties',
@@ -2068,11 +2162,25 @@ const DataMigration: React.FC = () => {
       
       case RuleType.Case:
         const caseSourceField = params?.sourceField;
-        const caseSourceValue = caseSourceField ? sourceRow[caseSourceField] : '';
+        
+        // Try to find the source field value (case-insensitive field name matching)
+        let caseSourceValue = '';
+        if (caseSourceField && sourceRow) {
+          const sourceFieldLower = caseSourceField.toLowerCase();
+          for (const key in sourceRow) {
+            if (key.toLowerCase() === sourceFieldLower) {
+              caseSourceValue = String(sourceRow[key] || '').trim(); // Trim whitespace
+              break;
+            }
+          }
+        }
+        
         const cases = params?.cases || [];
         
+        // Find matching case (case-insensitive, trimmed comparison)
         for (const caseItem of cases) {
-          if (String(caseSourceValue).toLowerCase() === String(caseItem.case).toLowerCase()) {
+          const caseCondition = String(caseItem.case || '').trim();
+          if (caseCondition && caseSourceValue.toLowerCase() === caseCondition.toLowerCase()) {
             return caseItem.value;
           }
         }
@@ -2177,6 +2285,8 @@ const DataMigration: React.FC = () => {
           'materials': 'materials',
           'material_lots': 'materialLots',
           'material_sublots': 'materialSublots',
+          'material_definition_properties': 'materialDefinitionProperties',
+          'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
           'equipment_classes': 'equipmentClasses',
           'equipment': 'equipment',
           'equipment_properties': 'equipmentProperties',
@@ -2670,29 +2780,58 @@ const DataMigration: React.FC = () => {
       case RuleType.Case:
         // Match source field value against cases
         if (!sourceRecord || !params?.sourceField) {
-          console.warn('Case rule: missing sourceRecord or sourceField', { sourceRecord, sourceField: params?.sourceField });
+          console.warn('❌ Case rule: missing sourceRecord or sourceField', { sourceRecord, sourceField: params?.sourceField });
           return params?.defaultValue || '';
         }
-        const caseSourceValue = String(sourceRecord[params.sourceField] || '');
+        
+        // Try to find the source field value (case-insensitive field name matching)
+        let caseSourceValue = '';
+        let foundFieldName = '';
+        const sourceFieldLower = params.sourceField.toLowerCase();
+        for (const key in sourceRecord) {
+          if (key.toLowerCase() === sourceFieldLower) {
+            caseSourceValue = String(sourceRecord[key] || '').trim(); // Trim whitespace
+            foundFieldName = key;
+            break;
+          }
+        }
+        
         const cases = params?.cases || [];
         
-        console.log('Case rule evaluation:', {
-          sourceField: params.sourceField,
-          sourceValue: caseSourceValue,
-          cases: cases,
-          availableFields: Object.keys(sourceRecord)
+        console.log('🔍 Case rule evaluation:', {
+          configuredSourceField: params.sourceField,
+          foundFieldName: foundFieldName,
+          rawSourceValue: sourceRecord[foundFieldName],
+          trimmedSourceValue: caseSourceValue,
+          casesCount: cases.length,
+          cases: cases.map(c => ({ case: c.case, value: c.value })),
+          availableFields: Object.keys(sourceRecord),
+          defaultValue: params?.defaultValue
         });
         
-        // Find matching case (case-insensitive)
+        if (!caseSourceValue) {
+          console.warn('⚠️ Case rule: source field value is empty after lookup');
+          return params?.defaultValue || '';
+        }
+        
+        // Find matching case (case-insensitive, trimmed comparison)
         for (const caseItem of cases) {
-          if (caseItem.case && caseSourceValue.toLowerCase() === String(caseItem.case).toLowerCase()) {
-            console.log('Case matched:', { condition: caseItem.case, result: caseItem.value });
-            return caseItem.value || '';
+          const caseCondition = String(caseItem.case || '').trim();
+          const caseValue = caseItem.value;
+          
+          console.log(`  🔎 Comparing: "${caseSourceValue.toLowerCase()}" === "${caseCondition.toLowerCase()}"`, {
+            match: caseSourceValue.toLowerCase() === caseCondition.toLowerCase(),
+            willReturn: caseValue
+          });
+          
+          if (caseCondition && caseSourceValue.toLowerCase() === caseCondition.toLowerCase()) {
+            console.log('✅ Case matched!', { condition: caseItem.case, result: caseItem.value });
+            return caseValue || '';
           }
         }
         
         // No match found, return default
-        console.log('No case matched, using default:', params?.defaultValue);
+        console.log('❌ No case matched, using default:', params?.defaultValue);
         return params?.defaultValue || '';
         
       case RuleType.Coalesce:
@@ -2747,6 +2886,8 @@ const DataMigration: React.FC = () => {
       'materials': 'materials',
       'material_lots': 'materialLots',
       'material_sublots': 'materialSublots',
+      'material_definition_properties': 'materialDefinitionProperties',
+      'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
       'equipment_classes': 'equipmentClasses',
       'equipment': 'equipment',
       'equipment_properties': 'equipmentProperties',
@@ -2779,6 +2920,8 @@ const DataMigration: React.FC = () => {
       'equipment_property_tracking': 'equipmentPropertyTracking',
       'test_results': 'testResults',
       'operations_events': 'operationsEvents',
+      'operations_event_records': 'operationsEventRecords',
+      'operations_event_entries': 'operationsEventEntries',
       'segment_data': 'segmentData',
     };
 
@@ -3088,6 +3231,40 @@ const DataMigration: React.FC = () => {
                 Data source loaded: {dataSource.name} ({dataSource.tables.length} tables)
               </Alert>
 
+              {/* Filter and Sort Controls */}
+              <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+                <TextField
+                  label="Filter tables"
+                  size="small"
+                  value={tableFilter}
+                  onChange={(e) => setTableFilter(e.target.value)}
+                  placeholder="Search by name..."
+                  sx={{ flexGrow: 1, maxWidth: 400 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Sort By</InputLabel>
+                  <Select
+                    value={tableSortBy}
+                    label="Sort By"
+                    onChange={(e) => setTableSortBy(e.target.value as 'name' | 'rows')}
+                  >
+                    <MenuItem value="name">Table Name</MenuItem>
+                    <MenuItem value="rows">Row Count</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Order</InputLabel>
+                  <Select
+                    value={tableSortOrder}
+                    label="Order"
+                    onChange={(e) => setTableSortOrder(e.target.value as 'asc' | 'desc')}
+                  >
+                    <MenuItem value="asc">Ascending</MenuItem>
+                    <MenuItem value="desc">Descending</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
               <TableContainer component={Paper} variant="outlined">
                 <Table size="small">
                   <TableHead>
@@ -3100,7 +3277,21 @@ const DataMigration: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {dataSource.tables.map((table) => {
+                    {dataSource.tables
+                      .filter(table => 
+                        tableFilter === '' || 
+                        table.name.toLowerCase().includes(tableFilter.toLowerCase())
+                      )
+                      .sort((a, b) => {
+                        if (tableSortBy === 'name') {
+                          const comparison = a.name.localeCompare(b.name);
+                          return tableSortOrder === 'asc' ? comparison : -comparison;
+                        } else {
+                          const comparison = a.rowCount - b.rowCount;
+                          return tableSortOrder === 'asc' ? comparison : -comparison;
+                        }
+                      })
+                      .map((table) => {
                       const isImported = importedTables.some(t => t.name === table.name);
                       return (
                         <TableRow key={table.name}>

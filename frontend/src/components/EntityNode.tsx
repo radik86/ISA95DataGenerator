@@ -45,7 +45,16 @@ const EntityNode: React.FC<NodeProps> = ({ data }) => {
 
   return (
     <>
-      <Handle type="target" position={Position.Top} />
+      {/* Multiple handles on all sides for flexible connection points */}
+      <Handle type="target" position={Position.Top} id="top" />
+      <Handle type="target" position={Position.Right} id="right" />
+      <Handle type="target" position={Position.Bottom} id="bottom" />
+      <Handle type="target" position={Position.Left} id="left" />
+      
+      <Handle type="source" position={Position.Top} id="top-source" />
+      <Handle type="source" position={Position.Right} id="right-source" />
+      <Handle type="source" position={Position.Bottom} id="bottom-source" />
+      <Handle type="source" position={Position.Left} id="left-source" />
       
       <Paper
         elevation={isRoot ? 8 : 3}

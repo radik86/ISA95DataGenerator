@@ -6,3 +6,9 @@ OER-T-004,OED-SCR-BURN,Medium,Closed,Product burned during baking
 OER-T-005,OED-QC-LABEL,Low,Closed,Incorrect labeling detected
 OER-T-006,OED-MAT-EXPIRED,High,Closed,Expired yeast detected
 OER-T-007,OED-PLAN-DELAY,Low,Closed,Production start delayed
+OER-T-008,OED-PROD-MIX-START,High,Closed,Start of Mixing
+OER-T-009,OED-PROD-MIX-END,High,Closed,End of Mixing
+OER-T-010,OED-PROD-BAKE-START,High,Closed,Start of baking
+OER-T-011,OED-PROD-BAKE-END,High,Closed,End of baking
+OER-T-012,OED-PROD-PACK-START,High,Closed,Start of packing
+OER-T-013,OED-PROD-PACK-END,High,Closed,End of packing

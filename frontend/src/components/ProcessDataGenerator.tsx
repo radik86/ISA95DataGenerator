@@ -146,6 +146,27 @@ interface OperationsEvent {
   notes: string;
 }
 
+interface OperationsEventRecord {
+  id: string;
+  operationsEventDefinitionId: string;
+  severity: string;
+  status: string;
+  comments: string;
+  effectiveTime: string;
+  segmentResponseId: string;
+  equipmentId: string;
+}
+
+interface OperationsEventEntry {
+  id: string;
+  operationsEventRecordId: string;
+  entryType: string;
+  description: string;
+  effectiveTime: string;
+  segmentResponseId: string;
+  equipmentId: string;
+}
+
 interface SegmentData {
   id: string;
   segmentResponseId: string;
@@ -186,6 +207,8 @@ const ProcessDataGenerator: React.FC = () => {
   const [equipmentPropertyAssignments, setEquipmentPropertyAssignments] = useState<any[]>([]);
   const [operationEventDefinitions, setOperationEventDefinitions] = useState<any[]>([]);
   const [operationEventDefSegmentAssignments, setOperationEventDefSegmentAssignments] = useState<any[]>([]);
+  const [operationsEventRecordsTemplates, setOperationsEventRecordsTemplates] = useState<any[]>([]);
+  const [operationsEventEntriesTemplates, setOperationsEventEntriesTemplates] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [crews, setCrews] = useState<any[]>([]);
   const [shiftCrewAssignments, setShiftCrewAssignments] = useState<any[]>([]);
@@ -225,6 +248,8 @@ const ProcessDataGenerator: React.FC = () => {
   const [equipmentActuals, setEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
   const [equipmentPropertyTracking, setEquipmentPropertyTracking] = useState<EquipmentPropertyTracking[]>([]);
   const [operationsEvents, setOperationsEvents] = useState<OperationsEvent[]>([]);
+  const [operationsEventRecords, setOperationsEventRecords] = useState<OperationsEventRecord[]>([]);
+  const [operationsEventEntries, setOperationsEventEntries] = useState<OperationsEventEntry[]>([]);
   const [segmentData, setSegmentData] = useState<SegmentData[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [generatedMaterialLotsForDisplay, setGeneratedMaterialLotsForDisplay] = useState<any[]>([]);
@@ -239,6 +264,8 @@ const ProcessDataGenerator: React.FC = () => {
   const [storedMaterialActuals, setStoredMaterialActuals] = useState<any[]>([]);
   const [storedEquipmentActuals, setStoredEquipmentActuals] = useState<any[]>([]);
   const [storedOperationsEvents, setStoredOperationsEvents] = useState<any[]>([]);
+  const [storedOperationsEventRecords, setStoredOperationsEventRecords] = useState<any[]>([]);
+  const [storedOperationsEventEntries, setStoredOperationsEventEntries] = useState<any[]>([]);
   const [storedSegmentData, setStoredSegmentData] = useState<any[]>([]);
   const [storedTestResults, setStoredTestResults] = useState<any[]>([]);
   const [storedEquipmentPropertyTracking, setStoredEquipmentPropertyTracking] = useState<any[]>([]);
@@ -262,12 +289,14 @@ const ProcessDataGenerator: React.FC = () => {
 
   const loadStoredActualData = async () => {
     try {
-      const [opsResp, segResp, matAct, eqAct, opsEvt, segData, tests, eqProp] = await Promise.all([
+      const [opsResp, segResp, matAct, eqAct, opsEvt, opsEvtRec, opsEvtEnt, segData, tests, eqProp] = await Promise.all([
         processDataDB.getAll('operationsResponses'),
         processDataDB.getAll('segmentResponses'),
         processDataDB.getAll('segmentMaterialActuals'),
         processDataDB.getAll('segmentEquipmentActuals'),
         processDataDB.getAll('operationsEvents'),
+        processDataDB.getAll('operationsEventRecords'),
+        processDataDB.getAll('operationsEventEntries'),
         processDataDB.getAll('segmentData'),
         processDataDB.getAll('testResults'),
         processDataDB.getAll('equipmentPropertyTracking'),
@@ -278,6 +307,8 @@ const ProcessDataGenerator: React.FC = () => {
       setStoredMaterialActuals(matAct);
       setStoredEquipmentActuals(eqAct);
       setStoredOperationsEvents(opsEvt);
+      setStoredOperationsEventRecords(opsEvtRec);
+      setStoredOperationsEventEntries(opsEvtEnt);
       setStoredSegmentData(segData);
       setStoredTestResults(tests);
       setStoredEquipmentPropertyTracking(eqProp);
@@ -288,6 +319,8 @@ const ProcessDataGenerator: React.FC = () => {
         materialActuals: matAct.length,
         equipmentActuals: eqAct.length,
         operationsEvents: opsEvt.length,
+        operationsEventRecords: opsEvtRec.length,
+        operationsEventEntries: opsEvtEnt.length,
         segmentData: segData.length,
         testResults: tests.length,
         equipmentPropertyTracking: eqProp.length,
@@ -300,7 +333,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa, shft, crw, sca] = await Promise.all([
+      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa, oert, oeet, shft, crw, sca] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
@@ -312,6 +345,8 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataDB.getAll('equipmentPropertyAssignments'),
         masterDataDB.getAll('operationEventDefinitions'),
         masterDataDB.getAll('operationEventDefSegmentAssignments'),
+        masterDataDB.getAll('operationsEventRecords'),
+        masterDataDB.getAll('operationsEventEntries'),
         masterDataDB.getAll('shifts'),
         masterDataDB.getAll('crews'),
         masterDataDB.getAll('shiftCrewAssignments'),
@@ -328,6 +363,8 @@ const ProcessDataGenerator: React.FC = () => {
       setEquipmentPropertyAssignments(epa);
       setOperationEventDefinitions(oed);
       setOperationEventDefSegmentAssignments(oedsa);
+      setOperationsEventRecordsTemplates(oert);
+      setOperationsEventEntriesTemplates(oeet);
       setShifts(shft);
       setCrews(crw);
       setShiftCrewAssignments(sca);
@@ -335,10 +372,20 @@ const ProcessDataGenerator: React.FC = () => {
       console.log('[Master Data] Loaded:', {
         operationEventDefinitions: oed.length,
         operationEventDefSegmentAssignments: oedsa.length,
+        operationsEventRecordsTemplates: oert.length,
+        operationsEventEntriesTemplates: oeet.length,
         shifts: shft.length,
         crews: crw.length,
         shiftCrewAssignments: sca.length
       });
+      
+      // Debug: Log sample event definitions
+      const sampleDowntimeEvents = oed.filter(e => e.causesDowntime).slice(0, 3);
+      const sampleScrapEvents = oed.filter(e => e.causesScrap).slice(0, 3);
+      console.log('[Master Data] Sample events with causesDowntime=true:', sampleDowntimeEvents.map(e => `${e.eventCode} (${e.causesDowntime})`));
+      console.log('[Master Data] Sample events with causesScrap=true:', sampleScrapEvents.map(e => `${e.eventCode} (${e.causesScrap})`));
+      console.log('[Master Data] Total events with causesDowntime=true:', oed.filter(e => e.causesDowntime).length);
+      console.log('[Master Data] Total events with causesScrap=true:', oed.filter(e => e.causesScrap).length);
       
       setLoading(false);
     } catch (error) {
@@ -381,6 +428,9 @@ const ProcessDataGenerator: React.FC = () => {
       // Store reference data for display
       setReferenceOperationsRequest(orData.operationsRequest);
       setReferenceSegmentRequirements(orData.segmentRequirements);
+      
+      // Load segment equipment requirements
+      const segmentEquipmentRequirements = orData.segmentEquipmentRequirements || [];
 
       // Generate Operations Response ID
       const opsResponseId = `OPS-RESP-${timestamp.toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
@@ -695,28 +745,42 @@ const ProcessDataGenerator: React.FC = () => {
       }
 
       // Generate Operations Events per segment requirement (not per run)
-      // Only create downtime events if production delay was defined
-      // Only create scrap events if scrap percentage was defined
+      // Always generate mandatory events
+      // Conditional events (downtime, scrap) only if conditions are met
       console.log(`[Operations Events] Checking segment requirements - scrap=${scrapProducedPercent}, delay=${productionDelayMinutes}`);
       
       for (const segReq of sortedSegReqs) {
-        const shouldGenerateEvents = scrapProducedPercent > 0 || productionDelayMinutes > 0;
-        
-        if (!shouldGenerateEvents) {
-          continue;
-        }
-        
         console.log(`[Operations Events] Processing segment ${segReq.processSegmentId}`);
         
-        // Find event definitions assigned to this segment
+        // Find all event definitions assigned to this segment
         let segmentEventAssignments = operationEventDefSegmentAssignments.filter(
           oedsa => oedsa.processSegmentId === segReq.processSegmentId
         );
         
-        // Filter based on what conditions are met
-        segmentEventAssignments = segmentEventAssignments.filter(assignment => {
+        console.log(`[Operations Events] Found ${segmentEventAssignments.length} event assignments for segment`);
+        
+        // Debug: Log all assignments with their isMandatory values
+        segmentEventAssignments.forEach(a => {
+          console.log(`[Operations Events] Assignment ${a.id}: isMandatory = ${a.isMandatory} (type: ${typeof a.isMandatory}), startOrEnd = ${a.startOrEndEvent}`);
+        });
+        
+        // Separate mandatory and conditional events (handle both boolean and string values)
+        const mandatoryAssignments = segmentEventAssignments.filter(a => 
+          a.isMandatory === true || a.isMandatory === 'TRUE' || a.isMandatory === 'true' || a.isMandatory === 'True'
+        );
+        const conditionalAssignments = segmentEventAssignments.filter(a => 
+          !(a.isMandatory === true || a.isMandatory === 'TRUE' || a.isMandatory === 'true' || a.isMandatory === 'True')
+        );
+        
+        console.log(`[Operations Events] ${mandatoryAssignments.length} mandatory, ${conditionalAssignments.length} conditional events`);
+        
+        // Filter conditional events based on conditions (downtime, scrap)
+        const filteredConditionalAssignments = conditionalAssignments.filter(assignment => {
           const eventDef = operationEventDefinitions.find(oed => oed.id === assignment.operationsEventDefinitionId);
-          if (!eventDef) return false;
+          if (!eventDef) {
+            console.log(`[Operations Events] Event definition not found for assignment ${assignment.id}`);
+            return false;
+          }
           
           // Include downtime events only if production delay is defined
           const includeForDowntime = productionDelayMinutes > 0 && eventDef.causesDowntime;
@@ -724,54 +788,180 @@ const ProcessDataGenerator: React.FC = () => {
           // Include scrap events only if scrap percentage is defined
           const includeForScrap = scrapProducedPercent > 0 && eventDef.causesScrap;
           
-          return includeForDowntime || includeForScrap;
+          const shouldInclude = includeForDowntime || includeForScrap;
+          
+          console.log(`[Operations Events] Event ${eventDef.eventCode}: causesDowntime=${eventDef.causesDowntime}, causesScrap=${eventDef.causesScrap}, includeForDowntime=${includeForDowntime}, includeForScrap=${includeForScrap}, shouldInclude=${shouldInclude}`);
+          
+          return shouldInclude;
         });
         
-        console.log(`[Operations Events] Found ${segmentEventAssignments.length} matching event assignments for segment`);
+        console.log(`[Operations Events] ${filteredConditionalAssignments.length} conditional events match conditions`);
         
-        if (segmentEventAssignments.length > 0) {
-          // Randomly select 1-3 events per segment requirement
-          const numEvents = Math.floor(Math.random() * 3) + 1; // 1 to 3
-          const shuffled = [...segmentEventAssignments].sort(() => 0.5 - Math.random());
-          const selectedAssignments = shuffled.slice(0, Math.min(numEvents, segmentEventAssignments.length));
-          
-          console.log(`[Operations Events] Generating ${selectedAssignments.length} events for segment`);
-          
-          // Find any segment response for this segment requirement to use for timestamp range
+        // Combine mandatory events with randomly selected conditional events
+        let selectedAssignments = [...mandatoryAssignments];
+        
+        if (filteredConditionalAssignments.length > 0) {
+          // Randomly select 1-3 conditional events
+          const numConditionalEvents = Math.floor(Math.random() * 3) + 1;
+          const shuffled = [...filteredConditionalAssignments].sort(() => 0.5 - Math.random());
+          const selectedConditional = shuffled.slice(0, Math.min(numConditionalEvents, filteredConditionalAssignments.length));
+          selectedAssignments = [...selectedAssignments, ...selectedConditional];
+        }
+        
+        console.log(`[Operations Events] Total ${selectedAssignments.length} events to generate (${mandatoryAssignments.length} mandatory + ${selectedAssignments.length - mandatoryAssignments.length} conditional)`);
+        
+        if (selectedAssignments.length > 0) {
+          // Find segment responses for this segment requirement
           const segmentResponses = generatedSegResponses.filter(sr => sr.segmentRequirementId === segReq.id);
           if (segmentResponses.length === 0) continue;
           
-          // Use the first and last segment response times as the range
-          const startTime = new Date(segmentResponses[0].actualStartDateTime.replace(' ', 'T') + 'Z');
-          const endTime = new Date(segmentResponses[segmentResponses.length - 1].actualEndDateTime.replace(' ', 'T') + 'Z');
-          
-          for (const assignment of selectedAssignments) {
-            const eventDef = operationEventDefinitions.find(
-              oed => oed.id === assignment.operationsEventDefinitionId
-            );
+          // Process each segment response
+          for (const segResp of segmentResponses) {
+            const startTime = new Date(segResp.actualStartDateTime.replace(' ', 'T') + 'Z');
+            const endTime = new Date(segResp.actualEndDateTime.replace(' ', 'T') + 'Z');
+            const durationMs = endTime.getTime() - startTime.getTime();
             
-            // Generate random timestamp between segment start and end
-            const startTimeMs = startTime.getTime();
-            const endTimeMs = endTime.getTime();
-            const randomTimeMs = startTimeMs + Math.random() * (endTimeMs - startTimeMs);
-            const eventTime = new Date(randomTimeMs);
-            
-            // Use the first segment response id for this segment requirement
-            const segRespId = segmentResponses[0].id;
-            
-            const operationsEvent: OperationsEvent = {
-              id: `OPS-EVENT-${segReq.processSegmentId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
-              segmentResponseId: segRespId,
-              operationsEventDefinitionId: assignment.operationsEventDefinitionId,
-              effectiveTimestamp: eventTime.toISOString().slice(0, 19).replace('T', ' '),
-              notes: `${eventDef?.description || 'Event'} - ${assignment.notes}`,
-            };
-            generatedOperationsEvents.push(operationsEvent);
-            console.log(`[Operations Events] Created event: ${operationsEvent.id} (${eventDef?.eventCode})`);
+            for (const assignment of selectedAssignments) {
+              const eventDef = operationEventDefinitions.find(
+                oed => oed.id === assignment.operationsEventDefinitionId
+              );
+              
+              // Determine event timestamp based on StartOrEndEvent
+              let eventTime: Date;
+              const startOrEnd = (assignment.startOrEndEvent || 'Start').toLowerCase();
+              
+              if (startOrEnd === 'end') {
+                // End events occur near the end of the segment (last 10%)
+                const nearEndMs = endTime.getTime() - (durationMs * 0.1 * Math.random());
+                eventTime = new Date(nearEndMs);
+              } else {
+                // Start events occur near the beginning of the segment (first 10%)
+                const nearStartMs = startTime.getTime() + (durationMs * 0.1 * Math.random());
+                eventTime = new Date(nearStartMs);
+              }
+              
+              const operationsEvent: OperationsEvent = {
+                id: `OPS-EVENT-${segResp.id}-${assignment.operationsEventDefinitionId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+                segmentResponseId: segResp.id,
+                operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+                effectiveTimestamp: eventTime.toISOString().slice(0, 19).replace('T', ' '),
+                notes: `${eventDef?.description || 'Event'} (${startOrEnd === 'end' ? 'End' : 'Start'}) - ${assignment.notes}`,
+              };
+              generatedOperationsEvents.push(operationsEvent);
+              console.log(`[Operations Events] Created ${assignment.isMandatory ? 'MANDATORY' : 'conditional'} event: ${operationsEvent.id} (${eventDef?.eventCode}) at ${startOrEnd}`);
+            }
           }
         } else {
-          console.log(`[Operations Events] No matching event assignments found for segment ${segReq.processSegmentId}`);
+          console.log(`[Operations Events] No events to generate for segment ${segReq.processSegmentId}`);
         }
+      }
+
+      // Generate Operations Event Records and Entries based on Operations Events
+      const generatedOperationsEventRecords: OperationsEventRecord[] = [];
+      const generatedOperationsEventEntries: OperationsEventEntry[] = [];
+      console.log('[Operations Event Records] Starting generation');
+      
+      for (const opsEvent of generatedOperationsEvents) {
+        // Get the event definition to determine severity
+        const eventDef = operationEventDefinitions.find(
+          oed => oed.id === opsEvent.operationsEventDefinitionId
+        );
+        
+        // Get segment response and equipment for this event
+        const segResp = generatedSegResponses.find(sr => sr.id === opsEvent.segmentResponseId);
+        const segReq = sortedSegReqs.find(sr => sr.id === segResp?.segmentRequirementId);
+        const eqReqs = segmentEquipmentRequirements.filter(ser => ser.segmentRequirementId === segReq?.id);
+        const selectedEquipment = eqReqs.length > 0 ? eqReqs[Math.floor(Math.random() * eqReqs.length)].equipmentId : equipment[0]?.id || 'EQUIP-001';
+        
+        // Create an operations event record for each event
+        const recordId = `OER-${opsEvent.id.replace('OPS-EVENT-', '')}`;
+        const operationsEventRecord: OperationsEventRecord = {
+          id: recordId,
+          operationsEventId: opsEvent.id,
+          operationsEventDefinitionId: opsEvent.operationsEventDefinitionId,
+          severity: eventDef?.severity || 'Medium',
+          status: Math.random() > 0.3 ? 'Closed' : 'Open',
+          comments: `Event occurred at ${opsEvent.effectiveTimestamp} - ${opsEvent.notes}`,
+          effectiveTime: opsEvent.effectiveTimestamp,
+          segmentResponseId: opsEvent.segmentResponseId,
+          equipmentId: selectedEquipment,
+        };
+        generatedOperationsEventRecords.push(operationsEventRecord);
+        
+        // Find entry templates for this event definition ID from master data
+        const recordTemplates = operationsEventRecordsTemplates.filter(
+          rt => rt.OperationsEventDefinitionID === opsEvent.operationsEventDefinitionId
+        );
+        
+        // For each matching record template, find corresponding entry templates
+        let entryCount = 0;
+        for (const recordTemplate of recordTemplates) {
+          const entryTemplates = operationsEventEntriesTemplates.filter(
+            et => et.OperationsEventRecordID === recordTemplate.OperationsEventRecordID
+          );
+          
+          // Create entries based on templates
+          for (let i = 0; i < entryTemplates.length; i++) {
+            const template = entryTemplates[i];
+            entryCount++;
+            const entryId = `OEE-${recordId.replace('OER-', '')}-${String(entryCount).padStart(2, '0')}`;
+            
+            // Add a few minutes to the event time for each entry
+            const eventTime = new Date(opsEvent.effectiveTimestamp.replace(' ', 'T') + 'Z');
+            const entryTime = new Date(eventTime.getTime() + (entryCount) * 5 * 60000); // Add 5 minutes per entry
+            
+            const operationsEventEntry: OperationsEventEntry = {
+              id: entryId,
+              operationsEventRecordId: recordId,
+              entryType: template.EntryType || 'Production',
+              description: template.Description || `Entry for ${eventDef?.eventCode || 'event'}`,
+              effectiveTime: entryTime.toISOString().slice(0, 19).replace('T', ' '),
+              segmentResponseId: operationsEventRecord.segmentResponseId,
+              equipmentId: operationsEventRecord.equipmentId,
+            };
+            generatedOperationsEventEntries.push(operationsEventEntry);
+          }
+        }
+        
+        // If no templates found, create a default entry
+        if (entryCount === 0) {
+          const entryId = `OEE-${recordId.replace('OER-', '')}-01`;
+          const eventTime = new Date(opsEvent.effectiveTimestamp.replace(' ', 'T') + 'Z');
+          const entryTime = new Date(eventTime.getTime() + 5 * 60000);
+          
+          const operationsEventEntry: OperationsEventEntry = {
+            id: entryId,
+            operationsEventRecordId: recordId,
+            entryType: 'Production',
+            description: `Entry for ${eventDef?.eventCode || 'event'}`,
+            effectiveTime: entryTime.toISOString().slice(0, 19).replace('T', ' '),
+            segmentResponseId: operationsEventRecord.segmentResponseId,
+            equipmentId: operationsEventRecord.equipmentId,
+          };
+          generatedOperationsEventEntries.push(operationsEventEntry);
+          entryCount = 1;
+        }
+        
+        console.log(`[Operations Event Records] Created record ${recordId} with ${entryCount} entries (from templates)`);
+      }
+      
+      console.log(`[Operations Event Records] Total: ${generatedOperationsEventRecords.length} records, ${generatedOperationsEventEntries.length} entries`);
+      
+      // Verify the relationships between records and entries
+      console.log('[Operations Event Records] Verifying record-entry relationships...');
+      const recordIds = new Set(generatedOperationsEventRecords.map(r => r.id));
+      const orphanedEntries = generatedOperationsEventEntries.filter(entry => !recordIds.has(entry.operationsEventRecordId));
+      if (orphanedEntries.length > 0) {
+        console.error(`[Operations Event Records] Found ${orphanedEntries.length} orphaned entries!`, orphanedEntries);
+      } else {
+        console.log(`[Operations Event Records] ✓ All ${generatedOperationsEventEntries.length} entries are properly linked to their records`);
+      }
+      
+      // Log sample relationships
+      if (generatedOperationsEventRecords.length > 0) {
+        const sampleRecord = generatedOperationsEventRecords[0];
+        const relatedEntries = generatedOperationsEventEntries.filter(e => e.operationsEventRecordId === sampleRecord.id);
+        console.log(`[Operations Event Records] Sample: Record ${sampleRecord.id} has ${relatedEntries.length} entries:`, relatedEntries.map(e => e.id));
       }
 
       // Generate Segment Data (Shift and Crew Assignments)
@@ -1020,6 +1210,8 @@ const ProcessDataGenerator: React.FC = () => {
       setEquipmentActuals(generatedEqActuals);
       setEquipmentPropertyTracking(generatedPropertyTracking);
       setOperationsEvents(generatedOperationsEvents);
+      setOperationsEventRecords(generatedOperationsEventRecords);
+      setOperationsEventEntries(generatedOperationsEventEntries);
       setGeneratedMaterialLotsForDisplay(generatedMaterialLots);
       
       // Generate Test Results for produced material lots
@@ -1073,6 +1265,8 @@ const ProcessDataGenerator: React.FC = () => {
     setEquipmentActuals([]);
     setEquipmentPropertyTracking([]);
     setOperationsEvents([]);
+    setOperationsEventRecords([]);
+    setOperationsEventEntries([]);
     setSegmentData([]);
     setTestResults([]);
     setGeneratedMaterialLotsForDisplay([]);
@@ -1156,6 +1350,8 @@ const ProcessDataGenerator: React.FC = () => {
         equipmentPropertyTracking,
         testResults,
         operationsEvents,
+        operationsEventRecords,
+        operationsEventEntries,
         segmentData
       );
       
@@ -1230,6 +1426,8 @@ const ProcessDataGenerator: React.FC = () => {
       setEquipmentActuals([]);
       setEquipmentPropertyTracking([]);
       setOperationsEvents([]);
+      setOperationsEventRecords([]);
+      setOperationsEventEntries([]);
       setTestResults([]);
       setGeneratedMaterialLotsForDisplay([]);
       setGeneratedMaterialSublotsForDisplay([]);
@@ -1565,6 +1763,23 @@ const ProcessDataGenerator: React.FC = () => {
           };
           generatedMatReqs.push(matReq);
         });
+
+        // If this is the last segment (highest sequence), add the final product as Output
+        const isLastSegment = index === productSegments.length - 1;
+        if (isLastSegment) {
+          const productMaterial = materials.find(m => m.id === segment.productMaterialId);
+          const matReqId = `SMR-${segReqId}-OUTPUT`;
+          
+          const outputMatReq: SegmentMaterialRequirement = {
+            id: matReqId,
+            segmentRequirementId: segReqId,
+            materialId: segment.productMaterialId,
+            requiredQty: formData.plannedQuantity,
+            qtyUoM: formData.quantityUoM,
+            requirementType: 'Output',
+          };
+          generatedMatReqs.push(outputMatReq);
+        }
 
         // Generate Equipment Requirements based on Equipment Usage
         const eqUsages = equipmentUsages.filter(eu => eu.processSegmentId === segment.id);
@@ -1943,7 +2158,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               )}
               
               <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="body2" color="text.secondary" gutterBottom>
                     <strong>Operations Requests:</strong> {savedOperationsRequests.filter(req => 
                       !planDataFilter || 
@@ -2003,7 +2218,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </Typography>
                   )}
                 </Grid>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                     <Chip label={`${savedOperationsRequests.length} Requests`} color="primary" size="small" />
                     <Chip label="Saved in DB" color="success" size="small" />
@@ -2015,7 +2230,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
       <Grid container spacing={3}>
         {/* Operations Request Form */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -2024,7 +2239,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               <Divider sx={{ mb: 2 }} />
               
               <Grid container spacing={2}>
-                <Grid item xs={12}>
+                <Grid size={12}>
                   <TextField
                     fullWidth
                     label="Description"
@@ -2034,7 +2249,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <FormControl fullWidth required>
                     <InputLabel>Plant</InputLabel>
                     <Select
@@ -2051,7 +2266,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <FormControl fullWidth required disabled={!formData.plantId}>
                     <InputLabel>Production Line</InputLabel>
                     <Select
@@ -2068,7 +2283,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid size={12}>
                   <FormControl fullWidth required>
                     <InputLabel>Product</InputLabel>
                     <Select
@@ -2085,7 +2300,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     fullWidth
                     label="Planned Quantity"
@@ -2096,7 +2311,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     fullWidth
                     label="UoM"
@@ -2105,7 +2320,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     fullWidth
                     label="Start Date/Time"
@@ -2117,7 +2332,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     fullWidth
                     label="End Date/Time"
@@ -2129,7 +2344,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   />
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid size={12}>
                   <Button
                     fullWidth
                     variant="contained"
@@ -2146,7 +2361,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
         </Grid>
 
         {/* Generation Summary */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -2440,7 +2655,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               {actualDataExpanded && storedOperationsResponses.length > 0 && (
                 <Box sx={{ mb: 2 }}>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
+                    <Grid size={{ xs: 12, md: 6 }}>
                       <TextField
                         size="small"
                         fullWidth
@@ -2450,7 +2665,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         onChange={(e) => setActualDataFilter(e.target.value)}
                       />
                     </Grid>
-                    <Grid item xs={12} md={6}>
+                    <Grid size={{ xs: 12, md: 6 }}>
                       <FormControl size="small" fullWidth>
                         <InputLabel>Material Actuals Filter</InputLabel>
                         <Select
@@ -2471,7 +2686,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               
               <Grid container spacing={2}>
                 {/* Available Plan Data */}
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="subtitle2" gutterBottom color="text.secondary">
                     Available Operations Requests (Plan):
                   </Typography>
@@ -2506,7 +2721,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                 </Grid>
 
                 {/* Stored Actual Data from Database */}
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="subtitle2" gutterBottom color="text.secondary">
                     Stored Actual Data (Database):
                   </Typography>
@@ -2632,7 +2847,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
           <Grid container spacing={3}>
             {/* Actual Data Form */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -2641,7 +2856,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   <Divider sx={{ mb: 2 }} />
                   
                   <Grid container spacing={2}>
-                    <Grid item xs={12}>
+                    <Grid size={12}>
                       <FormControl fullWidth required>
                         <InputLabel>Operations Request</InputLabel>
                         <Select
@@ -2666,7 +2881,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
                     {selectedOperationsRequestId && (
                       <>
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Button
                             fullWidth
                             variant="outlined"
@@ -2677,7 +2892,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             Check Operations Request Data
                           </Button>
                         </Grid>
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
                             Click "Check Operations Request Data" to verify that this operations request has segment requirements before generating actual data.
                           </Alert>
@@ -2687,13 +2902,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
                     {selectedOperationsRequestId && (
                       <>
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Alert severity="info" size="small">
                             Selected: {savedOperationsRequests.find(or => or.id === selectedOperationsRequestId)?.description}
                           </Alert>
                         </Grid>
 
-                        <Grid item xs={12} sm={8}>
+                        <Grid size={{ xs: 12, sm: 8 }}>
                           <TextField
                             fullWidth
                             label="Actual Product Quantity"
@@ -2704,7 +2919,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           />
                         </Grid>
 
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                           <TextField
                             fullWidth
                             label="UoM"
@@ -2713,7 +2928,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           />
                         </Grid>
 
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                           <TextField
                             fullWidth
                             label="Scrap Produced %"
@@ -2724,7 +2939,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           />
                         </Grid>
 
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                           <TextField
                             fullWidth
                             label="Production Delay (minutes)"
@@ -2736,7 +2951,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           />
                         </Grid>
 
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Button
                             fullWidth
                             variant="contained"
@@ -2748,7 +2963,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           </Button>
                         </Grid>
 
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Button
                             fullWidth
                             variant="outlined"
@@ -2766,7 +2981,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             </Grid>
 
             {/* Actual Data Summary */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -2796,6 +3011,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Chip label={`${equipmentActuals.length} Equipment Actuals`} color="info" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentPropertyTracking.length} Property Tracking`} color="secondary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${operationsEvents.length} Operations Events`} color="error" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${operationsEventRecords.length} Event Records`} color="warning" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${operationsEventEntries.length} Event Entries`} color="warning" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${segmentData.length} Segment Data`} color="primary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialLotsForDisplay.length} Material Lots`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialSublotsForDisplay.length} Material Sublots`} color="success" sx={{ mr: 1, mb: 1 }} />
@@ -3215,6 +3432,105 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             </TableRow>
                           );
                         })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Operations Event Records Table */}
+              {operationsEventRecords.length > 0 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'warning.dark', color: 'white' }}>
+                    <Typography variant="subtitle1">
+                      Operations Event Records
+                      <Chip label={operationsEventRecords.length} size="small" sx={{ ml: 1, bgcolor: 'white', color: 'warning.dark' }} />
+                    </Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Record ID</TableCell>
+                          <TableCell>Event Definition</TableCell>
+                          <TableCell>Severity</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Effective Time</TableCell>
+                          <TableCell>Segment Response</TableCell>
+                          <TableCell>Equipment</TableCell>
+                          <TableCell>Comments</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {operationsEventRecords.map((record) => {
+                          const eventDef = operationEventDefinitions.find(oed => oed.id === record.operationsEventDefinitionId);
+                          return (
+                            <TableRow key={record.id}>
+                              <TableCell>{record.id}</TableCell>
+                              <TableCell>{eventDef?.description || record.operationsEventDefinitionId}</TableCell>
+                              <TableCell>
+                                <Chip 
+                                  label={record.severity} 
+                                  size="small"
+                                  color={record.severity === 'High' ? 'error' : record.severity === 'Medium' ? 'warning' : 'default'}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Chip 
+                                  label={record.status} 
+                                  size="small"
+                                  color={record.status === 'Open' ? 'error' : 'success'}
+                                />
+                              </TableCell>
+                              <TableCell>{record.effectiveTime}</TableCell>
+                              <TableCell>{record.segmentResponseId}</TableCell>
+                              <TableCell>{record.equipmentId}</TableCell>
+                              <TableCell>{record.comments}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Operations Event Entries Table */}
+              {operationsEventEntries.length > 0 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'orange', color: 'white' }}>
+                    <Typography variant="subtitle1">
+                      Operations Event Entries
+                      <Chip label={operationsEventEntries.length} size="small" sx={{ ml: 1, bgcolor: 'white', color: 'orange' }} />
+                    </Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Entry ID</TableCell>
+                          <TableCell>Event Record ID</TableCell>
+                          <TableCell>Entry Type</TableCell>
+                          <TableCell>Effective Time</TableCell>
+                          <TableCell>Segment Response</TableCell>
+                          <TableCell>Equipment</TableCell>
+                          <TableCell>Description</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {operationsEventEntries.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell>{entry.id}</TableCell>
+                            <TableCell>{entry.operationsEventRecordId}</TableCell>
+                            <TableCell>
+                              <Chip label={entry.entryType} size="small" color="primary" />
+                            </TableCell>
+                            <TableCell>{entry.effectiveTime}</TableCell>
+                            <TableCell>{entry.segmentResponseId}</TableCell>
+                            <TableCell>{entry.equipmentId}</TableCell>
+                            <TableCell>{entry.description}</TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </TableContainer>

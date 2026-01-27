@@ -72,6 +72,7 @@ const getLayoutedNodes = (entities: Record<string, EntityDefinition>, rootEntity
   }
   
   const rootEntityData = entities[rootEntity];
+  const rootEntityId = rootEntityData.id;
   
   // Build connection graph to count relationships between non-root nodes
   const connectionCount = new Map<string, Map<string, number>>();
@@ -144,7 +145,10 @@ const getLayoutedNodes = (entities: Record<string, EntityDefinition>, rootEntity
     const entity = entities[name];
     const isRoot = name === rootEntity;
     
+    console.log(`[EntityGraph] Processing entity ${name}, relationships:`, entity.relationships?.length || 0);
+    
     entity.relationships?.forEach((rel) => {
+      console.log(`[EntityGraph] - Relationship ${rel.name}:`, rel);
       const targetId = rel.targetEntityId || rel.TargetEntityId;
       if (!targetId) {
         console.warn(`No target ID found for relationship ${rel.name} from ${entity.name}`);
@@ -153,13 +157,23 @@ const getLayoutedNodes = (entities: Record<string, EntityDefinition>, rootEntity
       
       // Look up target entity name by ID
       const targetName = idToName.get(targetId);
-      if (!targetName || !entities[targetName]) {
+      
+      // For self-recursive relationships, targetName will equal entity.name
+      const isSelfRecursive = targetId === entity.id;
+      
+      if (!isSelfRecursive && (!targetName || !entities[targetName])) {
         console.warn(`Target entity with ID ${targetId} not found in graph for relationship ${rel.name} from ${entity.name}`);
         return;
       }
       
-      const targetEntity = entities[targetName];
+      const targetEntity = isSelfRecursive ? entity : entities[targetName];
       const edgeId = `${entity.id}-${rel.name}-${targetEntity.id}`;
+      
+      console.log(`Processing relationship: ${entity.name} -> ${targetEntity.name}, isSelfRecursive: ${isSelfRecursive}`);
+      
+      // Determine if this is an inbound or outbound relationship relative to root
+      const isOutboundFromRoot = entity.id === rootEntityId;
+      const isInboundToRoot = targetEntity.id === rootEntityId;
       
       // Determine edge label based on cardinality
       let cardinalityLabel = '';
@@ -176,17 +190,40 @@ const getLayoutedNodes = (entities: Record<string, EntityDefinition>, rootEntity
 
       // Combine relationship name with cardinality
       const label = `${rel.displayName || rel.name} (${cardinalityLabel})`;
+      
+      // Choose color based on relationship direction relative to root
+      let edgeColor = '#9e9e9e'; // Default gray for non-root relationships
+      let strokeWidth = 1.5;
+      let animated = false;
+      
+      if (isOutboundFromRoot) {
+        edgeColor = '#4caf50'; // Green for outbound from root
+        strokeWidth = 3;
+        animated = true;
+      } else if (isInboundToRoot) {
+        edgeColor = '#9c27b0'; // Purple for inbound to root
+        strokeWidth = 3;
+        animated = true;
+      }
 
+      // Check if this is a self-recursive relationship - overrides other colors
+      if (isSelfRecursive) {
+        edgeColor = '#ff5722';
+        strokeWidth = 4;
+        animated = true;
+      }
+      
       edges.push({
         id: edgeId,
         source: entity.id,  // Use source entity ID
         target: targetEntity.id,  // Use target entity ID
         label,
-        type: 'default',  // Use default straight edges for clarity
-        animated: isRoot,
+        type: isSelfRecursive ? 'default' : 'smoothstep',
+        animated: isSelfRecursive || animated,
         style: { 
-          stroke: isRoot ? '#2196f3' : '#9e9e9e',
-          strokeWidth: isRoot ? 3 : 1.5,
+          stroke: isSelfRecursive ? '#ff5722' : edgeColor,
+          strokeWidth: isSelfRecursive ? 4 : strokeWidth,
+          strokeDasharray: isSelfRecursive ? '5,5' : undefined,
         },
         labelStyle: {
           fill: '#333',
@@ -199,8 +236,13 @@ const getLayoutedNodes = (entities: Record<string, EntityDefinition>, rootEntity
         },
         markerEnd: {
           type: 'arrowclosed',
-          color: isRoot ? '#2196f3' : '#9e9e9e',
+          color: isSelfRecursive ? '#ff5722' : edgeColor,
+          width: isSelfRecursive ? 25 : 20,
+          height: isSelfRecursive ? 25 : 20,
         },
+        // Special positioning for self-loops
+        sourceHandle: isSelfRecursive ? 'right' : undefined,
+        targetHandle: isSelfRecursive ? 'left' : undefined,
       });
     });
   });
@@ -585,11 +627,40 @@ const EntityGraph: React.FC<EntityGraphProps> = ({ entityName, maxDepth = 2 }) =
               sx={{
                 width: 40,
                 height: 3,
-                backgroundColor: '#2196f3',
+                backgroundColor: '#4caf50',
                 borderRadius: 1,
               }}
             />
-            <Box sx={{ fontSize: 12 }}>Root relationships</Box>
+            <Box sx={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <OutboundIcon sx={{ fontSize: 14 }} />
+              Outbound
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 3,
+                backgroundColor: '#9c27b0',
+                borderRadius: 1,
+              }}
+            />
+            <Box sx={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <InboundIcon sx={{ fontSize: 14 }} />
+              Inbound
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 3,
+                backgroundColor: '#ff5722',
+                borderRadius: 1,
+                backgroundImage: 'repeating-linear-gradient(90deg, #ff5722, #ff5722 5px, transparent 5px, transparent 10px)',
+              }}
+            />
+            <Box sx={{ fontSize: 12 }}>Self-recursive</Box>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box
@@ -600,7 +671,7 @@ const EntityGraph: React.FC<EntityGraphProps> = ({ entityName, maxDepth = 2 }) =
                 borderRadius: 1,
               }}
             />
-            <Box sx={{ fontSize: 12 }}>Other relationships</Box>
+            <Box sx={{ fontSize: 12 }}>Other</Box>
           </Box>
         </Box>
       </Box>

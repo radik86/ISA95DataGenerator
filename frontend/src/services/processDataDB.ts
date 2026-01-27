@@ -57,6 +57,16 @@ interface ProcessDataDB extends DBSchema {
     value: OperationsEventRecord;
     indexes: { 'by-segment-resp': string; 'by-event-def': string; 'by-updated': Date };
   };
+  operationsEventRecords: {
+    key: string;
+    value: OperationsEventRecordRecord;
+    indexes: { 'by-event-def': string; 'by-status': string; 'by-updated': Date };
+  };
+  operationsEventEntries: {
+    key: string;
+    value: OperationsEventEntryRecord;
+    indexes: { 'by-event-record': string; 'by-entry-type': string; 'by-updated': Date };
+  };
   segmentData: {
     key: string;
     value: SegmentDataRecord;
@@ -185,6 +195,28 @@ export interface OperationsEventRecord extends BaseRecord {
   comment?: string;
 }
 
+export interface OperationsEventRecordRecord extends BaseRecord {
+  id: string;
+  operationsEventId: string;
+  operationsEventDefinitionId: string;
+  severity: string;
+  status: string;
+  comments: string;
+  effectiveTime: string;
+  segmentResponseId: string;
+  equipmentId: string;
+}
+
+export interface OperationsEventEntryRecord extends BaseRecord {
+  id: string;
+  operationsEventRecordId: string;
+  entryType: string;
+  description: string;
+  effectiveTime: string;
+  segmentResponseId: string;
+  equipmentId: string;
+}
+
 export interface SegmentDataRecord extends BaseRecord {
   id: string;
   segmentResponseId: string;
@@ -197,7 +229,7 @@ export interface SegmentDataRecord extends BaseRecord {
 }
 
 const DB_NAME = 'process-data-db';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 class ProcessDataDBService {
   private db: IDBPDatabase<ProcessDataDB> | null = null;
@@ -295,6 +327,22 @@ class ProcessDataDBService {
           opsEventsStore.createIndex('by-segment-resp', 'segmentResponseId');
           opsEventsStore.createIndex('by-event-def', 'operationsEventDefinitionId');
           opsEventsStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operations Event Records
+        if (!db.objectStoreNames.contains('operationsEventRecords')) {
+          const opsEventRecordsStore = db.createObjectStore('operationsEventRecords', { keyPath: 'id' });
+          opsEventRecordsStore.createIndex('by-event-def', 'operationsEventDefinitionId');
+          opsEventRecordsStore.createIndex('by-status', 'status');
+          opsEventRecordsStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operations Event Entries
+        if (!db.objectStoreNames.contains('operationsEventEntries')) {
+          const opsEventEntriesStore = db.createObjectStore('operationsEventEntries', { keyPath: 'id' });
+          opsEventEntriesStore.createIndex('by-event-record', 'operationsEventRecordId');
+          opsEventEntriesStore.createIndex('by-entry-type', 'entryType');
+          opsEventEntriesStore.createIndex('by-updated', 'updatedAt');
         }
 
         // Segment Data (Shift and Crew Assignments)
@@ -457,11 +505,13 @@ class ProcessDataDBService {
     equipmentPropertyTracking: Omit<EquipmentPropertyTrackingRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     testResults: Omit<TestResultRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     operationsEvents: Omit<OperationsEventRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    operationsEventRecords: Omit<OperationsEventRecordRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    operationsEventEntries: Omit<OperationsEventEntryRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     segmentData: Omit<SegmentDataRecord, 'createdAt' | 'updatedAt' | 'version'>[]
   ): Promise<void> {
     const db = await this.init();
     const tx = db.transaction(
-      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'segmentData'],
+      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'operationsEventRecords', 'operationsEventEntries', 'segmentData'],
       'readwrite'
     );
 
@@ -529,6 +579,26 @@ class ProcessDataDBService {
     for (const oe of operationsEvents) {
       await tx.objectStore('operationsEvents').put({
         ...oe,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      });
+    }
+
+    // Save operations event records
+    for (const oer of operationsEventRecords) {
+      await tx.objectStore('operationsEventRecords').put({
+        ...oer,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      });
+    }
+
+    // Save operations event entries
+    for (const oee of operationsEventEntries) {
+      await tx.objectStore('operationsEventEntries').put({
+        ...oee,
         createdAt: now,
         updatedAt: now,
         version: 1,

@@ -1,20 +1,101 @@
-OperationsEventDefSegAssignID,OperationsEventDefinitionID,ProcessSegmentID,IsPrimarySegment,Notes
-OEDSA-001,OED-UD-OVERTEMP,BREAD-750G-BAKE,true,Oven temperature fault during baking
-OEDSA-002,OED-UD-MIXFAIL,BREAD-750G-MIX,true,Mixer failure during dough mixing
-OEDSA-003,OED-UD-BEARING,BREAD-750G-MIX,true,Bearing overheat on mixer
-OEDSA-004,OED-UD-BELT,BREAD-750G-MIX,true,Drive belt failure on mixer
-OEDSA-005,OED-UD-SENSOR,BREAD-750G-MIX,false,Sensor failure may also affect baking
-OEDSA-006,OED-UD-SENSOR,BREAD-750G-BAKE,false,Sensor failure in oven temperature probe
-OEDSA-007,OED-UTIL-GAS,BREAD-750G-BAKE,true,Gas supply loss affects oven
-OEDSA-008,OED-UTIL-WATER,BREAD-750G-MIX,true,Water pressure affects dough preparation
-OEDSA-009,OED-SCR-BURN,BREAD-750G-BAKE,true,Burning only possible during baking
-OEDSA-010,OED-SCR-UNDER,BREAD-750G-BAKE,true,Underbaking only possible during baking
-OEDSA-011,OED-PROC-TEMPDEV,BREAD-750G-BAKE,true,Temperature deviation in oven
-OEDSA-012,OED-PROC-MIXERR,BREAD-750G-MIX,true,Incorrect mixing parameters
-OEDSA-013,OED-PROC-FLOW,BREAD-750G-MIX,true,Ingredient dosing error
-OEDSA-014,OED-MAT-SHORT,BREAD-750G-MIX,true,Raw material missing before or during mixing
-OEDSA-015,OED-MAT-EXPIRED,BREAD-750G-MIX,true,Expired ingredient detected
-OEDSA-016,OED-QC-FAIL,BREAD-750G-PACK,true,Final inspection at packaging
-OEDSA-017,OED-QC-LABEL,BREAD-750G-PACK,true,Labeling error during packaging
-OEDSA-018,OED-PLAN-DELAY,BREAD-750G-MIX,false,Schedule deviation detected at start
-OEDSA-019,OED-PLAN-OVERRUN,BREAD-750G-BAKE,false,Runtime exceeded planned duration
+OperationsEventDefSegAssignID,OperationsEventDefinitionID,ProcessSegmentID,StartOrEndEvent,IsMandatory,IsPrimarySegment,Notes
+OEDSA-001,OED-UD-OVERTEMP,BREAD-750G-BAKE,Start,FALSE,TRUE,Oven temperature fault during baking
+OEDSA-002,OED-UD-MIXFAIL,BREAD-750G-MIX,Start,FALSE,TRUE,Mixer failure during dough mixing
+OEDSA-003,OED-UD-BEARING,BREAD-750G-MIX,Start,FALSE,TRUE,Bearing overheat on mixer
+OEDSA-004,OED-UD-BELT,BREAD-750G-MIX,Start,FALSE,TRUE,Drive belt failure on mixer
+OEDSA-005,OED-UD-SENSOR,BREAD-750G-MIX,Start,FALSE,FALSE,Sensor failure may also affect baking
+OEDSA-006,OED-UD-SENSOR,BREAD-750G-BAKE,Start,FALSE,FALSE,Sensor failure in oven temperature probe
+OEDSA-007,OED-UTIL-GAS,BREAD-750G-BAKE,Start,FALSE,TRUE,Gas supply loss affects oven
+OEDSA-008,OED-UTIL-WATER,BREAD-750G-MIX,Start,FALSE,TRUE,Water pressure affects dough preparation
+OEDSA-009,OED-SCR-BURN,BREAD-750G-BAKE,Start,FALSE,TRUE,Burning only possible during baking
+OEDSA-010,OED-SCR-UNDER,BREAD-750G-BAKE,Start,FALSE,TRUE,Underbaking only possible during baking
+OEDSA-011,OED-PROC-TEMPDEV,BREAD-750G-BAKE,Start,FALSE,TRUE,Temperature deviation in oven
+OEDSA-012,OED-PROC-MIXERR,BREAD-750G-MIX,Start,FALSE,TRUE,Incorrect mixing parameters
+OEDSA-013,OED-PROC-FLOW,BREAD-750G-MIX,Start,FALSE,TRUE,Ingredient dosing error
+OEDSA-014,OED-MAT-SHORT,BREAD-750G-MIX,Start,FALSE,TRUE,Raw material missing before or during mixing
+OEDSA-015,OED-MAT-EXPIRED,BREAD-750G-MIX,Start,FALSE,TRUE,Expired ingredient detected
+OEDSA-016,OED-QC-FAIL,BREAD-750G-PACK,Start,FALSE,TRUE,Final inspection at packaging
+OEDSA-017,OED-QC-LABEL,BREAD-750G-PACK,Start,FALSE,TRUE,Labeling error during packaging
+OEDSA-018,OED-PLAN-DELAY,BREAD-750G-MIX,Start,FALSE,FALSE,Schedule deviation detected at start
+OEDSA-019,OED-PLAN-OVERRUN,BREAD-750G-BAKE,Start,FALSE,FALSE,Runtime exceeded planned duration
+OEDSA-020,OED-PROD-MIX-START,BREAD-750G-MIX,Start,TRUE,TRUE,Start of Mixing
+OEDSA-021,OED-PROD-MIX-END,BREAD-750G-MIX,End,TRUE,TRUE,End of Mixing
+OEDSA-022,OED-PROD-BAKE-START,BREAD-750G-BAKE,Start,TRUE,TRUE,Start of baking
+OEDSA-023,OED-PROD-BAKE-END,BREAD-750G-BAKE,End,TRUE,TRUE,End of baking
+OEDSA-024,OED-PROD-PACK-START,BREAD-750G-PACK,Start,TRUE,TRUE,Start of packing
+OEDSA-025,OED-PROD-PACK-END,BREAD-750G-PACK,End,TRUE,TRUE,End of packing
+OEDSA-026,OED-UD-OVERTEMP,LOAF-750G-BAKE,Start,FALSE,TRUE,Oven temperature fault during baking
+OEDSA-027,OED-UD-MIXFAIL,LOAF-750G-MIX,Start,FALSE,TRUE,Mixer failure during dough mixing
+OEDSA-028,OED-UD-BEARING,LOAF-750G-MIX,Start,FALSE,TRUE,Bearing overheat on mixer
+OEDSA-029,OED-UD-BELT,LOAF-750G-MIX,Start,FALSE,TRUE,Drive belt failure on mixer
+OEDSA-030,OED-UD-SENSOR,LOAF-750G-MIX,Start,FALSE,FALSE,Sensor failure may also affect baking
+OEDSA-031,OED-UD-SENSOR,LOAF-750G-BAKE,Start,FALSE,FALSE,Sensor failure in oven temperature probe
+OEDSA-032,OED-UTIL-GAS,LOAF-750G-BAKE,Start,FALSE,TRUE,Gas supply loss affects oven
+OEDSA-033,OED-UTIL-WATER,LOAF-750G-MIX,Start,FALSE,TRUE,Water pressure affects dough preparation
+OEDSA-034,OED-SCR-BURN,LOAF-750G-BAKE,Start,FALSE,TRUE,Burning only possible during baking
+OEDSA-035,OED-SCR-UNDER,LOAF-750G-BAKE,Start,FALSE,TRUE,Underbaking only possible during baking
+OEDSA-036,OED-PROC-TEMPDEV,LOAF-750G-BAKE,Start,FALSE,TRUE,Temperature deviation in oven
+OEDSA-037,OED-PROC-MIXERR,LOAF-750G-MIX,Start,FALSE,TRUE,Incorrect mixing parameters
+OEDSA-038,OED-PROC-FLOW,LOAF-750G-MIX,Start,FALSE,TRUE,Ingredient dosing error
+OEDSA-039,OED-MAT-SHORT,LOAF-750G-MIX,Start,FALSE,TRUE,Raw material missing before or during mixing
+OEDSA-040,OED-MAT-EXPIRED,LOAF-750G-MIX,Start,FALSE,TRUE,Expired ingredient detected
+OEDSA-041,OED-QC-FAIL,LOAF-750G-PACK,Start,FALSE,TRUE,Final inspection at packaging
+OEDSA-042,OED-QC-LABEL,LOAF-750G-PACK,Start,FALSE,TRUE,Labeling error during packaging
+OEDSA-043,OED-PLAN-DELAY,LOAF-750G-MIX,Start,FALSE,FALSE,Schedule deviation detected at start
+OEDSA-044,OED-PLAN-OVERRUN,LOAF-750G-BAKE,Start,FALSE,FALSE,Runtime exceeded planned duration
+OEDSA-045,OED-PROD-MIX-START,LOAF-750G-MIX,Start,TRUE,TRUE,Start of Mixing
+OEDSA-046,OED-PROD-MIX-END,LOAF-750G-MIX,End,TRUE,TRUE,End of Mixing
+OEDSA-047,OED-PROD-BAKE-START,LOAF-750G-BAKE,Start,TRUE,TRUE,Start of baking
+OEDSA-048,OED-PROD-BAKE-END,LOAF-750G-BAKE,End,TRUE,TRUE,End of baking
+OEDSA-049,OED-PROD-PACK-START,LOAF-750G-PACK,Start,TRUE,TRUE,Start of packing
+OEDSA-050,OED-PROD-PACK-END,LOAF-750G-PACK,End,TRUE,TRUE,End of packing
+OEDSA-051,OED-UD-OVERTEMP,PITA-750G-BAKE,Start,FALSE,TRUE,Oven temperature fault during baking
+OEDSA-052,OED-UD-MIXFAIL,PITA-750G-MIX,Start,FALSE,TRUE,Mixer failure during dough mixing
+OEDSA-053,OED-UD-BEARING,PITA-750G-MIX,Start,FALSE,TRUE,Bearing overheat on mixer
+OEDSA-054,OED-UD-BELT,PITA-750G-MIX,Start,FALSE,TRUE,Drive belt failure on mixer
+OEDSA-055,OED-UD-SENSOR,PITA-750G-MIX,Start,FALSE,FALSE,Sensor failure may also affect baking
+OEDSA-056,OED-UD-SENSOR,PITA-750G-BAKE,Start,FALSE,FALSE,Sensor failure in oven temperature probe
+OEDSA-057,OED-UTIL-GAS,PITA-750G-BAKE,Start,FALSE,TRUE,Gas supply loss affects oven
+OEDSA-058,OED-UTIL-WATER,PITA-750G-MIX,Start,FALSE,TRUE,Water pressure affects dough preparation
+OEDSA-059,OED-SCR-BURN,PITA-750G-BAKE,Start,FALSE,TRUE,Burning only possible during baking
+OEDSA-060,OED-SCR-UNDER,PITA-750G-BAKE,Start,FALSE,TRUE,Underbaking only possible during baking
+OEDSA-061,OED-PROC-TEMPDEV,PITA-750G-BAKE,Start,FALSE,TRUE,Temperature deviation in oven
+OEDSA-062,OED-PROC-MIXERR,PITA-750G-MIX,Start,FALSE,TRUE,Incorrect mixing parameters
+OEDSA-063,OED-PROC-FLOW,PITA-750G-MIX,Start,FALSE,TRUE,Ingredient dosing error
+OEDSA-064,OED-MAT-SHORT,PITA-750G-MIX,Start,FALSE,TRUE,Raw material missing before or during mixing
+OEDSA-065,OED-MAT-EXPIRED,PITA-750G-MIX,Start,FALSE,TRUE,Expired ingredient detected
+OEDSA-066,OED-QC-FAIL,PITA-750G-PACK,Start,FALSE,TRUE,Final inspection at packaging
+OEDSA-067,OED-QC-LABEL,PITA-750G-PACK,Start,FALSE,TRUE,Labeling error during packaging
+OEDSA-068,OED-PLAN-DELAY,PITA-750G-MIX,Start,FALSE,FALSE,Schedule deviation detected at start
+OEDSA-069,OED-PLAN-OVERRUN,PITA-750G-BAKE,Start,FALSE,FALSE,Runtime exceeded planned duration
+OEDSA-070,OED-PROD-MIX-START,PITA-750G-MIX,Start,TRUE,TRUE,Start of Mixing
+OEDSA-071,OED-PROD-MIX-END,PITA-750G-MIX,End,TRUE,TRUE,End of Mixing
+OEDSA-072,OED-PROD-BAKE-START,PITA-750G-BAKE,Start,TRUE,TRUE,Start of baking
+OEDSA-073,OED-PROD-BAKE-END,PITA-750G-BAKE,End,TRUE,TRUE,End of baking
+OEDSA-074,OED-PROD-PACK-START,PITA-750G-PACK,Start,TRUE,TRUE,Start of packing
+OEDSA-075,OED-PROD-PACK-END,PITA-750G-PACK,End,TRUE,TRUE,End of packing
+OEDSA-076,OED-UD-OVERTEMP,BAGUETTE-750G-BAKE,Start,FALSE,TRUE,Oven temperature fault during baking
+OEDSA-077,OED-UD-MIXFAIL,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Mixer failure during dough mixing
+OEDSA-078,OED-UD-BEARING,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Bearing overheat on mixer
+OEDSA-079,OED-UD-BELT,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Drive belt failure on mixer
+OEDSA-080,OED-UD-SENSOR,BAGUETTE-750G-MIX,Start,FALSE,FALSE,Sensor failure may also affect baking
+OEDSA-081,OED-UD-SENSOR,BAGUETTE-750G-BAKE,Start,FALSE,FALSE,Sensor failure in oven temperature probe
+OEDSA-082,OED-UTIL-GAS,BAGUETTE-750G-BAKE,Start,FALSE,TRUE,Gas supply loss affects oven
+OEDSA-083,OED-UTIL-WATER,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Water pressure affects dough preparation
+OEDSA-084,OED-SCR-BURN,BAGUETTE-750G-BAKE,Start,FALSE,TRUE,Burning only possible during baking
+OEDSA-085,OED-SCR-UNDER,BAGUETTE-750G-BAKE,Start,FALSE,TRUE,Underbaking only possible during baking
+OEDSA-086,OED-PROC-TEMPDEV,BAGUETTE-750G-BAKE,Start,FALSE,TRUE,Temperature deviation in oven
+OEDSA-087,OED-PROC-MIXERR,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Incorrect mixing parameters
+OEDSA-088,OED-PROC-FLOW,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Ingredient dosing error
+OEDSA-089,OED-MAT-SHORT,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Raw material missing before or during mixing
+OEDSA-090,OED-MAT-EXPIRED,BAGUETTE-750G-MIX,Start,FALSE,TRUE,Expired ingredient detected
+OEDSA-091,OED-QC-FAIL,BAGUETTE-750G-PACK,Start,FALSE,TRUE,Final inspection at packaging
+OEDSA-092,OED-QC-LABEL,BAGUETTE-750G-PACK,Start,FALSE,TRUE,Labeling error during packaging
+OEDSA-093,OED-PLAN-DELAY,BAGUETTE-750G-MIX,Start,FALSE,FALSE,Schedule deviation detected at start
+OEDSA-094,OED-PLAN-OVERRUN,BAGUETTE-750G-BAKE,Start,FALSE,FALSE,Runtime exceeded planned duration
+OEDSA-095,OED-PROD-MIX-START,BAGUETTE-750G-MIX,Start,TRUE,TRUE,Start of Mixing
+OEDSA-096,OED-PROD-MIX-END,BAGUETTE-750G-MIX,End,TRUE,TRUE,End of Mixing
+OEDSA-097,OED-PROD-BAKE-START,BAGUETTE-750G-BAKE,Start,TRUE,TRUE,Start of baking
+OEDSA-098,OED-PROD-BAKE-END,BAGUETTE-750G-BAKE,End,TRUE,TRUE,End of baking
+OEDSA-099,OED-PROD-PACK-START,BAGUETTE-750G-PACK,Start,TRUE,TRUE,Start of packing
+OEDSA-100,OED-PROD-PACK-END,BAGUETTE-750G-PACK,End,TRUE,TRUE,End of packing

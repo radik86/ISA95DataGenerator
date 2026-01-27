@@ -1,0 +1,45 @@
+﻿id,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure
+DefaultUnitOfMeasure,BAGUETTE-250G,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,BREAD-750G,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,LOAF-750G,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,PITA-200G,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,Flour_Type_550,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasureEA,CARTON_400EA,EA,DefaultUnitOfMeasure,EA
+DefaultUnitOfMeasure,Paper,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,Salt,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,Water,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,Yeast,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasure,Dough,g,DefaultUnitOfMeasure,g
+DefaultUnitOfMeasureEA,EURO_PALLET,EA,DefaultUnitOfMeasure,EA
+MC1-BAGUETTE-250G,BAGUETTE-250G,MC1,Material Code BAGUETTE-250G,NA
+MC2-BREAD-750G,BREAD-750G,MC2,Material Code BREAD-750G,NA
+MC3-LOAF-750G,LOAF-750G,MC3,Material Code LOAF-750G,NA
+MC4-PITA-200G,PITA-200G,MC4,Material Code PITA-200G,NA
+MC5-Flour_Type_550,Flour_Type_550,MC5,Material Code Flour_Type_550,NA
+MC6-CARTON_400EA,CARTON_400EA,MC6,Material Code CARTON_400EA,NA
+MC7-Paper,Paper,MC7,Material Code Paper,NA
+MC8-Salt,Salt,MC8,Material Code Salt,NA
+MC9-Water,Water,MC9,Material Code Water,NA
+MC10-Yeast,Yeast,MC10,Material Code Yeast,NA
+MC11-Dough,Dough,MC11,Material Code Dough,NA
+MC12-EURO_PALLET,EURO_PALLET,MC12,Material Code EURO_PALLET,NA
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+BAGUETTE-250G,,MC1,MC1-BAGUETTE-250G,
+BREAD-750G,,MC2,MC2-BREAD-750G,
+LOAF-750G,,MC3,MC3-LOAF-750G,
+PITA-200G,,MC4,MC4-PITA-200G,
+Flour_Type_550,,MC5,MC5-Flour_Type_550,
+PITA-200G,,MC6,MC6-PITA-200G,
+Paper,,MC7,MC7-Paper,
+Salt,,MC8,MC8-Salt,
+Water,,MC9,MC9-Water,
+Yeast,,MC10,MC10-Yeast,
+Dough,,MC11,MC11-Dough,
+EURO_PALLET,,MC12,MC12-EURO_PALLET,
+CARTON_400EA,,MC13,MC13-CARTON_400EA,

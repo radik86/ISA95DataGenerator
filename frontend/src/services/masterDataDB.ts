@@ -22,6 +22,16 @@ interface MasterDataDB extends DBSchema {
     value: MaterialSublotRecord;
     indexes: { 'by-lot': string; 'by-updated': Date };
   };
+  materialDefinitionProperties: {
+    key: string;
+    value: MaterialDefinitionPropertyRecord;
+    indexes: { 'by-updated': Date };
+  };
+  materialDefinitionPropertyAssignments: {
+    key: string;
+    value: MaterialDefinitionPropertyAssignmentRecord;
+    indexes: { 'by-material': string; 'by-property': string; 'by-updated': Date };
+  };
   equipmentClasses: {
     key: string;
     value: EquipmentClassRecord;
@@ -167,6 +177,21 @@ export interface MaterialSublotRecord extends BaseRecord {
   storageLocation?: string;
   status?: string;
   disposition?: string;
+}
+
+export interface MaterialDefinitionPropertyRecord extends BaseRecord {
+  id: string;
+  value: string;
+  description: string;
+  valueUnitOfMeasure: string;
+}
+
+export interface MaterialDefinitionPropertyAssignmentRecord extends BaseRecord {
+  id: string;
+  materialDefinitionId: string;
+  value: string;
+  description: string;
+  valueUnitOfMeasure: string;
 }
 
 export interface EquipmentClassRecord extends BaseRecord {
@@ -347,7 +372,7 @@ class MasterDataDatabase {
   }
 
   private async initDB(): Promise<IDBPDatabase<MasterDataDB>> {
-    return openDB<MasterDataDB>('master-data-db', 11, {
+    return openDB<MasterDataDB>('master-data-db', 12, {
       upgrade(db, oldVersion) {
         // Material Classes
         if (!db.objectStoreNames.contains('materialClasses')) {
@@ -374,6 +399,20 @@ class MasterDataDatabase {
           const materialSublotStore = db.createObjectStore('materialSublots', { keyPath: 'id' });
           materialSublotStore.createIndex('by-lot', 'materialLotId');
           materialSublotStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Material Definition Properties (version 12)
+        if (!db.objectStoreNames.contains('materialDefinitionProperties')) {
+          const mdpStore = db.createObjectStore('materialDefinitionProperties', { keyPath: 'id' });
+          mdpStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Material Definition Property Assignments (version 12)
+        if (!db.objectStoreNames.contains('materialDefinitionPropertyAssignments')) {
+          const mdpaStore = db.createObjectStore('materialDefinitionPropertyAssignments', { keyPath: 'id' });
+          mdpaStore.createIndex('by-material', 'materialDefinitionId');
+          mdpaStore.createIndex('by-property', 'id');
+          mdpaStore.createIndex('by-updated', 'updatedAt');
         }
 
         // Equipment Classes
@@ -635,6 +674,8 @@ class MasterDataDatabase {
       'materials',
       'materialLots',
       'materialSublots',
+      'materialDefinitionProperties',
+      'materialDefinitionPropertyAssignments',
       'equipmentClasses',
       'equipment',
       'equipmentProperties',
@@ -657,6 +698,8 @@ class MasterDataDatabase {
     materialClasses?: any[];
     materials?: any[];
     materialLots?: any[];
+    materialDefinitionProperties?: any[];
+    materialDefinitionPropertyAssignments?: any[];
     equipmentClasses?: any[];
     equipment?: any[];
     equipmentProperties?: any[];
@@ -684,6 +727,12 @@ class MasterDataDatabase {
     }
     if (csvData.materialLots) {
       await this.bulkAdd('materialLots', csvData.materialLots);
+    }
+    if (csvData.materialDefinitionProperties) {
+      await this.bulkAdd('materialDefinitionProperties', csvData.materialDefinitionProperties);
+    }
+    if (csvData.materialDefinitionPropertyAssignments) {
+      await this.bulkAdd('materialDefinitionPropertyAssignments', csvData.materialDefinitionPropertyAssignments);
     }
     if (csvData.equipmentClasses) {
       await this.bulkAdd('equipmentClasses', csvData.equipmentClasses);
