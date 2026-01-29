@@ -1,0 +1,5 @@
+OperationsEventDefinitionPropertyId,PossibleValues,valueUnitOfMeasure
+ErrorCode,Numeric or String,NA
+Severity,Critical/High/Medium/Low,NA
+Duration,Numeric values,minutes
+EventCode,Numeric or String,NA

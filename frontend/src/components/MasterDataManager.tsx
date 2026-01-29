@@ -30,6 +30,7 @@ import {
   Divider,
   Checkbox,
   FormControlLabel,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -103,8 +104,8 @@ interface EquipmentProperty {
   description: string;
   valueDataType: string;
   unit?: string;
-  minValue?: number;
-  maxValue?: number;
+  minValue?: number | string;
+  maxValue?: number | string;
 }
 
 interface EquipmentPropertyAssignment {
@@ -172,6 +173,20 @@ interface OperationEventDefinition {
   causesDowntime: boolean;
   causesScrap: boolean;
   rootCauseType: string;
+}
+
+interface OperationEventDefinitionProperty {
+  id: string;
+  possibleValues: string;
+  valueUnitOfMeasure: string;
+}
+
+interface OperationEventDefinitionPropertyAssignment {
+  id: string;
+  operationsEventDefinitionId: string;
+  operationsEventDefinitionPropertyId: string;
+  value: string;
+  valueUnitOfMeasure: string;
 }
 
 interface OperationsEventClass {
@@ -271,6 +286,7 @@ interface MaterialDefinitionProperty {
 
 interface MaterialDefinitionPropertyAssignment {
   id: string;
+  materialDefinitionPropertyId: string;
   materialDefinitionId: string;
   value: string;
   description: string;
@@ -388,6 +404,16 @@ const MasterDataManager: React.FC = () => {
   const [operationEventDefSegmentAssignmentDialog, setOperationEventDefSegmentAssignmentDialog] = useState(false);
   const [editingOperationEventDefSegmentAssignment, setEditingOperationEventDefSegmentAssignment] = useState<OperationEventDefSegmentAssignment | null>(null);
 
+  // Operation Event Definition Property State
+  const [operationEventDefinitionProperties, setOperationEventDefinitionProperties] = useState<OperationEventDefinitionProperty[]>([]);
+  const [operationEventDefinitionPropertyDialog, setOperationEventDefinitionPropertyDialog] = useState(false);
+  const [editingOperationEventDefinitionProperty, setEditingOperationEventDefinitionProperty] = useState<OperationEventDefinitionProperty | null>(null);
+
+  // Operation Event Definition Property Assignment State
+  const [operationEventDefinitionPropertyAssignments, setOperationEventDefinitionPropertyAssignments] = useState<OperationEventDefinitionPropertyAssignment[]>([]);
+  const [operationEventDefinitionPropertyAssignmentDialog, setOperationEventDefinitionPropertyAssignmentDialog] = useState(false);
+  const [editingOperationEventDefinitionPropertyAssignment, setEditingOperationEventDefinitionPropertyAssignment] = useState<OperationEventDefinitionPropertyAssignment | null>(null);
+
   // Operations Event Class State
   const [operationsEventClasses, setOperationsEventClasses] = useState<OperationsEventClass[]>([]);
   const [operationsEventClassDialog, setOperationsEventClassDialog] = useState(false);
@@ -435,7 +461,7 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, mdp, mdpa, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, sh, cr, sca, oec, oer, oee] = await Promise.all([
+      const [mc, m, ml, ms, mdp, mdpa, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee] = await Promise.all([
         masterDataDB.getAll('materialClasses'),
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('materialLots'),
@@ -457,6 +483,8 @@ const MasterDataManager: React.FC = () => {
         masterDataDB.getAll('hierarchyScopeParentChild'),
         masterDataDB.getAll('operationEventDefinitions'),
         masterDataDB.getAll('operationEventDefSegmentAssignments'),
+        masterDataDB.getAll('operationEventDefinitionProperties'),
+        masterDataDB.getAll('operationEventDefinitionPropertyAssignments'),
         masterDataDB.getAll('shifts'),
         masterDataDB.getAll('crews'),
         masterDataDB.getAll('shiftCrewAssignments'),
@@ -486,6 +514,8 @@ const MasterDataManager: React.FC = () => {
       setHierarchyScopeParentChild(hspc);
       setOperationEventDefinitions(oed);
       setOperationEventDefSegmentAssignments(oedsa);
+      setOperationEventDefinitionProperties(oedp);
+      setOperationEventDefinitionPropertyAssignments(oedpa);
       setShifts(sh);
       setCrews(cr);
       setShiftCrewAssignments(sca);
@@ -497,6 +527,10 @@ const MasterDataManager: React.FC = () => {
         equipmentProperties: ep.length,
         equipmentPropertyAssignments: epa.length,
         equipment: e.length,
+        operationEventDefinitions: oed.length,
+        operationEventDefSegmentAssignments: oedsa.length,
+        operationEventDefinitionProperties: oedp.length,
+        operationEventDefinitionPropertyAssignments: oedpa.length,
         shifts: sh.length,
         crews: cr.length,
         shiftCrewAssignments: sca.length
@@ -1024,6 +1058,32 @@ const MasterDataManager: React.FC = () => {
     }
   };
 
+  // Operation Event Definition Property Handlers
+  const handleDeleteOperationEventDefinitionProperty = async (id: string) => {
+    if (!confirm('Delete this event definition property?')) return;
+    try {
+      await masterDataDB.delete('operationEventDefinitionProperties', id);
+      setOperationEventDefinitionProperties(prev => prev.filter(p => p.id !== id));
+      showSnackbar('Event definition property deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete event definition property:', error);
+      showSnackbar('Failed to delete event definition property', 'error');
+    }
+  };
+
+  // Operation Event Definition Property Assignment Handlers
+  const handleDeleteOperationEventDefinitionPropertyAssignment = async (id: string) => {
+    if (!confirm('Delete this property assignment?')) return;
+    try {
+      await masterDataDB.delete('operationEventDefinitionPropertyAssignments', id);
+      setOperationEventDefinitionPropertyAssignments(prev => prev.filter(a => a.id !== id));
+      showSnackbar('Property assignment deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete property assignment:', error);
+      showSnackbar('Failed to delete property assignment', 'error');
+    }
+  };
+
   // Plant Handlers
   const handleSavePlant = async (data: Plant) => {
     try {
@@ -1400,8 +1460,8 @@ const MasterDataManager: React.FC = () => {
         await mdpWritable.close();
 
         // Export Material Definition Property Assignments
-        const mdpaHeaders = 'id,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
-        const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.id},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
+        const mdpaHeaders = 'id,MaterialDefinitionPropertyId,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
+        const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.id},${mdpa.materialDefinitionPropertyId},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
         const mdpaCsv = `${mdpaHeaders}\n${mdpaRows}`;
         const mdpaFileHandle = await dirHandle.getFileHandle('material_definition_property_assignment_template.csv', { create: true });
         const mdpaWritable = await mdpaFileHandle.createWritable();
@@ -1556,8 +1616,8 @@ const MasterDataManager: React.FC = () => {
       downloadCSV(`${mdpHeaders}\n${mdpRows}`, 'material_definition_property_template.csv');
 
       // Export Material Definition Property Assignments
-      const mdpaHeaders = 'id,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
-      const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.id},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
+      const mdpaHeaders = 'id,MaterialDefinitionPropertyId,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
+      const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.id},${mdpa.materialDefinitionPropertyId},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
       downloadCSV(`${mdpaHeaders}\n${mdpaRows}`, 'material_definition_property_assignment_template.csv');
 
       // Export Equipment Classes
@@ -1842,6 +1902,7 @@ const MasterDataManager: React.FC = () => {
                     <TableHead>
                       <TableRow>
                         <TableCell>ID</TableCell>
+                        <TableCell>Property ID</TableCell>
                         <TableCell>Material Definition ID</TableCell>
                         <TableCell>Value</TableCell>
                         <TableCell>Description</TableCell>
@@ -1853,6 +1914,7 @@ const MasterDataManager: React.FC = () => {
                       {materialDefinitionPropertyAssignments.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell>{item.id}</TableCell>
+                          <TableCell>{item.materialDefinitionPropertyId}</TableCell>
                           <TableCell>{item.materialDefinitionId}</TableCell>
                           <TableCell>{item.value}</TableCell>
                           <TableCell>{item.description}</TableCell>
@@ -2279,12 +2341,28 @@ const MasterDataManager: React.FC = () => {
       {/* Operations Category */}
       {categoryTab === 3 && (
         <Box>
-          <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
-            <Tab label="Operation Event Definitions" />
-            <Tab label="Event-Segment Assignments" />
-            <Tab label="Operations Event Classes" />
-            <Tab label="Operations Event Records" />
-            <Tab label="Operations Event Entries" />
+          <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }} variant="scrollable" scrollButtons="auto">
+            <Tooltip title="Operation Event Definitions" arrow>
+              <Tab label="Definitions" />
+            </Tooltip>
+            <Tooltip title="Event-Segment Assignments" arrow>
+              <Tab label="Segment Assign." />
+            </Tooltip>
+            <Tooltip title="Event Definition Properties" arrow>
+              <Tab label="Properties" />
+            </Tooltip>
+            <Tooltip title="Property Assignments" arrow>
+              <Tab label="Property Assign." />
+            </Tooltip>
+            <Tooltip title="Operations Event Classes" arrow>
+              <Tab label="Classes" />
+            </Tooltip>
+            <Tooltip title="Operations Event Records" arrow>
+              <Tab label="Records" />
+            </Tooltip>
+            <Tooltip title="Operations Event Entries" arrow>
+              <Tab label="Entries" />
+            </Tooltip>
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -2319,6 +2397,102 @@ const MasterDataManager: React.FC = () => {
               />
             )}
             {tabValue === 2 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Operation Event Definition Properties</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingOperationEventDefinitionProperty(null);
+                    setOperationEventDefinitionPropertyDialog(true);
+                  }}>
+                    Add Property
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Property ID</TableCell>
+                        <TableCell>Possible Values</TableCell>
+                        <TableCell>Unit of Measure</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {operationEventDefinitionProperties.map((prop) => (
+                        <TableRow key={prop.id}>
+                          <TableCell><Chip label={prop.id} size="small" /></TableCell>
+                          <TableCell>{prop.possibleValues}</TableCell>
+                          <TableCell>{prop.valueUnitOfMeasure}</TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingOperationEventDefinitionProperty(prop);
+                              setOperationEventDefinitionPropertyDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => handleDeleteOperationEventDefinitionProperty(prop.id)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+            {tabValue === 3 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Property Assignments</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingOperationEventDefinitionPropertyAssignment(null);
+                    setOperationEventDefinitionPropertyAssignmentDialog(true);
+                  }}>
+                    Add Assignment
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Event Definition</TableCell>
+                        <TableCell>Property</TableCell>
+                        <TableCell>Value</TableCell>
+                        <TableCell>Unit of Measure</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {operationEventDefinitionPropertyAssignments.map((assign) => {
+                        const eventDef = operationEventDefinitions.find(d => d.id === assign.operationsEventDefinitionId);
+                        const prop = operationEventDefinitionProperties.find(p => p.id === assign.operationsEventDefinitionPropertyId);
+                        return (
+                          <TableRow key={assign.id}>
+                            <TableCell><Chip label={eventDef?.id || assign.operationsEventDefinitionId} size="small" /></TableCell>
+                            <TableCell><Chip label={prop?.id || assign.operationsEventDefinitionPropertyId} size="small" color="primary" /></TableCell>
+                            <TableCell>{assign.value}</TableCell>
+                            <TableCell>{assign.valueUnitOfMeasure}</TableCell>
+                            <TableCell align="right">
+                              <IconButton size="small" onClick={() => {
+                                setEditingOperationEventDefinitionPropertyAssignment(assign);
+                                setOperationEventDefinitionPropertyAssignmentDialog(true);
+                              }}>
+                                <EditIcon />
+                              </IconButton>
+                              <IconButton size="small" onClick={() => handleDeleteOperationEventDefinitionPropertyAssignment(assign.id)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+            {tabValue === 4 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="h6">Operations Event Classes</Typography>
@@ -2363,7 +2537,7 @@ const MasterDataManager: React.FC = () => {
                 </TableContainer>
               </Box>
             )}
-            {tabValue === 3 && (
+            {tabValue === 5 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="h6">Operations Event Records</Typography>
@@ -2415,7 +2589,7 @@ const MasterDataManager: React.FC = () => {
                 </TableContainer>
               </Box>
             )}
-            {tabValue === 4 && (
+            {tabValue === 6 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="h6">Operations Event Entries</Typography>
@@ -4425,14 +4599,14 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
   open, data, materials, materialDefinitionProperties, onClose, onSave 
 }) => {
   const [formData, setFormData] = useState<MaterialDefinitionPropertyAssignment>(
-    data || { id: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' }
+    data || { id: '', materialDefinitionPropertyId: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' }
   );
 
   React.useEffect(() => {
     if (data) {
       setFormData(data);
     } else {
-      setFormData({ id: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' });
+      setFormData({ id: '', materialDefinitionPropertyId: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' });
     }
   }, [data, open]);
 
@@ -4441,7 +4615,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
     if (selectedProp) {
       setFormData({ 
         ...formData, 
-        id: propertyId,
+        materialDefinitionPropertyId: propertyId,
         value: selectedProp.value,
         description: selectedProp.description,
         valueUnitOfMeasure: selectedProp.valueUnitOfMeasure
@@ -4450,9 +4624,13 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
   };
 
   const handleSubmit = () => {
-    if (!formData.id || !formData.materialDefinitionId) {
+    if (!formData.materialDefinitionPropertyId || !formData.materialDefinitionId) {
       alert('Property and Material Definition are required');
       return;
+    }
+    // Generate id if not present (for new records)
+    if (!formData.id) {
+      formData.id = `${Date.now()}`;
     }
     onSave(formData);
   };
@@ -4482,7 +4660,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
             <FormControl fullWidth required>
               <InputLabel>Property</InputLabel>
               <Select
-                value={formData.id}
+                value={formData.materialDefinitionPropertyId}
                 label="Property"
                 onChange={(e) => handlePropertyChange(e.target.value)}
                 disabled={!!data}
@@ -4826,18 +5004,24 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
             <TextField
               fullWidth
               label="Min Value"
-              type="number"
+              type={formData.valueDataType === 'DECIMAL' || formData.valueDataType === 'INTEGER' ? 'number' : 'text'}
               value={formData.minValue ?? ''}
-              onChange={(e) => setFormData({ ...formData, minValue: e.target.value ? parseFloat(e.target.value) : undefined })}
+              onChange={(e) => {
+                const isNumeric = formData.valueDataType === 'DECIMAL' || formData.valueDataType === 'INTEGER';
+                setFormData({ ...formData, minValue: e.target.value ? (isNumeric ? parseFloat(e.target.value) : e.target.value) : undefined });
+              }}
             />
           </Grid>
           <Grid item xs={6}>
             <TextField
               fullWidth
               label="Max Value"
-              type="number"
+              type={formData.valueDataType === 'DECIMAL' || formData.valueDataType === 'INTEGER' ? 'number' : 'text'}
               value={formData.maxValue ?? ''}
-              onChange={(e) => setFormData({ ...formData, maxValue: e.target.value ? parseFloat(e.target.value) : undefined })}
+              onChange={(e) => {
+                const isNumeric = formData.valueDataType === 'DECIMAL' || formData.valueDataType === 'INTEGER';
+                setFormData({ ...formData, maxValue: e.target.value ? (isNumeric ? parseFloat(e.target.value) : e.target.value) : undefined });
+              }}
             />
           </Grid>
           <Grid item xs={12}>

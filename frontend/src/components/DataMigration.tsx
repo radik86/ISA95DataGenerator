@@ -392,6 +392,7 @@ const DataMigration: React.FC = () => {
         'equipmentPropertyAssignments', 'plants', 'productionLines',
         'lineEquipment', 'processSegments', 'segmentBOMs', 'equipmentUsages',
         'operationEventDefinitions', 'operationEventDefSegmentAssignments',
+        'operationEventDefinitionProperties', 'operationEventDefinitionPropertyAssignments',
         'operationsEventClasses',
         'shifts', 'crews', 'shiftCrewAssignments',
         'hierarchyScopes', 'hierarchyScopesFlat', 'hierarchyScopeParentChild'
@@ -403,7 +404,7 @@ const DataMigration: React.FC = () => {
         'operationsResponses', 'segmentResponses', 
         'segmentMaterialActuals', 'segmentEquipmentActuals',
         'equipmentPropertyTracking', 'testResults', 'operationsEvents', 
-        'operationsEventRecords', 'operationsEventEntries', 'segmentData'
+        'operationsEventRecords', 'operationsEventEntries', 'operationsEventProperties', 'segmentData'
       ];
       
       // Load all data dynamically
@@ -454,6 +455,7 @@ const DataMigration: React.FC = () => {
       const operationsEvents = processDataResults['operationsEvents'];
       const operationsEventRecords = processDataResults['operationsEventRecords'];
       const operationsEventEntries = processDataResults['operationsEventEntries'];
+      const operationsEventProperties = processDataResults['operationsEventProperties'];
       const segmentData = processDataResults['segmentData'];
 
       const tables: SourceTable[] = [
@@ -518,6 +520,7 @@ const DataMigration: React.FC = () => {
           rowCount: materialDefinitionPropertyAssignments?.length || 0,
           columns: [
             { name: 'id', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.id },
+            { name: 'materialDefinitionPropertyId', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.materialDefinitionPropertyId },
             { name: 'materialDefinitionId', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.materialDefinitionId },
             { name: 'value', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.value },
             { name: 'description', type: 'string', sample: materialDefinitionPropertyAssignments?.[0]?.description },
@@ -550,8 +553,8 @@ const DataMigration: React.FC = () => {
             { name: 'description', type: 'string', sample: equipmentProperties[0]?.description },
             { name: 'valueDataType', type: 'string', sample: equipmentProperties[0]?.valueDataType },
             { name: 'unit', type: 'string', sample: equipmentProperties[0]?.unit },
-            { name: 'minValue', type: 'number', sample: equipmentProperties[0]?.minValue?.toString() },
-            { name: 'maxValue', type: 'number', sample: equipmentProperties[0]?.maxValue?.toString() },
+            { name: 'minValue', type: 'string', sample: equipmentProperties[0]?.minValue?.toString() },
+            { name: 'maxValue', type: 'string', sample: equipmentProperties[0]?.maxValue?.toString() },
           ],
         },
         {
@@ -699,6 +702,7 @@ const DataMigration: React.FC = () => {
             { name: 'segmentResponseId', type: 'string', sample: equipmentPropertyTracking[0]?.segmentResponseId },
             { name: 'equipmentId', type: 'string', sample: equipmentPropertyTracking[0]?.equipmentId },
             { name: 'equipmentPropertyId', type: 'string', sample: equipmentPropertyTracking[0]?.equipmentPropertyId },
+            { name: 'equipmentPropertyName', type: 'string', sample: equipmentPropertyTracking[0]?.equipmentPropertyName },
             { name: 'value', type: 'number', sample: equipmentPropertyTracking[0]?.value?.toString() },
             { name: 'uom', type: 'string', sample: equipmentPropertyTracking[0]?.uom },
             { name: 'createdTimestamp', type: 'datetime', sample: equipmentPropertyTracking[0]?.createdTimestamp },
@@ -752,6 +756,18 @@ const DataMigration: React.FC = () => {
             { name: 'segmentResponseId', type: 'string', sample: operationsEventEntries?.[0]?.segmentResponseId },
             { name: 'equipmentId', type: 'string', sample: operationsEventEntries?.[0]?.equipmentId },
             { name: 'description', type: 'string', sample: operationsEventEntries?.[0]?.description },
+          ],
+        },
+        {
+          name: 'operations_event_properties',
+          rowCount: operationsEventProperties?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: operationsEventProperties?.[0]?.id },
+            { name: 'operationsEventId', type: 'string', sample: operationsEventProperties?.[0]?.operationsEventId },
+            { name: 'operationsEventDefinitionPropertyId', type: 'string', sample: operationsEventProperties?.[0]?.operationsEventDefinitionPropertyId },
+            { name: 'value', type: 'string', sample: operationsEventProperties?.[0]?.value },
+            { name: 'valueUnitOfMeasure', type: 'string', sample: operationsEventProperties?.[0]?.valueUnitOfMeasure },
+            { name: 'effectiveTime', type: 'datetime', sample: operationsEventProperties?.[0]?.effectiveTime },
           ],
         },
         {
@@ -827,10 +843,10 @@ const DataMigration: React.FC = () => {
           rowCount: operationEventDefinitions.length,
           columns: [
             { name: 'id', type: 'string', sample: operationEventDefinitions[0]?.id },
-            { name: 'code', type: 'string', sample: operationEventDefinitions[0]?.code },
+            { name: 'eventCode', type: 'string', sample: operationEventDefinitions[0]?.eventCode },
             { name: 'description', type: 'string', sample: operationEventDefinitions[0]?.description },
-            { name: 'category', type: 'string', sample: operationEventDefinitions[0]?.category },
-            { name: 'causeCategory', type: 'string', sample: operationEventDefinitions[0]?.causeCategory },
+            { name: 'eventCategory', type: 'string', sample: operationEventDefinitions[0]?.eventCategory },
+            { name: 'rootCauseType', type: 'string', sample: operationEventDefinitions[0]?.rootCauseType },
             { name: 'causesDowntime', type: 'boolean', sample: String(operationEventDefinitions[0]?.causesDowntime) },
             { name: 'causesScrap', type: 'boolean', sample: String(operationEventDefinitions[0]?.causesScrap) },
           ],
@@ -851,6 +867,36 @@ const DataMigration: React.FC = () => {
             { name: 'isMandatory', type: 'boolean', sample: assignments[0]?.isMandatory },
             { name: 'isPrimarySegment', type: 'boolean', sample: assignments[0]?.isPrimarySegment },
             { name: 'notes', type: 'string', sample: assignments[0]?.notes },
+          ],
+        });
+      }
+
+      // Add operationEventDefinitionProperties if available
+      if (masterDataResults['operationEventDefinitionProperties']?.length > 0) {
+        const properties = masterDataResults['operationEventDefinitionProperties'];
+        additionalTables.push({
+          name: 'operation_event_definition_properties',
+          rowCount: properties.length,
+          columns: [
+            { name: 'id', type: 'string', sample: properties[0]?.id },
+            { name: 'possibleValues', type: 'string', sample: properties[0]?.possibleValues },
+            { name: 'valueUnitOfMeasure', type: 'string', sample: properties[0]?.valueUnitOfMeasure },
+          ],
+        });
+      }
+
+      // Add operationEventDefinitionPropertyAssignments if available
+      if (masterDataResults['operationEventDefinitionPropertyAssignments']?.length > 0) {
+        const assignments = masterDataResults['operationEventDefinitionPropertyAssignments'];
+        additionalTables.push({
+          name: 'operation_event_definition_property_assignments',
+          rowCount: assignments.length,
+          columns: [
+            { name: 'id', type: 'string', sample: assignments[0]?.id },
+            { name: 'operationsEventDefinitionId', type: 'string', sample: assignments[0]?.operationsEventDefinitionId },
+            { name: 'operationsEventDefinitionPropertyId', type: 'string', sample: assignments[0]?.operationsEventDefinitionPropertyId },
+            { name: 'value', type: 'string', sample: assignments[0]?.value },
+            { name: 'valueUnitOfMeasure', type: 'string', sample: assignments[0]?.valueUnitOfMeasure },
           ],
         });
       }
@@ -2034,6 +2080,8 @@ const DataMigration: React.FC = () => {
           'equipment_usages': 'equipmentUsages',
           'operation_event_definitions': 'operationEventDefinitions',
           'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+          'operation_event_definition_properties': 'operationEventDefinitionProperties',
+          'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
           'hierarchy_scopes': 'hierarchyScopes',
           'shifts': 'shifts',
           'crews': 'crews',
@@ -2052,6 +2100,9 @@ const DataMigration: React.FC = () => {
           'equipment_property_tracking': 'equipmentPropertyTracking',
           'test_results': 'testResults',
           'operations_events': 'operationsEvents',
+          'operations_event_records': 'operationsEventRecords',
+          'operations_event_entries': 'operationsEventEntries',
+          'operations_event_properties': 'operationsEventProperties',
           'segment_data': 'segmentData',
         };
 
@@ -2299,6 +2350,8 @@ const DataMigration: React.FC = () => {
           'equipment_usages': 'equipmentUsages',
           'operation_event_definitions': 'operationEventDefinitions',
           'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+          'operation_event_definition_properties': 'operationEventDefinitionProperties',
+          'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
           'hierarchy_scopes': 'hierarchyScopes',
           'shifts': 'shifts',
           'crews': 'crews',
@@ -2317,13 +2370,11 @@ const DataMigration: React.FC = () => {
           'equipment_property_tracking': 'equipmentPropertyTracking',
           'test_results': 'testResults',
           'operations_events': 'operationsEvents',
+          'operations_event_records': 'operationsEventRecords',
+          'operations_event_entries': 'operationsEventEntries',
+          'operations_event_properties': 'operationsEventProperties',
           'segment_data': 'segmentData',
         };
-
-        const masterStoreName = masterStoreMap[tableName];
-        if (masterStoreName) {
-          return await masterDataDB.getAll(masterStoreName);
-        }
 
         const processStoreName = processStoreMap[tableName];
         if (processStoreName) {
@@ -2900,6 +2951,8 @@ const DataMigration: React.FC = () => {
       'equipment_usages': 'equipmentUsages',
       'operation_event_definitions': 'operationEventDefinitions',
       'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+      'operation_event_definition_properties': 'operationEventDefinitionProperties',
+      'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
       'hierarchy_scopes': 'hierarchyScopes',
       'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
       'shifts': 'shifts',
@@ -2922,6 +2975,7 @@ const DataMigration: React.FC = () => {
       'operations_events': 'operationsEvents',
       'operations_event_records': 'operationsEventRecords',
       'operations_event_entries': 'operationsEventEntries',
+      'operations_event_properties': 'operationsEventProperties',
       'segment_data': 'segmentData',
     };
 

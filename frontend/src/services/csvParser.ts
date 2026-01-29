@@ -18,6 +18,8 @@ export interface ParsedCSVData {
   lineEquipment?: any[];
   operationEventDefinitions?: any[];
   operationEventDefSegmentAssignments?: any[];
+  operationEventDefinitionProperties?: any[];
+  operationEventDefinitionPropertyAssignments?: any[];
   operationsEventClasses?: any[];
   operationsEventRecords?: any[];
   operationsEventEntries?: any[];
@@ -164,20 +166,22 @@ class CSVParser {
     
     // Filter out empty rows (where id field is empty or whitespace-only)
     const validRecords = records.filter(r => {
-      const id = r.id || r.Id || r.ID || '';
-      return id.trim().length > 0;
+      const id = r.id || r.Id || r.ID || r.PK || r.pk || '';
+      return id.toString().trim().length > 0;
     });
     console.log('Valid records after filtering empty rows:', validRecords.length);
     
     const parsed = validRecords.map((r, index) => {
-      const id = r.id || r.Id || r.ID;
+      const id = r.id || r.Id || r.ID || r.PK || r.pk;
+      const propertyId = r.MaterialDefinitionPropertyId || r.materialDefinitionPropertyId || r.Id;
       const materialDefinitionId = r.MaterialDefinitionId || r.materialDefinitionId;
       const value = r.Value || r.value;
       const description = r.Description || r.description || '';
       const valueUnitOfMeasure = r.ValueUnitOfMeasure || r.valueUnitOfMeasure || '';
       
       return {
-        id,
+        id: id.toString(),
+        materialDefinitionPropertyId: propertyId,
         materialDefinitionId,
         value,
         description,
@@ -282,14 +286,15 @@ class CSVParser {
     console.log('Parsing equipment properties, raw records:', records.length);
     console.log('First raw record:', records[0]);
     const parsed = records.map((r, index) => {
+      const isNumericType = r.ValueDataType === 'DECIMAL' || r.ValueDataType === 'INTEGER';
       const prop = {
         id: r.EquipmentPropertyID,
         name: r.PropertyName,
         description: r.Description || '',
         valueDataType: r.ValueDataType,
         unit: r.Unit || '',
-        minValue: r.MinValue ? parseFloat(r.MinValue) : undefined,
-        maxValue: r.MaxValue ? parseFloat(r.MaxValue) : undefined,
+        minValue: r.MinValue ? (isNumericType ? parseFloat(r.MinValue) : r.MinValue) : undefined,
+        maxValue: r.MaxValue ? (isNumericType ? parseFloat(r.MaxValue) : r.MaxValue) : undefined,
       };
       if (!prop.id) {
         console.error(`Record ${index} missing id:`, r);
@@ -366,6 +371,26 @@ class CSVParser {
       isMandatory: r.IsMandatory === 'TRUE' || r.IsMandatory === 'true' || r.IsMandatory === 'True',
       isPrimarySegment: r.IsPrimarySegment === 'TRUE' || r.IsPrimarySegment === 'true' || r.IsPrimarySegment === 'True',
       notes: r.Notes,
+    }));
+  }
+
+  parseOperationEventDefinitionProperties(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.OperationsEventDefinitionPropertyId,
+      possibleValues: r.PossibleValues,
+      valueUnitOfMeasure: r.valueUnitOfMeasure,
+    }));
+  }
+
+  parseOperationEventDefinitionPropertyAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: `${r.OperationsEventDefinitionID}-${r.OperationsEventDefinitionPropertyId}`,
+      operationsEventDefinitionId: r.OperationsEventDefinitionID,
+      operationsEventDefinitionPropertyId: r.OperationsEventDefinitionPropertyId,
+      value: r.Value,
+      valueUnitOfMeasure: r.valueUnitOfMeasure,
     }));
   }
 

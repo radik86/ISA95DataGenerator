@@ -1,4 +1,8 @@
-EquipmentID,EquipmentName,EquipmentClassID,EquipmentClass,EquipmentDescription
-EQ-MIX-01,Mixer #1,MIXER,Mixer,Primary dough mixer
-EQ-OVEN-01,Oven #1,OVEN,Oven,Main baking oven
-EQ-PACKAGE-01,Package #1,PACK,Packaging,Main packaging machine
+EquipmentID,EquipmentName,EquipmentClassID,EquipmentClass,EquipmentParentId,EquipmentDescription
+EQ-MIX-01,Mixer #1,MIXER,Mixer,,Primary dough mixer
+EQ-OVEN-01,Oven #1,OVEN,Oven,,Main baking oven
+EQ-PACKAGE-01,Package #1,PACK,Packaging,,Main packaging machine
+EQ-MIX-MOTOR-01,Mixer Motor,UTIL,Util,EQ-MIX-01,Electric drive motor of Mixer
+EQ-OVEN-ZONE-01,OvenZone,UTIL,Util,EQ-OVEN-01,First heating zone
+EQ-OVEN-ZONE-02,OvenZone,UTIL,Util,EQ-OVEN-01,Secong heating zone
+EQ-PACK-LABELER-01,Labeling Unit,UTIL,Util,EQ-PACKAGE-01,Applies labels

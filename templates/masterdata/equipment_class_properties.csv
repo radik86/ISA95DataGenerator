@@ -1,0 +1,16 @@
+EquipmentClassPropertyId,EquipmentClassId,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue
+ECP-MIX-CUR,MIXER,MixerMotorCurrentA,Mixer motor electrical current,DECIMAL,A,12,45
+ECP-MIX-VISC,MIXER,DoughViscosityIndex,Estimated dough viscosity index,DECIMAL,index,0.6,1.4
+ECP-MIX-TORQ,MIXER,MixerTorqueNm,Mixer shaft torque,DECIMAL,Nm,200,900
+ECP-OVEN-TEMP,OVEN,OvenChamberTempC,Oven chamber temperature,DECIMAL,C,180,260
+ECP-OVEN-HUM,OVEN,OvenHumidityPct,Oven chamber humidity,DECIMAL,%,5,80
+ECP-OVEN-PWR,OVEN,OvenPowerKW,Oven power consumption,DECIMAL,kW,20,120
+ECP-TEMPERATURE,OVEN,OperatingTemperature,Operating Temperature,DECIMAL,Celsius,180,250
+ECP-PRESSURE,MIXER,OperatingPressure,Operating Pressure,DECIMAL,Bar,1.3,1.7
+ECP-VIB,MIXER,EquipmentVibrationRMS,Equipment vibration RMS,DECIMAL,mm/s,0.2,6
+ECP-CTRL,OVEN,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
+ECP-STATE,OVEN,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
+ECP-CTRL,MIXER,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
+ECP-STATE,MIXER,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
+ECP-CTRL,PACK,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
+ECP-STATE,PACK,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run

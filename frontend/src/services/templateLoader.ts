@@ -24,6 +24,8 @@ export class TemplateDataLoader {
       { name: 'line_equipment.csv', parser: 'lineEquipment' },
       { name: 'operation_event_definitions.csv', parser: 'operationEventDefinitions' },
       { name: 'operations_event_definition_segment_assignments.csv', parser: 'operationEventDefSegmentAssignments' },
+      { name: 'operation_event_definition_property.csv', parser: 'operationEventDefinitionProperties' },
+      { name: 'operation_event_definition_property_assignment.csv', parser: 'operationEventDefinitionPropertyAssignments' },
       { name: 'operations_event_classes.csv', parser: 'operationsEventClasses' },
       { name: 'operations_event_records_template.csv', parser: 'operationsEventRecords' },
       { name: 'operations_event_entries_template.csv', parser: 'operationsEventEntries' },
@@ -92,6 +94,12 @@ export class TemplateDataLoader {
             break;
           case 'operationEventDefSegmentAssignments':
             result.operationEventDefSegmentAssignments = csvParser.parseOperationEventDefSegmentAssignments(csvText);
+            break;
+          case 'operationEventDefinitionProperties':
+            result.operationEventDefinitionProperties = csvParser.parseOperationEventDefinitionProperties(csvText);
+            break;
+          case 'operationEventDefinitionPropertyAssignments':
+            result.operationEventDefinitionPropertyAssignments = csvParser.parseOperationEventDefinitionPropertyAssignments(csvText);
             break;
           case 'operationsEventClasses':
             result.operationsEventClasses = csvParser.parseOperationsEventClasses(csvText);

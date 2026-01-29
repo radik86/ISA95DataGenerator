@@ -35,6 +35,7 @@ import {
   Save as SaveIcon,
   GetApp as GetAppIcon,
   Delete as DeleteIcon,
+  Upload as UploadIcon,
 } from '@mui/icons-material';
 import { masterDataDB } from '../services/masterDataDB';
 import { processDataDB } from '../services/processDataDB';
@@ -133,7 +134,8 @@ interface EquipmentPropertyTracking {
   segmentResponseId: string;
   equipmentId: string;
   equipmentPropertyId: string;
-  value: number;
+  equipmentPropertyName: string;
+  value: number | string;
   uom: string;
   createdTimestamp: string;
 }
@@ -207,6 +209,8 @@ const ProcessDataGenerator: React.FC = () => {
   const [equipmentPropertyAssignments, setEquipmentPropertyAssignments] = useState<any[]>([]);
   const [operationEventDefinitions, setOperationEventDefinitions] = useState<any[]>([]);
   const [operationEventDefSegmentAssignments, setOperationEventDefSegmentAssignments] = useState<any[]>([]);
+  const [operationEventDefinitionProperties, setOperationEventDefinitionProperties] = useState<any[]>([]);
+  const [operationEventDefinitionPropertyAssignments, setOperationEventDefinitionPropertyAssignments] = useState<any[]>([]);
   const [operationsEventRecordsTemplates, setOperationsEventRecordsTemplates] = useState<any[]>([]);
   const [operationsEventEntriesTemplates, setOperationsEventEntriesTemplates] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
@@ -250,6 +254,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [operationsEvents, setOperationsEvents] = useState<OperationsEvent[]>([]);
   const [operationsEventRecords, setOperationsEventRecords] = useState<OperationsEventRecord[]>([]);
   const [operationsEventEntries, setOperationsEventEntries] = useState<OperationsEventEntry[]>([]);
+  const [operationsEventProperties, setOperationsEventProperties] = useState<any[]>([]);
   const [segmentData, setSegmentData] = useState<SegmentData[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [generatedMaterialLotsForDisplay, setGeneratedMaterialLotsForDisplay] = useState<any[]>([]);
@@ -333,7 +338,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa, oert, oeet, shft, crw, sca] = await Promise.all([
+      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
@@ -345,6 +350,8 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataDB.getAll('equipmentPropertyAssignments'),
         masterDataDB.getAll('operationEventDefinitions'),
         masterDataDB.getAll('operationEventDefSegmentAssignments'),
+        masterDataDB.getAll('operationEventDefinitionProperties'),
+        masterDataDB.getAll('operationEventDefinitionPropertyAssignments'),
         masterDataDB.getAll('operationsEventRecords'),
         masterDataDB.getAll('operationsEventEntries'),
         masterDataDB.getAll('shifts'),
@@ -363,6 +370,8 @@ const ProcessDataGenerator: React.FC = () => {
       setEquipmentPropertyAssignments(epa);
       setOperationEventDefinitions(oed);
       setOperationEventDefSegmentAssignments(oedsa);
+      setOperationEventDefinitionProperties(oedp);
+      setOperationEventDefinitionPropertyAssignments(oedpa);
       setOperationsEventRecordsTemplates(oert);
       setOperationsEventEntriesTemplates(oeet);
       setShifts(shft);
@@ -372,6 +381,8 @@ const ProcessDataGenerator: React.FC = () => {
       console.log('[Master Data] Loaded:', {
         operationEventDefinitions: oed.length,
         operationEventDefSegmentAssignments: oedsa.length,
+        operationEventDefinitionProperties: oedp.length,
+        operationEventDefinitionPropertyAssignments: oedpa.length,
         operationsEventRecordsTemplates: oert.length,
         operationsEventEntriesTemplates: oeet.length,
         shifts: shft.length,
@@ -432,8 +443,11 @@ const ProcessDataGenerator: React.FC = () => {
       // Load segment equipment requirements
       const segmentEquipmentRequirements = orData.segmentEquipmentRequirements || [];
 
-      // Generate Operations Response ID
-      const opsResponseId = `OPS-RESP-${timestamp.toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+      // Generate Operations Response ID with plant, line, date and time
+      const plantId = orData.operationsRequest.plantId;
+      const lineId = orData.operationsRequest.lineId;
+      const dateTimeStr = `${timestamp.toISOString().slice(0, 10).replace(/-/g, '')}${String(timestamp.getHours()).padStart(2, '0')}${String(timestamp.getMinutes()).padStart(2, '0')}`;
+      const opsResponseId = `OPS-RESP-${plantId}-${lineId}-${dateTimeStr}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
 
       // Generate Segment Responses
       const generatedSegResponses: SegmentResponse[] = [];
@@ -482,11 +496,6 @@ const ProcessDataGenerator: React.FC = () => {
         
         // Create multiple segment responses based on equipment capacity
         for (let run = 0; run < runsNeeded; run++) {
-          const segRespId = `SEG-RESP-${segReq.id}-RUN${run + 1}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
-          
-          // Calculate quantity for this run
-          const remainingQty = actualProductQuantity - (run * equipmentCapacity);
-          const runQuantity = Math.min(equipmentCapacity, remainingQty);
           
           // Calculate start time based on TWO key dependencies:
           // 1. Previous run of same sequence (equipment must be free)
@@ -554,6 +563,15 @@ const ProcessDataGenerator: React.FC = () => {
             }
           }
           
+          // Now create the segment response ID using the calculated runStartTime
+          const runDateTime = runStartTime;
+          const runDateTimeStr = `${runDateTime.toISOString().slice(0, 10).replace(/-/g, '')}${String(runDateTime.getHours()).padStart(2, '0')}${String(runDateTime.getMinutes()).padStart(2, '0')}`;
+          const segRespId = `SEG-RESP-${plantId}-${lineId}-${runDateTimeStr}-RUN${run + 1}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+          
+          // Calculate quantity for this run
+          const remainingQty = actualProductQuantity - (run * equipmentCapacity);
+          const runQuantity = Math.min(equipmentCapacity, remainingQty);
+          
           // Calculate duration for this run
           const runDuration = segmentDuration;
           const endTime = new Date(runStartTime.getTime() + runDuration * 60 * 60 * 1000);
@@ -592,10 +610,11 @@ const ProcessDataGenerator: React.FC = () => {
           
           for (const bom of bomLines) {
             const material = materials.find(m => m.id === bom.materialId);
-            const matActualId = `MAT-ACT-${segRespId}-${bom.materialId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
+            const matActualDateTime = `${runStartTime.toISOString().slice(0, 10).replace(/-/g, '')}${String(runStartTime.getHours()).padStart(2, '0')}${String(runStartTime.getMinutes()).padStart(2, '0')}`;
+            const matActualId = `MAT-ACT-${plantId}-${lineId}-${matActualDateTime}-${bom.materialId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
             
             // Generate material lot ID
-            const materialLotId = `LOT-${opsResponseId}-${bom.materialId}-R${run + 1}`;
+            const materialLotId = `LOT-${plantId}-${lineId}-${matActualDateTime}-${bom.materialId}-R${run + 1}`;
             
             // Determine direction from BOM MaterialUse field
             let direction = 'Material consumed'; // default
@@ -647,10 +666,11 @@ const ProcessDataGenerator: React.FC = () => {
             const scrapQuantity = scrapProducedPercent > 0 ? (runQuantity * scrapProducedPercent) / 100 : 0;
             const finishedGoodQuantity = runQuantity - scrapQuantity;
             
-            const finishedProductLotId = `LOT-${opsResponseId}-${orData.operationsRequest.productMaterialId}-R${run + 1}`;
+            const finishedDateTime = `${endTime.toISOString().slice(0, 10).replace(/-/g, '')}${String(endTime.getHours()).padStart(2, '0')}${String(endTime.getMinutes()).padStart(2, '0')}`;
+            const finishedProductLotId = `LOT-${plantId}-${lineId}-${finishedDateTime}-${orData.operationsRequest.productMaterialId}-R${run + 1}`;
             
             const finishedProductActual: SegmentMaterialActual = {
-              id: `MAT-ACT-${segRespId}-FINAL-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
+              id: `MAT-ACT-${plantId}-${lineId}-${finishedDateTime}-FINAL-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
               segmentResponseId: segRespId,
               materialId: orData.operationsRequest.productMaterialId,
               materialLotId: finishedProductLotId,
@@ -699,10 +719,10 @@ const ProcessDataGenerator: React.FC = () => {
             
             // Create scrap material lot if scrap percentage is specified
             if (scrapProducedPercent > 0) {
-              const scrapLotId = `LOT-SCRAP-${opsResponseId}-${orData.operationsRequest.productMaterialId}-R${run + 1}`;
+              const scrapLotId = `LOT-SCRAP-${plantId}-${lineId}-${finishedDateTime}-${orData.operationsRequest.productMaterialId}-R${run + 1}`;
               
               const scrapProductActual: SegmentMaterialActual = {
-                id: `MAT-ACT-${segRespId}-SCRAP-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
+                id: `MAT-ACT-${plantId}-${lineId}-${finishedDateTime}-SCRAP-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
                 segmentResponseId: segRespId,
                 materialId: orData.operationsRequest.productMaterialId,
                 materialLotId: scrapLotId,
@@ -729,7 +749,8 @@ const ProcessDataGenerator: React.FC = () => {
 
           // Generate Equipment Actuals for this run
           for (const eqUsage of eqUsages) {
-            const eqActualId = `EQ-ACT-${segRespId}-${eqUsage.equipmentId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
+            const eqActualDateTime = `${runStartTime.toISOString().slice(0, 10).replace(/-/g, '')}${String(runStartTime.getHours()).padStart(2, '0')}${String(runStartTime.getMinutes()).padStart(2, '0')}`;
+            const eqActualId = `EQ-ACT-${plantId}-${lineId}-${eqActualDateTime}-${eqUsage.equipmentId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
             
             const eqActual: SegmentEquipmentActual = {
               id: eqActualId,
@@ -964,6 +985,52 @@ const ProcessDataGenerator: React.FC = () => {
         console.log(`[Operations Event Records] Sample: Record ${sampleRecord.id} has ${relatedEntries.length} entries:`, relatedEntries.map(e => e.id));
       }
 
+      // Generate Operations Event Properties
+      const generatedOperationsEventProperties: any[] = [];
+      console.log('[Operations Event Properties] Starting generation');
+      
+      for (const opsEvent of generatedOperationsEvents) {
+        // Find all property assignments for this event's definition
+        const propertyAssignments = operationEventDefinitionPropertyAssignments.filter(
+          pa => pa.operationsEventDefinitionId === opsEvent.operationsEventDefinitionId
+        );
+        
+        if (propertyAssignments.length === 0) {
+          console.log(`[Operations Event Properties] No property assignments found for event ${opsEvent.id} (definition: ${opsEvent.operationsEventDefinitionId})`);
+          continue;
+        }
+        
+        // For each assignment, create an operation event property
+        for (const assignment of propertyAssignments) {
+          const property = operationEventDefinitionProperties.find(
+            p => p.id === assignment.operationsEventDefinitionPropertyId
+          );
+          
+          if (!property) {
+            console.warn(`[Operations Event Properties] Property ${assignment.operationsEventDefinitionPropertyId} not found for assignment`);
+            continue;
+          }
+          
+          // Create a unique ID for this operation event property
+          const propId = `OEP-${opsEvent.id.replace('OPS-EVENT-', '')}-${property.id}`;
+          
+          const operationsEventProperty = {
+            id: propId,
+            operationsEventId: opsEvent.id,
+            operationsEventDefinitionPropertyId: property.id,
+            value: assignment.value,
+            valueUnitOfMeasure: assignment.valueUnitOfMeasure,
+            effectiveTime: opsEvent.effectiveTimestamp,
+          };
+          
+          generatedOperationsEventProperties.push(operationsEventProperty);
+        }
+        
+        console.log(`[Operations Event Properties] Created ${propertyAssignments.length} properties for event ${opsEvent.id}`);
+      }
+      
+      console.log(`[Operations Event Properties] Total: ${generatedOperationsEventProperties.length} properties`);
+
       // Generate Segment Data (Shift and Crew Assignments)
       const generatedSegmentData: SegmentData[] = [];
       console.log('[Segment Data] Starting shift and crew assignment generation');
@@ -1154,10 +1221,31 @@ const ProcessDataGenerator: React.FC = () => {
             // Don't generate samples after the equipment end time
             if (sampleTime > endTime) break;
 
-            // Generate value within min/max range
-            const minValue = property.minValue ?? 0;
-            const maxValue = property.maxValue ?? 100;
-            const value = minValue + Math.random() * (maxValue - minValue);
+            // Generate value based on property data type
+            let value: number | string;
+            
+            if (property.valueDataType === 'DECIMAL' || property.valueDataType === 'INTEGER') {
+              // For numeric types, generate random value within min/max range
+              const minValue = typeof property.minValue === 'number' ? property.minValue : 0;
+              const maxValue = typeof property.maxValue === 'number' ? property.maxValue : 100;
+              const numericValue = minValue + Math.random() * (maxValue - minValue);
+              value = property.valueDataType === 'INTEGER' ? Math.round(numericValue) : Math.round(numericValue * 100) / 100;
+            } else if (property.valueDataType === 'STRING') {
+              // For string types, use minValue if available (could be comma-separated list), otherwise maxValue
+              if (property.minValue && typeof property.minValue === 'string') {
+                const possibleValues = property.minValue.split(',').map(v => v.trim());
+                value = possibleValues[Math.floor(Math.random() * possibleValues.length)];
+              } else if (property.maxValue && typeof property.maxValue === 'string') {
+                value = property.maxValue;
+              } else {
+                value = 'N/A';
+              }
+            } else if (property.valueDataType === 'BOOLEAN') {
+              // For boolean types, randomly choose true or false
+              value = Math.random() > 0.5 ? 'true' : 'false';
+            } else {
+              value = 'N/A';
+            }
 
             const trackingId = `PROP-TRACK-${eqActual.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`;
 
@@ -1166,7 +1254,8 @@ const ProcessDataGenerator: React.FC = () => {
               segmentResponseId: eqActual.segmentResponseId,
               equipmentId: eqActual.equipmentId,
               equipmentPropertyId: assignment.equipmentPropertyId,
-              value: Math.round(value * 100) / 100, // Round to 2 decimal places
+              equipmentPropertyName: property.name,
+              value: value,
               uom: property.unit || '',
               createdTimestamp: sampleTime.toISOString().slice(0, 19).replace('T', ' '),
             };
@@ -1212,6 +1301,7 @@ const ProcessDataGenerator: React.FC = () => {
       setOperationsEvents(generatedOperationsEvents);
       setOperationsEventRecords(generatedOperationsEventRecords);
       setOperationsEventEntries(generatedOperationsEventEntries);
+      setOperationsEventProperties(generatedOperationsEventProperties);
       setGeneratedMaterialLotsForDisplay(generatedMaterialLots);
       
       // Generate Test Results for produced material lots
@@ -1246,7 +1336,7 @@ const ProcessDataGenerator: React.FC = () => {
       
       setLoading(false);
 
-      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedSegmentData.length} segment data records, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
+      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedOperationsEventProperties.length} event properties, ${generatedSegmentData.length} segment data records, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
     } catch (error) {
       console.error('Error generating actual data:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate actual data';
@@ -1267,6 +1357,7 @@ const ProcessDataGenerator: React.FC = () => {
     setOperationsEvents([]);
     setOperationsEventRecords([]);
     setOperationsEventEntries([]);
+    setOperationsEventProperties([]);
     setSegmentData([]);
     setTestResults([]);
     setGeneratedMaterialLotsForDisplay([]);
@@ -1352,13 +1443,24 @@ const ProcessDataGenerator: React.FC = () => {
         operationsEvents,
         operationsEventRecords,
         operationsEventEntries,
+        operationsEventProperties,
         segmentData
       );
       
       // Save material lots to master data
       if (generatedMaterialLotsForDisplay.length > 0) {
         for (const lot of generatedMaterialLotsForDisplay) {
-          await masterDataDB.add('materialLots', lot);
+          try {
+            // Use put to update if exists, insert if not
+            const existing = await masterDataDB.get('materialLots', lot.id);
+            if (existing) {
+              await masterDataDB.update('materialLots', lot);
+            } else {
+              await masterDataDB.add('materialLots', lot);
+            }
+          } catch (err) {
+            console.error(`Error saving material lot ${lot.id}:`, err);
+          }
         }
         console.log(`Saved ${generatedMaterialLotsForDisplay.length} material lots to master data`);
       }
@@ -1366,7 +1468,17 @@ const ProcessDataGenerator: React.FC = () => {
       // Save material sublots to master data
       if (generatedMaterialSublotsForDisplay.length > 0) {
         for (const sublot of generatedMaterialSublotsForDisplay) {
-          await masterDataDB.add('materialSublots', sublot);
+          try {
+            // Use put to update if exists, insert if not
+            const existing = await masterDataDB.get('materialSublots', sublot.id);
+            if (existing) {
+              await masterDataDB.update('materialSublots', sublot);
+            } else {
+              await masterDataDB.add('materialSublots', sublot);
+            }
+          } catch (err) {
+            console.error(`Error saving material sublot ${sublot.id}:`, err);
+          }
         }
         console.log(`Saved ${generatedMaterialSublotsForDisplay.length} material sublots to master data`);
       }
@@ -1383,21 +1495,103 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
-  const cleanupDatabase = async () => {
-    if (!window.confirm('Are you sure you want to delete all process data (operations requests, responses, segment data, etc.)? This action cannot be undone.')) {
+  const cleanupPlanData = async () => {
+    if (!window.confirm('Are you sure you want to delete all PLAN data (operations requests, segment requirements, etc.)? This action cannot be undone.')) {
       return;
     }
 
     try {
       setLoading(true);
-      console.log('[Process Data Generator] Cleaning up process data database...');
+      console.log('[Process Data Generator] Cleaning up plan data...');
       
-      // Clear all process data stores
-      const stores = [
+      // Clear plan data stores
+      const planStores = [
         'operationsRequests',
         'segmentRequirements',
         'segmentMaterialRequirements',
-        'segmentEquipmentRequirements',
+        'segmentEquipmentRequirements'
+      ];
+      
+      for (const store of planStores) {
+        try {
+          await processDataDB.clear(store as any);
+          console.log(`[Cleanup Plan] Cleared ${store}`);
+        } catch (error) {
+          console.error(`[Cleanup Plan] Failed to clear ${store}:`, error);
+        }
+      }
+      
+      // Reset plan UI state
+      setSavedOperationsRequests([]);
+      setSelectedOperationsRequestId('');
+      setReferenceOperationsRequest(null);
+      setReferenceSegmentRequirements([]);
+      
+      // Reload stored data to update overview
+      await loadSavedOperationsRequests();
+      
+      setLoading(false);
+      showSnackbar('Plan data cleared successfully', 'success');
+    } catch (error) {
+      console.error('Failed to cleanup plan data:', error);
+      showSnackbar('Failed to cleanup plan data', 'error');
+      setLoading(false);
+    }
+  };
+
+  const cleanupOrphanedPlanRecords = async () => {
+    if (!window.confirm('This will delete material and equipment requirements that have no matching segment requirement. Continue?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('[Process Data Generator] Cleaning up orphaned plan records...');
+      
+      // Get all segment requirements
+      const segmentReqs = await processDataDB.getAll('segmentRequirements');
+      const validSegReqIds = new Set(segmentReqs.map((sr: any) => sr.id));
+      
+      console.log(`[Cleanup Orphans] Found ${validSegReqIds.size} valid segment requirements`);
+      
+      // Clean up orphaned material requirements
+      const allMatReqs = await processDataDB.getAll('segmentMaterialRequirements');
+      const orphanedMatReqs = allMatReqs.filter((mr: any) => !validSegReqIds.has(mr.segmentRequirementId));
+      
+      for (const matReq of orphanedMatReqs) {
+        await processDataDB.delete('segmentMaterialRequirements', matReq.id);
+      }
+      console.log(`[Cleanup Orphans] Deleted ${orphanedMatReqs.length} orphaned material requirements`);
+      
+      // Clean up orphaned equipment requirements
+      const allEqReqs = await processDataDB.getAll('segmentEquipmentRequirements');
+      const orphanedEqReqs = allEqReqs.filter((er: any) => !validSegReqIds.has(er.segmentRequirementId));
+      
+      for (const eqReq of orphanedEqReqs) {
+        await processDataDB.delete('segmentEquipmentRequirements', eqReq.id);
+      }
+      console.log(`[Cleanup Orphans] Deleted ${orphanedEqReqs.length} orphaned equipment requirements`);
+      
+      setLoading(false);
+      showSnackbar(`Cleaned up ${orphanedMatReqs.length} material and ${orphanedEqReqs.length} equipment orphaned records`, 'success');
+    } catch (error) {
+      console.error('Failed to cleanup orphaned records:', error);
+      showSnackbar('Failed to cleanup orphaned records', 'error');
+      setLoading(false);
+    }
+  };
+
+  const cleanupActualData = async () => {
+    if (!window.confirm('Are you sure you want to delete all ACTUAL data (operations responses, segment responses, material actuals, etc.)? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('[Process Data Generator] Cleaning up actual data...');
+      
+      // Clear actual data stores
+      const actualStores = [
         'operationsResponses',
         'segmentResponses',
         'segmentMaterialActuals',
@@ -1405,21 +1599,22 @@ const ProcessDataGenerator: React.FC = () => {
         'equipmentPropertyTracking',
         'testResults',
         'operationsEvents',
+        'operationsEventRecords',
+        'operationsEventEntries',
+        'operationsEventProperties',
         'segmentData'
       ];
       
-      for (const store of stores) {
+      for (const store of actualStores) {
         try {
           await processDataDB.clear(store as any);
-          console.log(`[Cleanup] Cleared ${store}`);
+          console.log(`[Cleanup Actual] Cleared ${store}`);
         } catch (error) {
-          console.error(`[Cleanup] Failed to clear ${store}:`, error);
+          console.error(`[Cleanup Actual] Failed to clear ${store}:`, error);
         }
       }
       
-      // Reset UI state
-      setSavedOperationsRequests([]);
-      setSelectedOperationsRequestId('');
+      // Reset actual UI state
       setGeneratedOperationsResponse(null);
       setSegmentResponses([]);
       setMaterialActuals([]);
@@ -1428,22 +1623,20 @@ const ProcessDataGenerator: React.FC = () => {
       setOperationsEvents([]);
       setOperationsEventRecords([]);
       setOperationsEventEntries([]);
+      setOperationsEventProperties([]);
       setTestResults([]);
       setGeneratedMaterialLotsForDisplay([]);
       setGeneratedMaterialSublotsForDisplay([]);
       setActualGenerationTimestamp(null);
-      setReferenceOperationsRequest(null);
-      setReferenceSegmentRequirements([]);
       
       // Reload stored data to update overview
-      await loadSavedOperationsRequests();
       await loadStoredActualData();
       
       setLoading(false);
-      showSnackbar('Process data database cleaned up successfully', 'success');
+      showSnackbar('Actual data cleared successfully', 'success');
     } catch (error) {
-      console.error('Failed to cleanup database:', error);
-      showSnackbar('Failed to cleanup database', 'error');
+      console.error('Failed to cleanup actual data:', error);
+      showSnackbar('Failed to cleanup actual data', 'error');
       setLoading(false);
     }
   };
@@ -1703,8 +1896,10 @@ const ProcessDataGenerator: React.FC = () => {
       setGenerationTimestamp(timestamp);
       setDataVersion(1);
 
-      // Generate Operations Request ID
-      const orId = `OR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+      // Generate Operations Request ID with plant, line, date and time
+      const now = new Date();
+      const dateTimeStr = `${now.toISOString().slice(0, 10).replace(/-/g, '')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+      const orId = `OR-${formData.plantId}-${formData.lineId}-${dateTimeStr}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
       
       // Get process segments for the selected product
       const productSegments = processSegments
@@ -1725,13 +1920,49 @@ const ProcessDataGenerator: React.FC = () => {
       const startTime = new Date(formData.plannedStartDateTime + ':00');
       const operationsEndTime = new Date(formData.plannedEndDateTime + ':00');
       let currentTime = new Date(startTime);
+      
+      // Track when each segment completes its first run (for pipeline logic)
+      let previousSegmentFirstRunEnd: Date | null = null;
 
       productSegments.forEach((segment, index) => {
-        const segReqId = `SR-${orId.split('-')[1]}-${String(index + 1).padStart(3, '0')}-${segment.id}`;
+        const segReqId = `SR-${formData.plantId}-${formData.lineId}-${dateTimeStr}-${String(index + 1).padStart(3, '0')}-${segment.id}`;
         
-        // Calculate segment timing
+        // Calculate segment timing with equipment capacity consideration
         const segmentDuration = segment.durationHours || 2;
-        const endTime = new Date(currentTime.getTime() + segmentDuration * 60 * 60 * 1000);
+        
+        // Get equipment usage for this segment to determine capacity
+        const eqUsage = equipmentUsages.find(eu => eu.processSegmentId === segment.id);
+        const equipmentCapacity = eqUsage?.capacityPerRun || formData.plannedQuantity; // fallback to full quantity if no equipment usage
+        
+        // Calculate required runs based on capacity (same logic as segment responses)
+        const requiredRuns = Math.ceil(formData.plannedQuantity / equipmentCapacity);
+        
+        // Calculate total time needed considering multiple runs
+        const totalDuration = segmentDuration * requiredRuns;
+        
+        // Determine start time:
+        // - First segment: use operations request start time
+        // - Subsequent segments: can start as soon as first run of previous segment completes (pipeline effect)
+        let segmentStartTime: Date;
+        if (index === 0) {
+          // First segment starts at operations request start time
+          segmentStartTime = new Date(currentTime);
+        } else if (previousSegmentFirstRunEnd) {
+          // Subsequent segments can start when first run of previous segment completes
+          segmentStartTime = new Date(previousSegmentFirstRunEnd);
+        } else {
+          // Fallback (shouldn't happen)
+          segmentStartTime = new Date(currentTime);
+        }
+        
+        // Calculate when first run of this segment completes (for next segment's start)
+        const firstRunEnd = new Date(segmentStartTime.getTime() + segmentDuration * 60 * 60 * 1000);
+        
+        // Calculate when ALL runs complete (considering all runs take place sequentially on same equipment)
+        const allRunsEnd = new Date(segmentStartTime.getTime() + totalDuration * 60 * 60 * 1000);
+
+        console.log(`[Plan Generation] Segment ${segment.id} (Seq ${(index + 1) * 10}): ${formData.plannedQuantity} units, capacity ${equipmentCapacity}/run, ${requiredRuns} runs needed`);
+        console.log(`[Plan Generation]   Start: ${segmentStartTime.toISOString()}, First run ends: ${firstRunEnd.toISOString()}, All runs end: ${allRunsEnd.toISOString()}, Total duration: ${totalDuration}h`);
 
         // Create Segment Requirement
         const segReq: SegmentRequirement = {
@@ -1739,18 +1970,24 @@ const ProcessDataGenerator: React.FC = () => {
           operationsRequestId: orId,
           processSegmentId: segment.id,
           sequence: (index + 1) * 10,
-          earliestStartDateTime: currentTime.toISOString().slice(0, 19).replace('T', ' '),
-          latestEndDateTime: endTime.toISOString().slice(0, 19).replace('T', ' '),
+          earliestStartDateTime: segmentStartTime.toISOString().slice(0, 19).replace('T', ' '),
+          latestEndDateTime: allRunsEnd.toISOString().slice(0, 19).replace('T', ' '),
           targetQuantity: formData.plannedQuantity,
           quantityUoM: formData.quantityUoM,
         };
         generatedSegReqs.push(segReq);
+        
+        // Update for next segment (pipeline effect: next segment can start when this segment's first run completes)
+        previousSegmentFirstRunEnd = firstRunEnd;
+        
+        // Update currentTime to when all runs of this segment complete (for tracking overall timeline)
+        currentTime = new Date(allRunsEnd);
 
         // Generate Material Requirements based on BOM
         const bomLines = segmentBOMs.filter(bom => bom.processSegmentId === segment.id);
         bomLines.forEach((bom, bomIndex) => {
           const material = materials.find(m => m.id === bom.materialId);
-          const matReqId = `SMR-${segReqId}-${String(bomIndex + 1).padStart(3, '0')}`;
+          const matReqId = `SMR-${formData.plantId}-${formData.lineId}-${dateTimeStr}-${String(bomIndex + 1).padStart(3, '0')}-${segment.id}`;
           
           const matReq: SegmentMaterialRequirement = {
             id: matReqId,
@@ -1768,7 +2005,7 @@ const ProcessDataGenerator: React.FC = () => {
         const isLastSegment = index === productSegments.length - 1;
         if (isLastSegment) {
           const productMaterial = materials.find(m => m.id === segment.productMaterialId);
-          const matReqId = `SMR-${segReqId}-OUTPUT`;
+          const matReqId = `SMR-${formData.plantId}-${formData.lineId}-${dateTimeStr}-OUTPUT-${segment.id}`;
           
           const outputMatReq: SegmentMaterialRequirement = {
             id: matReqId,
@@ -1784,10 +2021,10 @@ const ProcessDataGenerator: React.FC = () => {
         // Generate Equipment Requirements based on Equipment Usage
         const eqUsages = equipmentUsages.filter(eu => eu.processSegmentId === segment.id);
         eqUsages.forEach((usage, eqIndex) => {
-          const eqReqId = `SER-${segReqId}-${String(eqIndex + 1).padStart(3, '0')}`;
+          const eqReqId = `SER-${formData.plantId}-${formData.lineId}-${dateTimeStr}-${String(eqIndex + 1).padStart(3, '0')}-${segment.id}`;
           const equipmentItem = equipment.find(e => e.id === usage.equipmentId);
           
-          // Calculate required runs based on capacity
+          // Calculate required runs based on capacity (same as above)
           const requiredRuns = Math.ceil(formData.plannedQuantity / usage.capacityPerRun);
           const totalDuration = (segment.durationHours || 2) * requiredRuns;
 
@@ -1803,8 +2040,7 @@ const ProcessDataGenerator: React.FC = () => {
           generatedEqReqs.push(eqReq);
         });
 
-        // Move to next segment start time
-        currentTime = new Date(endTime);
+        // Note: currentTime is updated above to allRunsEnd for tracking overall timeline
       });
 
       // Create complete operations request with properly formatted datetime
@@ -1931,6 +2167,148 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
     a.download = filename;
     a.click();
     window.URL.revokeObjectURL(url);
+  };
+
+  const exportAllSavedPlanData = async () => {
+    if (savedOperationsRequests.length === 0) {
+      showSnackbar('No saved plan data to export', 'error');
+      return;
+    }
+
+    try {
+      // Load all segment requirements, material requirements, and equipment requirements from database
+      const allSegmentRequirements = await processDataDB.getAll('segmentRequirements');
+      const allMaterialRequirements = await processDataDB.getAll('segmentMaterialRequirements');
+      const allEquipmentRequirements = await processDataDB.getAll('segmentEquipmentRequirements');
+
+      // Export Operations Requests
+      const orHeaders = 'OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,Status';
+      const orRows = savedOperationsRequests.map(req => 
+        `${req.id},${req.description},${req.plantId},${req.lineId},${req.productMaterialId},${req.plannedQuantity},${req.quantityUoM},${req.plannedStartDateTime},${req.plannedEndDateTime},${req.priority},${req.status}`
+      ).join('\n');
+      const orCsv = `${orHeaders}\n${orRows}`;
+
+      // Export Segment Requirements
+      const srHeaders = 'SegmentRequirementID,OperationsRequestID,ProcessSegmentID,Sequence,EarliestStartDateTime,LatestEndDateTime,TargetQuantity,QuantityUoM';
+      const srRows = allSegmentRequirements.map(sr => 
+        `${sr.id},${sr.operationsRequestId},${sr.processSegmentId},${sr.sequence},${sr.earliestStartDateTime},${sr.latestEndDateTime},${sr.targetQuantity},${sr.quantityUoM}`
+      ).join('\n');
+      const srCsv = `${srHeaders}\n${srRows}`;
+
+      // Export Material Requirements
+      const mrHeaders = 'SegmentMaterialReqID,SegmentRequirementID,MaterialID,RequiredQty,QtyUoM,RequirementType';
+      const mrRows = allMaterialRequirements.map(mr => 
+        `${mr.id},${mr.segmentRequirementId},${mr.materialId},${mr.requiredQty},${mr.qtyUoM},${mr.requirementType}`
+      ).join('\n');
+      const mrCsv = `${mrHeaders}\n${mrRows}`;
+
+      // Export Equipment Requirements
+      const erHeaders = 'SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedDurationHours';
+      const erRows = allEquipmentRequirements.map(er => 
+        `${er.id},${er.segmentRequirementId},${er.lineId},${er.equipmentClassId},${er.equipmentId},${er.requirementType},${er.plannedDurationHours}`
+      ).join('\n');
+      const erCsv = `${erHeaders}\n${erRows}`;
+
+      // Download all files
+      downloadCSV(orCsv, 'all_operations_requests.csv');
+      downloadCSV(srCsv, 'all_segment_requirements.csv');
+      downloadCSV(mrCsv, 'all_segment_material_requirements.csv');
+      downloadCSV(erCsv, 'all_segment_equipment_requirements.csv');
+
+      showSnackbar(`Exported ${savedOperationsRequests.length} operations requests with all related data`, 'success');
+    } catch (error) {
+      console.error('Failed to export plan data:', error);
+      showSnackbar('Failed to export plan data', 'error');
+    }
+  };
+
+  const exportAllPlanDataAsJSON = async () => {
+    if (savedOperationsRequests.length === 0) {
+      showSnackbar('No saved plan data to export', 'error');
+      return;
+    }
+
+    try {
+      // Load all plan data from database
+      const allSegmentRequirements = await processDataDB.getAll('segmentRequirements');
+      const allMaterialRequirements = await processDataDB.getAll('segmentMaterialRequirements');
+      const allEquipmentRequirements = await processDataDB.getAll('segmentEquipmentRequirements');
+
+      // Create a single JSON object with all plan data
+      const planDataExport = {
+        exportDate: new Date().toISOString(),
+        dataType: 'ISA95_Plan_Data',
+        version: '1.0',
+        operationsRequests: savedOperationsRequests,
+        segmentRequirements: allSegmentRequirements,
+        segmentMaterialRequirements: allMaterialRequirements,
+        segmentEquipmentRequirements: allEquipmentRequirements
+      };
+
+      // Convert to JSON and download
+      const jsonString = JSON.stringify(planDataExport, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `plan_data_export_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      showSnackbar(`Exported ${savedOperationsRequests.length} operations requests as JSON`, 'success');
+    } catch (error) {
+      console.error('Failed to export plan data as JSON:', error);
+      showSnackbar('Failed to export plan data as JSON', 'error');
+    }
+  };
+
+  const importPlanDataFromJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      const text = await file.text();
+      const planDataImport = JSON.parse(text);
+
+      // Validate the import structure
+      if (!planDataImport.dataType || planDataImport.dataType !== 'ISA95_Plan_Data') {
+        throw new Error('Invalid plan data file format');
+      }
+
+      // Import operations requests
+      for (const req of planDataImport.operationsRequests) {
+        await processDataDB.add('operationsRequests', req);
+      }
+
+      // Import segment requirements
+      for (const sr of planDataImport.segmentRequirements) {
+        await processDataDB.add('segmentRequirements', sr);
+      }
+
+      // Import material requirements
+      for (const mr of planDataImport.segmentMaterialRequirements) {
+        await processDataDB.add('segmentMaterialRequirements', mr);
+      }
+
+      // Import equipment requirements
+      for (const er of planDataImport.segmentEquipmentRequirements) {
+        await processDataDB.add('segmentEquipmentRequirements', er);
+      }
+
+      // Reload saved operations requests
+      await loadSavedOperationsRequests();
+
+      setLoading(false);
+      showSnackbar(`Imported ${planDataImport.operationsRequests.length} operations requests successfully`, 'success');
+    } catch (error) {
+      console.error('Failed to import plan data:', error);
+      showSnackbar('Failed to import plan data. Please check the file format.', 'error');
+      setLoading(false);
+    }
+
+    // Reset file input
+    event.target.value = '';
   };
 
   const exportToExcel = () => {
@@ -2067,10 +2445,31 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             variant="outlined"
             color="error"
             startIcon={<DeleteIcon />}
-            onClick={cleanupDatabase}
+            onClick={cleanupPlanData}
             sx={{ mr: 1 }}
+            size="small"
           >
-            Cleanup DB
+            Clear Plan
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<DeleteIcon />}
+            onClick={cleanupOrphanedPlanRecords}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Clean Orphaned
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={cleanupActualData}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Clear Actual
           </Button>
           <Button
             variant="outlined"
@@ -2133,13 +2532,54 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                 <Typography variant="h6">
                   📊 Saved Plan Data Overview
                 </Typography>
-                <Button
-                  size="small"
-                  onClick={() => setPlanDataExpanded(!planDataExpanded)}
-                  variant="outlined"
-                >
-                  {planDataExpanded ? 'Collapse' : 'Expand All'}
-                </Button>
+                <Box>
+                  <input
+                    type="file"
+                    accept=".json"
+                    style={{ display: 'none' }}
+                    id="import-plan-json-file"
+                    onChange={importPlanDataFromJSON}
+                  />
+                  <label htmlFor="import-plan-json-file">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="success"
+                      component="span"
+                      startIcon={<UploadIcon />}
+                      sx={{ mr: 1 }}
+                    >
+                      Import JSON
+                    </Button>
+                  </label>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<DownloadIcon />}
+                    onClick={exportAllPlanDataAsJSON}
+                    sx={{ mr: 1 }}
+                  >
+                    Export JSON
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    startIcon={<DownloadIcon />}
+                    onClick={exportAllSavedPlanData}
+                    sx={{ mr: 1 }}
+                  >
+                    Export CSV
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setPlanDataExpanded(!planDataExpanded)}
+                    variant="outlined"
+                  >
+                    {planDataExpanded ? 'Collapse' : 'Expand All'}
+                  </Button>
+                </Box>
               </Box>
               <Divider sx={{ mb: 2 }} />
               
@@ -2391,7 +2831,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </Typography>
                     <Chip label={`${segmentRequirements.length} Segment Requirements`} color="primary" sx={{ mr: 1, mb: 1 }} />
                     <Chip label={`${materialRequirements.length} Material Requirements`} color="secondary" sx={{ mr: 1, mb: 1 }} />
-                    <Chip label={`${equipmentRequirements.length} Equipment Requirements`} color="info" sx={{ mb: 1 }} />
+                    <Chip label={`${equipmentRequirements.length} Equipment Requirements`} color="info" sx={{ mr: 1, mb: 1 }} />
+                    <Chip label={`${operationsEventProperties.length} Event Properties`} color="warning" sx={{ mb: 1 }} />
                   </Box>
 
                   <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mt: 2 }}>
@@ -3531,6 +3972,49 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             <TableCell>{entry.description}</TableCell>
                           </TableRow>
                         ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Operations Event Properties Table */}
+              {operationsEventProperties.length > 0 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white' }}>
+                    <Typography variant="subtitle1">
+                      Operations Event Properties
+                      <Chip label={operationsEventProperties.length} size="small" sx={{ ml: 1, bgcolor: 'white', color: 'warning.main' }} />
+                    </Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Property ID</TableCell>
+                          <TableCell>Event ID</TableCell>
+                          <TableCell>Property Definition</TableCell>
+                          <TableCell>Value</TableCell>
+                          <TableCell>Unit of Measure</TableCell>
+                          <TableCell>Effective Time</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {operationsEventProperties.map((prop) => {
+                          const propertyDef = operationEventDefinitionProperties.find(p => p.id === prop.operationsEventDefinitionPropertyId);
+                          return (
+                            <TableRow key={prop.id}>
+                              <TableCell>{prop.id}</TableCell>
+                              <TableCell>{prop.operationsEventId}</TableCell>
+                              <TableCell>
+                                <Chip label={propertyDef?.id || prop.operationsEventDefinitionPropertyId} size="small" color="warning" />
+                              </TableCell>
+                              <TableCell>{prop.value}</TableCell>
+                              <TableCell>{prop.valueUnitOfMeasure || 'N/A'}</TableCell>
+                              <TableCell>{prop.effectiveTime}</TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>

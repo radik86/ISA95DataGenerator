@@ -87,6 +87,16 @@ interface MasterDataDB extends DBSchema {
     value: OperationEventDefinitionRecord;
     indexes: { 'by-category': string; 'by-code': string; 'by-updated': Date };
   };
+  operationEventDefinitionProperties: {
+    key: string;
+    value: OperationEventDefinitionPropertyRecord;
+    indexes: { 'by-updated': Date };
+  };
+  operationEventDefinitionPropertyAssignments: {
+    key: string;
+    value: OperationEventDefinitionPropertyAssignmentRecord;
+    indexes: { 'by-definition': string; 'by-property': string; 'by-updated': Date };
+  };
   operationsEventClasses: {
     key: string;
     value: OperationsEventClassRecord;
@@ -188,6 +198,7 @@ export interface MaterialDefinitionPropertyRecord extends BaseRecord {
 
 export interface MaterialDefinitionPropertyAssignmentRecord extends BaseRecord {
   id: string;
+  materialDefinitionPropertyId: string;
   materialDefinitionId: string;
   value: string;
   description: string;
@@ -263,8 +274,8 @@ export interface EquipmentPropertyRecord extends BaseRecord {
   description: string;
   valueDataType: string;
   unit?: string;
-  minValue?: number;
-  maxValue?: number;
+  minValue?: number | string;
+  maxValue?: number | string;
 }
 
 export interface EquipmentPropertyAssignmentRecord extends BaseRecord {
@@ -284,6 +295,20 @@ export interface OperationEventDefinitionRecord extends BaseRecord {
   causesDowntime: boolean;
   causesScrap: boolean;
   rootCauseType: string;
+}
+
+export interface OperationEventDefinitionPropertyRecord extends BaseRecord {
+  id: string;
+  possibleValues: string;
+  valueUnitOfMeasure: string;
+}
+
+export interface OperationEventDefinitionPropertyAssignmentRecord extends BaseRecord {
+  id: string;
+  operationsEventDefinitionId: string;
+  operationsEventDefinitionPropertyId: string;
+  value: string;
+  valueUnitOfMeasure: string;
 }
 
 export interface HierarchyScopeRecord extends BaseRecord {
@@ -372,7 +397,7 @@ class MasterDataDatabase {
   }
 
   private async initDB(): Promise<IDBPDatabase<MasterDataDB>> {
-    return openDB<MasterDataDB>('master-data-db', 12, {
+    return openDB<MasterDataDB>('master-data-db', 13, {
       upgrade(db, oldVersion) {
         // Material Classes
         if (!db.objectStoreNames.contains('materialClasses')) {
@@ -501,6 +526,20 @@ class MasterDataDatabase {
           oedsaStore.createIndex('by-definition', 'operationsEventDefinitionId');
           oedsaStore.createIndex('by-segment', 'processSegmentId');
           oedsaStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operation Event Definition Properties (version 7)
+        if (!db.objectStoreNames.contains('operationEventDefinitionProperties')) {
+          const oedpStore = db.createObjectStore('operationEventDefinitionProperties', { keyPath: 'id' });
+          oedpStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Operation Event Definition Property Assignments (version 7)
+        if (!db.objectStoreNames.contains('operationEventDefinitionPropertyAssignments')) {
+          const oedpaStore = db.createObjectStore('operationEventDefinitionPropertyAssignments', { keyPath: 'id' });
+          oedpaStore.createIndex('by-definition', 'operationsEventDefinitionId');
+          oedpaStore.createIndex('by-property', 'operationsEventDefinitionPropertyId');
+          oedpaStore.createIndex('by-updated', 'updatedAt');
         }
 
         // Hierarchy Scopes (version 7)
@@ -712,6 +751,8 @@ class MasterDataDatabase {
     lineEquipment?: any[];
     operationEventDefinitions?: any[];
     operationEventDefSegmentAssignments?: any[];
+    operationEventDefinitionProperties?: any[];
+    operationEventDefinitionPropertyAssignments?: any[];
     operationsEventClasses?: any[];
     hierarchyScopes?: any[];
     hierarchyScopesFlat?: any[];
@@ -789,6 +830,16 @@ class MasterDataDatabase {
     if (csvData.operationEventDefSegmentAssignments) {
       console.log('Importing operation event def segment assignments:', csvData.operationEventDefSegmentAssignments.length);
       await this.bulkAdd('operationEventDefSegmentAssignments', csvData.operationEventDefSegmentAssignments);
+    }
+
+    if (csvData.operationEventDefinitionProperties) {
+      console.log('Importing operation event definition properties:', csvData.operationEventDefinitionProperties.length);
+      await this.bulkAdd('operationEventDefinitionProperties', csvData.operationEventDefinitionProperties);
+    }
+
+    if (csvData.operationEventDefinitionPropertyAssignments) {
+      console.log('Importing operation event definition property assignments:', csvData.operationEventDefinitionPropertyAssignments.length);
+      await this.bulkAdd('operationEventDefinitionPropertyAssignments', csvData.operationEventDefinitionPropertyAssignments);
     }
 
     if (csvData.operationsEventClasses) {
