@@ -120,6 +120,14 @@ interface TableMapping {
   bridgeEntity2?: string;
   bridgeEntity2Column?: string;
   relationshipType?: string; // For bridge tables
+  filters?: TableFilter[]; // Add filters for source table
+}
+
+interface TableFilter {
+  column: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'is_null' | 'is_not_null' | 'is_empty' | 'is_not_empty';
+  value?: string;
+  enabled: boolean;
 }
 
 interface DataSource {
@@ -240,6 +248,13 @@ const DataMigration: React.FC = () => {
   const [pkStaticValue, setPkStaticValue] = useState('');
   const [pkSequenceStart, setPkSequenceStart] = useState(1);
   const [pkSequenceIncrement, setPkSequenceIncrement] = useState(1);
+
+  // Filter dialog states
+  const [filterDialog, setFilterDialog] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<{
+    mappingIndex: number;
+    filterIndex: number;
+  } | null>(null);
   const [pkPrefixValue, setPkPrefixValue] = useState('');
   const [pkSuffixValue, setPkSuffixValue] = useState('');
   const [pkSeqStart, setPkSeqStart] = useState(1);
@@ -1476,6 +1491,84 @@ const DataMigration: React.FC = () => {
     setTableMappings(tableMappings.filter((_, i) => i !== index));
   };
 
+  const handleAddFilter = (mappingIndex: number) => {
+    const updated = [...tableMappings];
+    if (!updated[mappingIndex].filters) {
+      updated[mappingIndex].filters = [];
+    }
+    const newFilterIndex = updated[mappingIndex].filters.length;
+    updated[mappingIndex].filters.push({
+      column: '',
+      operator: 'equals',
+      value: '',
+      enabled: true,
+    });
+    setTableMappings(updated);
+    setSelectedFilter({ mappingIndex, filterIndex: newFilterIndex });
+    setFilterDialog(true);
+  };
+
+  const handleRemoveFilter = (mappingIndex: number, filterIndex: number) => {
+    const updated = [...tableMappings];
+    if (updated[mappingIndex].filters) {
+      updated[mappingIndex].filters.splice(filterIndex, 1);
+      setTableMappings(updated);
+    }
+  };
+
+  const handleUpdateFilter = (mappingIndex: number, filterIndex: number, field: keyof TableFilter, value: any) => {
+    const updated = [...tableMappings];
+    if (updated[mappingIndex].filters && updated[mappingIndex].filters[filterIndex]) {
+      updated[mappingIndex].filters[filterIndex] = {
+        ...updated[mappingIndex].filters[filterIndex],
+        [field]: value,
+      };
+      setTableMappings(updated);
+    }
+  };
+
+  const applyFilters = (data: any[], filters: TableFilter[]): any[] => {
+    if (!filters || filters.length === 0) return data;
+
+    return data.filter(record => {
+      return filters.every(filter => {
+        if (!filter.enabled) return true;
+
+        const value = record[filter.column];
+        const filterValue = filter.value;
+
+        switch (filter.operator) {
+          case 'equals':
+            return value == filterValue;
+          case 'not_equals':
+            return value != filterValue;
+          case 'contains':
+            return String(value).toLowerCase().includes(String(filterValue).toLowerCase());
+          case 'not_contains':
+            return !String(value).toLowerCase().includes(String(filterValue).toLowerCase());
+          case 'starts_with':
+            return String(value).toLowerCase().startsWith(String(filterValue).toLowerCase());
+          case 'ends_with':
+            return String(value).toLowerCase().endsWith(String(filterValue).toLowerCase());
+          case 'greater_than':
+            return Number(value) > Number(filterValue);
+          case 'less_than':
+            return Number(value) < Number(filterValue);
+          case 'is_null':
+            return value === null || value === undefined || value === '';
+          case 'is_not_null':
+            return value !== null && value !== undefined && value !== '';
+          case 'is_empty':
+            return value === null || value === undefined || String(value).trim() === '';
+          case 'is_not_empty':
+            return value !== null && value !== undefined && String(value).trim() !== '';
+          default:
+            return true;
+        }
+      });
+    });
+  };
+
   const handleUpdateMapping = (mappingIndex: number, columnIndex: number, field: keyof ColumnMapping, value: string) => {
     const updated = [...tableMappings];
     updated[mappingIndex].mappings[columnIndex] = {
@@ -2551,6 +2644,16 @@ const DataMigration: React.FC = () => {
           const sourceData = await loadSourceData(mapping.sourceTable);
           log(`Loaded ${sourceData.length} records from ${mapping.sourceTable}`);
 
+          // Apply filters if configured
+          let filteredData = sourceData;
+          if (mapping.filters && mapping.filters.length > 0) {
+            const enabledFilters = mapping.filters.filter(f => f.enabled);
+            if (enabledFilters.length > 0) {
+              filteredData = applyFilters(sourceData, enabledFilters);
+              log(`Applied ${enabledFilters.length} filter(s): ${sourceData.length} → ${filteredData.length} records`);
+            }
+          }
+
           // Get entity for file naming
           const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
 
@@ -2572,7 +2675,7 @@ const DataMigration: React.FC = () => {
         }
 
         // Transform data based on field mappings
-        const transformedData = sourceData.map((record: any, recordIndex: number) => {
+        const transformedData = filteredData.map((record: any, recordIndex: number) => {
           const transformed: any = {};
           
           // Special handling for bridge tables
@@ -3712,6 +3815,76 @@ const DataMigration: React.FC = () => {
                                 />
                               </Tooltip>
                             )}
+                          </Box>
+
+                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 3 }}>
+                            Source Table Filters
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                            Filter source table records based on column values (applied before migration)
+                          </Typography>
+
+                          <Box sx={{ mb: 3 }}>
+                            {mapping.filters && mapping.filters.length > 0 ? (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                                {mapping.filters.map((filter, filterIndex) => (
+                                  <Box 
+                                    key={filterIndex} 
+                                    sx={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: 1, 
+                                      p: 1, 
+                                      border: 1, 
+                                      borderColor: 'divider', 
+                                      borderRadius: 1,
+                                      cursor: 'pointer',
+                                      '&:hover': { bgcolor: 'action.hover' }
+                                    }}
+                                    onClick={() => {
+                                      setSelectedFilter({ mappingIndex: originalIndex, filterIndex });
+                                      setFilterDialog(true);
+                                    }}
+                                  >
+                                    <FormControlLabel
+                                      control={
+                                        <Checkbox
+                                          checked={filter.enabled}
+                                          onChange={(e) => handleToggleFilter(originalIndex, filterIndex, e.target.checked)}
+                                          size="small"
+                                        />
+                                      }
+                                      label=""
+                                    />
+                                    <Chip label={filter.column} size="small" color="primary" />
+                                    <Chip label={filter.operator.replace('_', ' ')} size="small" variant="outlined" />
+                                    {filter.operator !== 'is_null' && filter.operator !== 'is_not_null' && filter.operator !== 'is_empty' && filter.operator !== 'is_not_empty' && (
+                                      <Chip label={`"${filter.value || ''}"`} size="small" variant="outlined" />
+                                    )}
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleRemoveFilter(originalIndex, filterIndex)}
+                                      color="error"
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
+                                ))}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>
+                                No filters configured - all records will be migrated
+                              </Typography>
+                            )}
+
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<AddIcon />}
+                              onClick={() => handleAddFilter(originalIndex)}
+                            >
+                              Add Filter
+                            </Button>
                           </Box>
 
                           <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
@@ -5220,6 +5393,107 @@ const DataMigration: React.FC = () => {
           <Button onClick={() => setPkRuleDialog(false)}>Cancel</Button>
           <Button onClick={handleSavePKRule} variant="contained" color="primary">
             Save Rule
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Filter Configuration Dialog */}
+      <Dialog
+        open={filterDialog}
+        onClose={() => setFilterDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Configure Filter
+          {selectedFilter && (
+            <Typography variant="caption" display="block" color="text.secondary">
+              Mapping: {tableMappings[selectedFilter.mappingIndex]?.sourceTable} → {isa95Entities.find(e => e.tableName === tableMappings[selectedFilter.mappingIndex]?.targetEntity)?.name || tableMappings[selectedFilter.mappingIndex]?.targetEntity}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {selectedFilter && (
+              <>
+                <FormControl fullWidth>
+                  <InputLabel>Column</InputLabel>
+                  <Select
+                    value={tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.column || ''}
+                    onChange={(e) => handleUpdateFilter(selectedFilter.mappingIndex, selectedFilter.filterIndex, 'column', e.target.value)}
+                    label="Column"
+                  >
+                    {dataSource?.tables
+                      .find(t => t.name === tableMappings[selectedFilter.mappingIndex]?.sourceTable)
+                      ?.columns.map(column => (
+                        <MenuItem key={column.name} value={column.name}>
+                          {column.name} ({column.type})
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
+                  <InputLabel>Operator</InputLabel>
+                  <Select
+                    value={tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator || 'equals'}
+                    onChange={(e) => handleUpdateFilter(selectedFilter.mappingIndex, selectedFilter.filterIndex, 'operator', e.target.value)}
+                    label="Operator"
+                  >
+                    <MenuItem value="equals">Equals</MenuItem>
+                    <MenuItem value="not_equals">Not Equals</MenuItem>
+                    <MenuItem value="contains">Contains</MenuItem>
+                    <MenuItem value="not_contains">Not Contains</MenuItem>
+                    <MenuItem value="starts_with">Starts With</MenuItem>
+                    <MenuItem value="ends_with">Ends With</MenuItem>
+                    <MenuItem value="greater_than">Greater Than</MenuItem>
+                    <MenuItem value="less_than">Less Than</MenuItem>
+                    <MenuItem value="is_null">Is Null</MenuItem>
+                    <MenuItem value="is_not_null">Is Not Null</MenuItem>
+                    <MenuItem value="is_empty">Is Empty</MenuItem>
+                    <MenuItem value="is_not_empty">Is Not Empty</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator !== 'is_null' &&
+                 tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator !== 'is_not_null' &&
+                 tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator !== 'is_empty' &&
+                 tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator !== 'is_not_empty' &&
+                 tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator !== 'is_empty' &&
+                 tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.operator !== 'is_not_empty' && (
+                  <TextField
+                    fullWidth
+                    label="Value"
+                    value={tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.value || ''}
+                    onChange={(e) => handleUpdateFilter(selectedFilter.mappingIndex, selectedFilter.filterIndex, 'value', e.target.value)}
+                    placeholder="Enter filter value"
+                  />
+                )}
+
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={tableMappings[selectedFilter.mappingIndex]?.filters?.[selectedFilter.filterIndex]?.enabled || false}
+                      onChange={(e) => handleUpdateFilter(selectedFilter.mappingIndex, selectedFilter.filterIndex, 'enabled', e.target.checked)}
+                    />
+                  }
+                  label="Enable Filter"
+                />
+              </>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFilterDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={() => {
+              setFilterDialog(false);
+              setSelectedFilter(null);
+            }} 
+            variant="contained" 
+            color="primary"
+          >
+            Save Filter
           </Button>
         </DialogActions>
       </Dialog>
