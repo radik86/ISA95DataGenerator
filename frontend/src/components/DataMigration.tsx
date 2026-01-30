@@ -56,6 +56,8 @@ import {
   Visibility as VisibilityIcon,
   Close as CloseIcon,
   Info as InfoIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
 import { masterDataDB } from '../services/masterDataDB';
 import { processDataDB } from '../services/processDataDB';
@@ -183,11 +185,17 @@ const DataMigration: React.FC = () => {
   const [availableRelationships, setAvailableRelationships] = useState<string[]>([]);
   const [expandedMappings, setExpandedMappings] = useState<Set<number>>(new Set());
   const [expandedBridgeMappings, setExpandedBridgeMappings] = useState<Set<number>>(new Set());
+  const [editingBridgeIndex, setEditingBridgeIndex] = useState<number | null>(null);
   
   // Table filtering and sorting
   const [tableFilter, setTableFilter] = useState('');
   const [tableSortBy, setTableSortBy] = useState<'name' | 'rows'>('name');
   const [tableSortOrder, setTableSortOrder] = useState<'asc' | 'desc'>('asc');
+  
+  // Mapping filtering and sorting
+  const [mappingFilter, setMappingFilter] = useState('');
+  const [mappingSortBy, setMappingSortBy] = useState<'source' | 'target'>('source');
+  const [mappingSortOrder, setMappingSortOrder] = useState<'asc' | 'desc'>('asc');
   
   // Rule parameters matching FieldRuleEditor
   const [rangeMin, setRangeMin] = useState(0);
@@ -1377,7 +1385,18 @@ const DataMigration: React.FC = () => {
       relationshipType: relationshipType || 'related',
     };
 
-    setTableMappings([...tableMappings, newMapping]);
+    if (editingBridgeIndex !== null) {
+      // Update existing mapping
+      const updated = [...tableMappings];
+      updated[editingBridgeIndex] = newMapping;
+      setTableMappings(updated);
+      showSnackbar('Bridge mapping updated successfully', 'success');
+    } else {
+      // Add new mapping
+      setTableMappings([...tableMappings, newMapping]);
+      showSnackbar('Bridge mapping added successfully', 'success');
+    }
+    
     setBridgeDialog(false);
     setSelectedSourceTable('');
     setBridgeEntity1('');
@@ -1389,7 +1408,7 @@ const DataMigration: React.FC = () => {
     setBridgeEntity2Column('');
     setBridgeName('');
     setIsBridgeMode(false);
-    showSnackbar('Bridge mapping added successfully', 'success');
+    setEditingBridgeIndex(null);
   };
 
   // Update available relationships based on selected entities
@@ -3625,6 +3644,35 @@ const DataMigration: React.FC = () => {
             </Box>
           </Box>
 
+          {/* Mapping filter and sort controls */}
+          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+            <TextField
+              label="Filter Mappings"
+              value={mappingFilter}
+              onChange={(e) => setMappingFilter(e.target.value)}
+              size="small"
+              sx={{ minWidth: 200 }}
+              placeholder="Filter by source or target..."
+            />
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Sort By</InputLabel>
+              <Select
+                value={mappingSortBy}
+                onChange={(e) => setMappingSortBy(e.target.value as 'source' | 'target')}
+                label="Sort By"
+              >
+                <MenuItem value="source">Source Table</MenuItem>
+                <MenuItem value="target">Target Entity</MenuItem>
+              </Select>
+            </FormControl>
+            <IconButton
+              onClick={() => setMappingSortOrder(mappingSortOrder === 'asc' ? 'desc' : 'asc')}
+              size="small"
+            >
+              {mappingSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
+            </IconButton>
+          </Box>
+
           <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
               <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
@@ -3681,15 +3729,35 @@ const DataMigration: React.FC = () => {
             </Alert>
           ) : (
             <Box>
-              {tableMappings.map((mapping, originalIndex) => {
-                if (mapping.isBridge) return null;
-                
-                const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
-                const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
+              {tableMappings
+                .filter(mapping => !mapping.isBridge)
+                .filter(mapping => 
+                  mappingFilter === '' || 
+                  mapping.sourceTable.toLowerCase().includes(mappingFilter.toLowerCase()) ||
+                  mapping.targetEntity.toLowerCase().includes(mappingFilter.toLowerCase())
+                )
+                .sort((a, b) => {
+                  let aValue, bValue;
+                  if (mappingSortBy === 'source') {
+                    aValue = a.sourceTable;
+                    bValue = b.sourceTable;
+                  } else {
+                    aValue = a.targetEntity;
+                    bValue = b.targetEntity;
+                  }
+                  const comparison = aValue.localeCompare(bValue);
+                  return mappingSortOrder === 'asc' ? comparison : -comparison;
+                })
+                .map((mapping, filteredIndex) => {
+                  // Find original index for state management
+                  const originalIndex = tableMappings.findIndex(m => m === mapping);
+                  
+                  const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
+                  const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
 
-                return (
-                  <Accordion 
-                    key={originalIndex}
+                  return (
+                    <Accordion 
+                      key={originalIndex}
                     expanded={expandedMappings.has(originalIndex)}
                     onChange={() => handleAccordionToggle(originalIndex, false)}
                   >
@@ -4077,9 +4145,34 @@ const DataMigration: React.FC = () => {
             </Box>
           </Box>
 
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Bridge tables create many-to-many relationships between two ISA95 entities. They reference the PrimaryKey fields defined in the previous step.
-          </Alert>
+          {/* Bridge mapping filter and sort controls */}
+          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+            <TextField
+              label="Filter Bridge Mappings"
+              value={mappingFilter}
+              onChange={(e) => setMappingFilter(e.target.value)}
+              size="small"
+              sx={{ minWidth: 200 }}
+              placeholder="Filter by source or entities..."
+            />
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Sort By</InputLabel>
+              <Select
+                value={mappingSortBy}
+                onChange={(e) => setMappingSortBy(e.target.value as 'source' | 'target')}
+                label="Sort By"
+              >
+                <MenuItem value="source">Source Table</MenuItem>
+                <MenuItem value="target">Bridge Name</MenuItem>
+              </Select>
+            </FormControl>
+            <IconButton
+              onClick={() => setMappingSortOrder(mappingSortOrder === 'asc' ? 'desc' : 'asc')}
+              size="small"
+            >
+              {mappingSortOrder === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
+            </IconButton>
+          </Box>
 
           <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
             <Typography variant="subtitle2" gutterBottom>
@@ -4167,14 +4260,36 @@ const DataMigration: React.FC = () => {
             </Alert>
           ) : (
             <Box>
-              {tableMappings.map((mapping, originalIndex) => {
-                if (!mapping.isBridge) return null;
-                
-                const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
-                const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
-                const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
+              {tableMappings
+                .filter(mapping => mapping.isBridge)
+                .filter(mapping => 
+                  mappingFilter === '' || 
+                  mapping.sourceTable.toLowerCase().includes(mappingFilter.toLowerCase()) ||
+                  mapping.targetEntity.toLowerCase().includes(mappingFilter.toLowerCase()) ||
+                  (isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1)?.name || '').toLowerCase().includes(mappingFilter.toLowerCase()) ||
+                  (isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2)?.name || '').toLowerCase().includes(mappingFilter.toLowerCase())
+                )
+                .sort((a, b) => {
+                  let aValue, bValue;
+                  if (mappingSortBy === 'source') {
+                    aValue = a.sourceTable;
+                    bValue = b.sourceTable;
+                  } else {
+                    aValue = a.targetEntity;
+                    bValue = b.targetEntity;
+                  }
+                  const comparison = aValue.localeCompare(bValue);
+                  return mappingSortOrder === 'asc' ? comparison : -comparison;
+                })
+                .map((mapping, filteredIndex) => {
+                  // Find original index for state management
+                  const originalIndex = tableMappings.findIndex(m => m === mapping);
+                  
+                  const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
+                  const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
+                  const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
 
-                return (
+                  return (
                   <Accordion 
                     key={originalIndex}
                     expanded={expandedBridgeMappings.has(originalIndex)}
@@ -4193,6 +4308,56 @@ const DataMigration: React.FC = () => {
                           color="info"
                           variant="outlined"
                         />
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Set state for preview
+                            const mapping = tableMappings[originalIndex];
+                            setSelectedSourceTable(mapping.sourceTable);
+                            setBridgeEntity1(mapping.bridgeEntity1);
+                            setBridgeEntity1Column(mapping.bridgeEntity1Column);
+                            setBridgeEntity2(mapping.bridgeEntity2);
+                            setBridgeEntity2Column(mapping.bridgeEntity2Column);
+                            setRelationshipType(mapping.relationshipType || 'related');
+                            handleGenerateBridgePreview();
+                          }}
+                          sx={{ mr: 1 }}
+                        >
+                          Preview
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Set editing mode and populate fields
+                            setEditingBridgeIndex(originalIndex);
+                            const mapping = tableMappings[originalIndex];
+                            setSelectedSourceTable(mapping.sourceTable);
+                            setBridgeEntity1(mapping.bridgeEntity1);
+                            setBridgeEntity1Column(mapping.bridgeEntity1Column);
+                            setBridgeEntity2(mapping.bridgeEntity2);
+                            setBridgeEntity2Column(mapping.bridgeEntity2Column);
+                            setBridgeName(mapping.targetEntity);
+                            setRelationshipType(mapping.relationshipType || 'related');
+                            setBridgeDialog(true);
+                          }}
+                          sx={{ mr: 1 }}
+                        >
+                          Edit
+                        </Button>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveMapping(originalIndex);
+                          }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails>
@@ -5590,7 +5755,7 @@ const DataMigration: React.FC = () => {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Create Bridge Table Mapping</DialogTitle>
+        <DialogTitle>{editingBridgeIndex !== null ? 'Edit Bridge Table Mapping' : 'Create Bridge Table Mapping'}</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <Alert severity="info">
@@ -5817,7 +5982,7 @@ const DataMigration: React.FC = () => {
             variant="contained"
             disabled={!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeEntity1Column || !bridgeEntity2Column || !bridgeName}
           >
-            Create Bridge Mapping
+            {editingBridgeIndex !== null ? 'Update Bridge Mapping' : 'Create Bridge Mapping'}
           </Button>
         </DialogActions>
       </Dialog>
