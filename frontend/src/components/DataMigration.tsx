@@ -327,20 +327,20 @@ const DataMigration: React.FC = () => {
     try {
       const savedMappings = await migrationConfigDB.loadCurrentMappings();
       if (savedMappings.length > 0) {
-        // Ensure each mapping has sourceTimestamp field if it doesn't already
+        // Ensure each mapping has sourceTimeStamp field if it doesn't already
         const updatedMappings = savedMappings.map(mapping => {
           const hasSourceTimestamp = mapping.fieldMappings.some(
-            fm => fm.fieldName === 'sourceTimestamp'
+            fm => fm.fieldName === 'sourceTimeStamp'
           );
           
           if (!hasSourceTimestamp) {
-            // Add sourceTimestamp field to existing mappings
+            // Add sourceTimeStamp field to existing mappings
             return {
               ...mapping,
               fieldMappings: [
                 ...mapping.fieldMappings,
                 {
-                  fieldName: 'sourceTimestamp',
+                  fieldName: 'sourceTimeStamp',
                   sourceColumn: undefined,
                   generate: false,
                 }
@@ -352,7 +352,7 @@ const DataMigration: React.FC = () => {
         });
         
         setTableMappings(updatedMappings);
-        console.log(`Loaded ${updatedMappings.length} saved mappings from database (updated with sourceTimestamp field)`);
+        console.log(`Loaded ${updatedMappings.length} saved mappings from database (updated with sourceTimeStamp field)`);
       }
     } catch (error) {
       console.error('Error loading saved mappings:', error);
@@ -395,7 +395,7 @@ const DataMigration: React.FC = () => {
         'operationEventDefinitionProperties', 'operationEventDefinitionPropertyAssignments',
         'operationsEventClasses',
         'shifts', 'crews', 'shiftCrewAssignments',
-        'hierarchyScopes', 'hierarchyScopesFlat', 'hierarchyScopeParentChild'
+        'hierarchyScopes', 'hierarchyScopeParentChild'
       ];
       
       const processDataStores = [
@@ -439,6 +439,8 @@ const DataMigration: React.FC = () => {
       const equipment = masterDataResults['equipment'];
       const equipmentProperties = masterDataResults['equipmentProperties'];
       const equipmentPropertyAssignments = masterDataResults['equipmentPropertyAssignments'];
+      const equipmentClassProperties = masterDataResults['equipmentClassProperties'];
+      const equipmentClassPropertyAssignments = masterDataResults['equipmentClassPropertiesAssignments'];
       const plants = masterDataResults['plants'];
       const productionLines = masterDataResults['productionLines'];
       const processSegments = masterDataResults['processSegments'];
@@ -534,6 +536,7 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: equipmentClasses[0]?.id },
             { name: 'name', type: 'string', sample: equipmentClasses[0]?.name },
             { name: 'description', type: 'string', sample: equipmentClasses[0]?.description },
+            { name: 'parentId', type: 'string', sample: equipmentClasses[0]?.parentId },
           ],
         },
         {
@@ -541,7 +544,12 @@ const DataMigration: React.FC = () => {
           rowCount: equipment.length,
           columns: [
             { name: 'id', type: 'string', sample: equipment[0]?.id },
+            { name: 'name', type: 'string', sample: equipment[0]?.name },
             { name: 'classId', type: 'string', sample: equipment[0]?.classId },
+            { name: 'className', type: 'string', sample: equipment[0]?.className },
+            { name: 'description', type: 'string', sample: equipment[0]?.description },
+            { name: 'productionLineId', type: 'string', sample: equipment[0]?.productionLineId },
+            { name: 'parentEquipmentId', type: 'string', sample: equipment[0]?.parentEquipmentId },
           ],
         },
         {
@@ -567,6 +575,35 @@ const DataMigration: React.FC = () => {
             { name: 'equipmentPropertyId', type: 'string', sample: equipmentPropertyAssignments[0]?.equipmentPropertyId },
             { name: 'samplingMode', type: 'string', sample: equipmentPropertyAssignments[0]?.samplingMode },
             { name: 'samplingIntervalSeconds', type: 'number', sample: equipmentPropertyAssignments[0]?.samplingIntervalSeconds?.toString() },
+          ],
+        },
+        {
+          name: 'equipment_class_properties',
+          rowCount: equipmentClassProperties?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: equipmentClassProperties?.[0]?.id },
+            { name: 'equipmentClassId', type: 'string', sample: equipmentClassProperties?.[0]?.equipmentClassId },
+            { name: 'propertyName', type: 'string', sample: equipmentClassProperties?.[0]?.propertyName },
+            { name: 'description', type: 'string', sample: equipmentClassProperties?.[0]?.description },
+            { name: 'valueDataType', type: 'string', sample: equipmentClassProperties?.[0]?.valueDataType },
+            { name: 'unit', type: 'string', sample: equipmentClassProperties?.[0]?.unit },
+            { name: 'minValue', type: 'string', sample: equipmentClassProperties?.[0]?.minValue?.toString() },
+            { name: 'maxValue', type: 'string', sample: equipmentClassProperties?.[0]?.maxValue?.toString() },
+          ],
+        },
+        {
+          name: 'equipment_class_property_assignments',
+          rowCount: equipmentClassPropertyAssignments?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.id },
+            { name: 'equipmentClassPropertyId', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.equipmentClassPropertyId },
+            { name: 'equipmentPropertyId', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.equipmentPropertyId },
+            { name: 'propertyName', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.propertyName },
+            { name: 'description', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.description },
+            { name: 'valueDataType', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.valueDataType },
+            { name: 'unit', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.unit },
+            { name: 'minValue', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.minValue?.toString() },
+            { name: 'maxValue', type: 'string', sample: equipmentClassPropertyAssignments?.[0]?.maxValue?.toString() },
           ],
         },
         {
@@ -1013,30 +1050,6 @@ const DataMigration: React.FC = () => {
         });
       }
 
-      // Add hierarchyScopesFlat if available
-      if (masterDataResults['hierarchyScopesFlat']?.length > 0) {
-        const hierarchyScopesFlat = masterDataResults['hierarchyScopesFlat'];
-        additionalTables.push({
-          name: 'hierarchy_scopes_flat',
-          rowCount: hierarchyScopesFlat.length,
-          columns: [
-            { name: 'id', type: 'string', sample: hierarchyScopesFlat[0]?.id },
-            { name: 'Enterprise', type: 'string', sample: hierarchyScopesFlat[0]?.Enterprise },
-            { name: 'Site', type: 'string', sample: hierarchyScopesFlat[0]?.Site },
-            { name: 'Area', type: 'string', sample: hierarchyScopesFlat[0]?.Area },
-            { name: 'Work Center', type: 'string', sample: hierarchyScopesFlat[0]?.['Work Center'] },
-            { name: 'Work Unit', type: 'string', sample: hierarchyScopesFlat[0]?.['Work Unit'] },
-            { name: 'Process Cell', type: 'string', sample: hierarchyScopesFlat[0]?.['Process Cell'] },
-            { name: 'Unit', type: 'string', sample: hierarchyScopesFlat[0]?.Unit },
-            { name: 'Production Line', type: 'string', sample: hierarchyScopesFlat[0]?.['Production Line'] },
-            { name: 'Production Unit', type: 'string', sample: hierarchyScopesFlat[0]?.['Production Unit'] },
-            { name: 'Work Cell', type: 'string', sample: hierarchyScopesFlat[0]?.['Work Cell'] },
-            { name: 'Storage Zone', type: 'string', sample: hierarchyScopesFlat[0]?.['Storage Zone'] },
-            { name: 'Storage Unit', type: 'string', sample: hierarchyScopesFlat[0]?.['Storage Unit'] },
-          ],
-        });
-      }
-
       // Add hierarchyScopeParentChild if available
       if (masterDataResults['hierarchyScopeParentChild']?.length > 0) {
         const hierarchyScopeParentChild = masterDataResults['hierarchyScopeParentChild'];
@@ -1256,9 +1269,9 @@ const DataMigration: React.FC = () => {
       generate: false, // Will be generated by PK rule
     });
 
-    // Add sourceTimestamp as a regular field
+    // Add sourceTimeStamp as a regular field
     fieldMappings.push({
-      fieldName: 'sourceTimestamp',
+      fieldName: 'sourceTimeStamp',
       sourceColumn: undefined,
       generate: false, // Off by default
     });
@@ -1328,7 +1341,7 @@ const DataMigration: React.FC = () => {
         generate: false,
       },
       {
-        fieldName: 'sourceTimestamp',
+        fieldName: 'sourceTimeStamp',
         sourceColumn: undefined,
         generate: false,
       }
@@ -2072,6 +2085,8 @@ const DataMigration: React.FC = () => {
           'equipment': 'equipment',
           'equipment_properties': 'equipmentProperties',
           'equipment_property_assignments': 'equipmentPropertyAssignments',
+          'equipment_class_properties': 'equipmentClassProperties',
+          'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
           'plants': 'plants',
           'production_lines': 'productionLines',
           'process_segments': 'processSegments',
@@ -2342,6 +2357,8 @@ const DataMigration: React.FC = () => {
           'equipment': 'equipment',
           'equipment_properties': 'equipmentProperties',
           'equipment_property_assignments': 'equipmentPropertyAssignments',
+          'equipment_class_properties': 'equipmentClassProperties',
+          'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
           'plants': 'plants',
           'production_lines': 'productionLines',
           'process_segments': 'processSegments',
@@ -2943,6 +2960,8 @@ const DataMigration: React.FC = () => {
       'equipment': 'equipment',
       'equipment_properties': 'equipmentProperties',
       'equipment_property_assignments': 'equipmentPropertyAssignments',
+      'equipment_class_properties': 'equipmentClassProperties',
+      'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
       'plants': 'plants',
       'production_lines': 'productionLines',
       'process_segments': 'processSegments',
@@ -3733,7 +3752,7 @@ const DataMigration: React.FC = () => {
                                       {fieldMapping.fieldName === 'PrimaryKey' && (
                                         <Chip label="Generated PK" size="small" color="success" sx={{ height: 18, fontSize: '0.65rem' }} />
                                       )}
-                                      {fieldMapping.fieldName === 'sourceTimestamp' && (
+                                      {fieldMapping.fieldName === 'sourceTimeStamp' && (
                                         <Chip label="Timestamp" size="small" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />
                                       )}
                                       {field?.isPrimaryKey && (
@@ -3747,7 +3766,7 @@ const DataMigration: React.FC = () => {
                                       <Typography variant="caption" color="text.secondary" display="block">
                                         Separate primary key field generated by configured rule
                                       </Typography>
-                                    ) : fieldMapping.fieldName === 'sourceTimestamp' ? (
+                                    ) : fieldMapping.fieldName === 'sourceTimeStamp' ? (
                                       <Typography variant="caption" color="text.secondary" display="block">
                                         Timestamp tracking when data was extracted from source system
                                       </Typography>

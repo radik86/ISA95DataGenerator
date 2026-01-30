@@ -1,4 +1,9 @@
-EquipmentClassID,EquipmentClassName,Description
-MIXER,Mixer,Industrial dough mixing equipment
-OVEN,Oven,Industrial baking oven
-PACK,Packaging,Industrial packaging machine
+﻿EquipmentClassID,EquipmentClassName,Description,EquipmentClassParentID
+MIXER,Mixer,Industrial dough mixing equipment,
+OVEN,Oven,Industrial baking oven,
+PACK,Packaging,Industrial packaging machine,
+SENSOR,Sensor,Measurement devices,
+UTILOVEN,UtilOven,OvenUtility supply equipment,OVEN
+SUPPORT,Support,Support machines,
+UTILMIXER,UtilMixer,Mixer Utility supply equipment,MIXER
+UTILPACK,UtilPack,Packing Utility supply equipment,PACK

@@ -2,6 +2,20 @@ import { csvParser, ParsedCSVData } from './csvParser';
 import { masterDataDB } from './masterDataDB';
 
 export class TemplateDataLoader {
+    /**
+     * Fetches a CSV file from the templates/masterdata directory in the public folder.
+     * @param fileName The name of the CSV file to fetch
+     * @returns The CSV file contents as a string
+     */
+    async fetchCSV(fileName: string): Promise<string> {
+      const url = `${this.TEMPLATE_BASE_PATH}/${fileName}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch CSV: ${fileName} (status: ${response.status})`);
+      }
+      return await response.text();
+    }
+
   private readonly TEMPLATE_BASE_PATH = '/templates/masterdata';
 
   async loadAllTemplates(): Promise<ParsedCSVData> {
@@ -34,130 +48,168 @@ export class TemplateDataLoader {
       { name: 'shifts.csv', parser: 'shifts' },
       { name: 'crews.csv', parser: 'crews' },
       { name: 'shift_crew_assignments.csv', parser: 'shiftCrewAssignments' },
+      { name: 'equipment_class_properties.csv', parser: 'equipmentClassProperties' },
+      { name: 'equipment_class_properties_assignment.csv', parser: 'equipmentClassPropertyAssignments' },
     ];
 
     const result: ParsedCSVData = {};
 
     for (const file of files) {
       try {
-        console.log(`[TemplateLoader] Loading file: ${file.name}, parser: ${file.parser}`);
+        console.log(`[TemplateLoader] ---\n[FILE] ${file.name}\n[PARSER] ${file.parser}`);
         const csvText = await this.fetchCSV(file.name);
-        console.log(`[TemplateLoader] Loaded ${file.name}, length: ${csvText?.length}`);
+        console.log(`[TemplateLoader] [LOADED] ${file.name} (chars: ${csvText?.length})`);
+        let parsed: any[] = [];
         switch (file.parser) {
           case 'materialClasses':
-            result.materialClasses = csvParser.parseMaterialClasses(csvText);
+            parsed = csvParser.parseMaterialClasses(csvText);
+            result.materialClasses = parsed;
             break;
           case 'materials':
-            result.materials = csvParser.parseMaterials(csvText);
+            parsed = csvParser.parseMaterials(csvText);
+            result.materials = parsed;
             break;
           case 'materialLots':
-            result.materialLots = csvParser.parseMaterialLots(csvText);
+            parsed = csvParser.parseMaterialLots(csvText);
+            result.materialLots = parsed;
             break;
           case 'materialDefinitionProperties':
-            result.materialDefinitionProperties = csvParser.parseMaterialDefinitionProperties(csvText);
+            parsed = csvParser.parseMaterialDefinitionProperties(csvText);
+            result.materialDefinitionProperties = parsed;
             break;
           case 'materialDefinitionPropertyAssignments':
-            result.materialDefinitionPropertyAssignments = csvParser.parseMaterialDefinitionPropertyAssignments(csvText);
+            parsed = csvParser.parseMaterialDefinitionPropertyAssignments(csvText);
+            result.materialDefinitionPropertyAssignments = parsed;
             break;
           case 'equipmentClasses':
-            result.equipmentClasses = csvParser.parseEquipmentClasses(csvText);
+            parsed = csvParser.parseEquipmentClasses(csvText);
+            result.equipmentClasses = parsed;
             break;
           case 'equipment':
-            result.equipment = csvParser.parseEquipment(csvText);
+            parsed = csvParser.parseEquipment(csvText);
+            result.equipment = parsed;
             break;
           case 'equipmentProperties':
-            result.equipmentProperties = csvParser.parseEquipmentProperties(csvText);
+            parsed = csvParser.parseEquipmentProperties(csvText);
+            result.equipmentProperties = parsed;
             break;
           case 'equipmentPropertyAssignments':
-            result.equipmentPropertyAssignments = csvParser.parseEquipmentPropertyAssignments(csvText);
+            parsed = csvParser.parseEquipmentPropertyAssignments(csvText);
+            result.equipmentPropertyAssignments = parsed;
             break;
           case 'processSegments':
-            result.processSegments = csvParser.parseProcessSegments(csvText);
+            parsed = csvParser.parseProcessSegments(csvText);
+            result.processSegments = parsed;
             break;
           case 'segmentBOMs':
-            result.segmentBOMs = csvParser.parseSegmentBOMs(csvText);
+            parsed = csvParser.parseSegmentBOMs(csvText);
+            result.segmentBOMs = parsed;
             break;
           case 'equipmentUsages':
-            result.equipmentUsages = csvParser.parseEquipmentUsages(csvText);
+            parsed = csvParser.parseEquipmentUsages(csvText);
+            result.equipmentUsages = parsed;
             break;
           case 'plants':
-            result.plants = csvParser.parsePlants(csvText);
+            parsed = csvParser.parsePlants(csvText);
+            result.plants = parsed;
             break;
           case 'productionLines':
-            result.productionLines = csvParser.parseProductionLines(csvText);
+            parsed = csvParser.parseProductionLines(csvText);
+            result.productionLines = parsed;
             break;
           case 'lineEquipment':
-            result.lineEquipment = csvParser.parseLineEquipment(csvText);
+            parsed = csvParser.parseLineEquipment(csvText);
+            result.lineEquipment = parsed;
             break;
           case 'operationEventDefinitions':
-            result.operationEventDefinitions = csvParser.parseOperationEventDefinitions(csvText);
+            parsed = csvParser.parseOperationEventDefinitions(csvText);
+            result.operationEventDefinitions = parsed;
             break;
           case 'operationEventDefSegmentAssignments':
-            result.operationEventDefSegmentAssignments = csvParser.parseOperationEventDefSegmentAssignments(csvText);
+            parsed = csvParser.parseOperationEventDefSegmentAssignments(csvText);
+            result.operationEventDefSegmentAssignments = parsed;
             break;
           case 'operationEventDefinitionProperties':
-            result.operationEventDefinitionProperties = csvParser.parseOperationEventDefinitionProperties(csvText);
+            parsed = csvParser.parseOperationEventDefinitionProperties(csvText);
+            result.operationEventDefinitionProperties = parsed;
             break;
           case 'operationEventDefinitionPropertyAssignments':
-            result.operationEventDefinitionPropertyAssignments = csvParser.parseOperationEventDefinitionPropertyAssignments(csvText);
+            parsed = csvParser.parseOperationEventDefinitionPropertyAssignments(csvText);
+            result.operationEventDefinitionPropertyAssignments = parsed;
             break;
           case 'operationsEventClasses':
-            result.operationsEventClasses = csvParser.parseOperationsEventClasses(csvText);
+            parsed = csvParser.parseOperationsEventClasses(csvText);
+            result.operationsEventClasses = parsed;
             break;
           case 'operationsEventRecords':
-            result.operationsEventRecords = csvParser.parseOperationsEventRecords(csvText);
+            parsed = csvParser.parseOperationsEventRecords(csvText);
+            result.operationsEventRecords = parsed;
             break;
           case 'operationsEventEntries':
-            result.operationsEventEntries = csvParser.parseOperationsEventEntries(csvText);
+            parsed = csvParser.parseOperationsEventEntries(csvText);
+            result.operationsEventEntries = parsed;
             break;
           case 'hierarchyScopes':
-            result.hierarchyScopes = csvParser.parseHierarchyScopes(csvText);
+            parsed = csvParser.parseHierarchyScopes(csvText);
+            result.hierarchyScopes = parsed;
             break;
           case 'hierarchyScopesFlat':
-            result.hierarchyScopesFlat = csvParser.parseHierarchyScopesFlat(csvText);
+            parsed = csvParser.parseHierarchyScopesFlat(csvText);
+            result.hierarchyScopesFlat = parsed;
             break;
           case 'shifts':
-            result.shifts = csvParser.parseShifts(csvText);
+            parsed = csvParser.parseShifts(csvText);
+            result.shifts = parsed;
             break;
           case 'crews':
-            result.crews = csvParser.parseCrews(csvText);
+            parsed = csvParser.parseCrews(csvText);
+            result.crews = parsed;
             break;
           case 'shiftCrewAssignments':
-            result.shiftCrewAssignments = csvParser.parseShiftCrewAssignments(csvText);
+            parsed = csvParser.parseShiftCrewAssignments(csvText);
+            result.shiftCrewAssignments = parsed;
+            break;
+          case 'equipmentClassProperties':
+            parsed = csvParser.parseEquipmentClassProperties(csvText);
+            result.equipmentClassProperties = parsed;
+            break;
+          case 'equipmentClassPropertyAssignments':
+            parsed = csvParser.parseEquipmentClassPropertiesAssignments(csvText);
+            result.equipmentClassPropertiesAssignments = parsed;
             break;
         }
+        console.log(`[TemplateLoader] [PARSED] ${file.name} -> ${parsed.length} records`);
       } catch (error) {
         console.error(`Failed to load ${file.name}:`, error);
       }
     }
-
     return result;
   }
 
-  async fetchCSV(filename: string): Promise<string> {
-    const response = await fetch(`${this.TEMPLATE_BASE_PATH}/${filename}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${filename}: ${response.statusText}`);
-    }
-    return response.text();
-  }
-
+  /**
+   * Loads all templates and imports them into the IndexedDB database.
+   * @returns Promise that resolves when all data has been imported
+   */
   async importTemplatesIntoDB(): Promise<void> {
-    const data = await this.loadAllTemplates();
-    console.log('Template data loaded:', {
-      equipmentProperties: data.equipmentProperties?.length || 0,
-      equipmentPropertyAssignments: data.equipmentPropertyAssignments?.length || 0,
-      equipment: data.equipment?.length || 0,
-      operationEventDefinitions: data.operationEventDefinitions?.length || 0,
-      operationEventDefSegmentAssignments: data.operationEventDefSegmentAssignments?.length || 0
-    });
-    await masterDataDB.importFromCSV(data);
+    console.log('[TemplateLoader] Starting template import to DB');
+    const csvData = await this.loadAllTemplates();
+    console.log('[TemplateLoader] Loaded all templates, importing to DB');
+    await masterDataDB.importFromCSV(csvData);
+    console.log('[TemplateLoader] Template import to DB completed');
   }
 
+  /**
+   * Clears all existing data and reloads from templates.
+   * @returns Promise that resolves when data has been reset
+   */
   async resetToTemplateData(): Promise<void> {
+    console.log('[TemplateLoader] Starting data reset to templates');
     await masterDataDB.clearAll();
+    console.log('[TemplateLoader] Database cleared, importing templates');
     await this.importTemplatesIntoDB();
+    console.log('[TemplateLoader] Data reset to templates completed');
   }
 }
 
+// Export a singleton instance for compatibility with existing imports
 export const templateLoader = new TemplateDataLoader();

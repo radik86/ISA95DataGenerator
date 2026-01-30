@@ -1,4 +1,41 @@
-PrimaryKey,id,equipmentID,equipmentLevel
-HS-PLANT-001Site,HS-PLANT-001,PLANT-001,Site
-HS-LINE-001ProductionLine,HS-LINE-001,LINE-001,Production Line
-HS-LINE-002ProductionLine,HS-LINE-002,LINE-002,Production Line
+﻿id,equipmentID,equipmentLevel
+HS-FINEBAKERY-Enterprise,FINEBAKERY,Enterprise
+HS-PLANT01MUNICH-Site,PLANT01MUNICH,Site
+HS-PLANT02VIENNA-Site,PLANT02VIENNA,Site
+HS-PLANT03FRA-Site,PLANT03FRA,Site
+HS-BAKINGMUNICH-Area,BAKING-MUNICH,Area
+HS-BAKINGVIENNA-Area,BAKING-VIENNA,Area
+HS-BAKINGFRA-Area,BAKING-FRA,Area
+HS-WCenter1-WorkCenter,WCenter1,Work Center
+HS-WCenter2-WorkCenter,WCenter2,Work Center
+HS-WCenter3-WorkCenter,WCenter3,Work Center
+HS-WUnit1-WorkUnit,WUnit1,Work Unit
+HS-WUnit2-WorkUnit,WUnit2,Work Unit
+HS-WUnit3-WorkUnit,WUnit3,Work Unit
+HS-ProcessCellMUNICH-ProcessCell,ProcessCellMUNICH,Process Cell
+HS-ProcessCellVIENNA-ProcessCell,ProcessCellVIENNA,Process Cell
+HS-ProcessCellFRA-ProcessCell,ProcessCellFRA,Process Cell
+HS-Unit1-Unit,Unit1,Unit
+HS-Unit2-Unit,Unit2,Unit
+HS-Unit3-Unit,Unit3,Unit
+HS-LINE01-ProductionLine,LINE-01,Production Line
+HS-LINE02-ProductionLine,LINE-02,Production Line
+HS-LINE03-ProductionLine,LINE-03,Production Line
+HS-PUnitMUNICH-ProductionUnit,PUnitMUNICH,Production Unit
+HS-PUnitVIENNA-ProductionUnit,PUnitVIENNA,Production Unit
+HS-PUnitFRA-ProductionUnit,PUnitFRA,Production Unit
+HS-EQMIX01-WorkCell,EQ-MIX-01,Work Cell
+HS-EQOVEN01-WorkCell,EQ-OVEN-01,Work Cell
+HS-EQPACKAGE01-WorkCell,EQ-PACKAGE-01,Work Cell
+HS-EQMIX02-WorkCell,EQ-MIX-02,Work Cell
+HS-EQOVEN02-WorkCell,EQ-OVEN-02,Work Cell
+HS-EQPACKAGE02-WorkCell,EQ-PACKAGE-02,Work Cell
+HS-EQMIX03-WorkCell,EQ-MIX-03,Work Cell
+HS-EQOVEN03-WorkCell,EQ-OVEN-03,Work Cell
+HS-EQPACKAGE03-WorkCell,EQ-PACKAGE-03,Work Cell
+HS-StorageZoneMUNICH-StorageZone,StorageZoneMUNICH,Storage Zone
+HS-StorageZoneVIENNA-StorageZone,StorageZoneVIENNA,Storage Zone
+HS-StorageZoneFRA-StorageZone,StorageZoneFRA,Storage Zone
+HS-StorageUnit1-StorageUnit,StorageUnit1,Storage Unit
+HS-StorageUnit2-StorageUnit,StorageUnit2,Storage Unit
+HS-StorageUnit3-StorageUnit,StorageUnit3,Storage Unit

@@ -1,4 +1,22 @@
-EquipmentID,EquipmentName,EquipmentClassID,EquipmentClass,EquipmentDescription
-EQ-MIX-01,Mixer #1,MIXER,Mixer,Primary dough mixer
-EQ-OVEN-01,Oven #1,OVEN,Oven,Main baking oven
-EQ-PACKAGE-01,Package #1,PACK,Packaging,Main packaging machine
+EquipmentID,EquipmentName,EquipmentClassID,EquipmentClass,EquipmentParentId,EquipmentDescription
+EQ-MIX-01,Mixer #1,MIXER,Mixer,,Primary dough mixer
+EQ-OVEN-01,Oven #1,OVEN,Oven,,Main baking oven
+EQ-PACKAGE-01,Package #1,PACK,Packaging,,Main packaging machine
+EQ-MIX-MOTOR-01,Mixer Motor,UTILMIXER,UtilMixer,EQ-MIX-01,Electric drive motor of Mixer
+EQ-OVEN-ZONE-01,OvenZone,UTILOVEN,UtilOven,EQ-OVEN-01,First heating zone
+EQ-OVEN-ZONE-02,OvenZone,UTILOVEN,UtilOven,EQ-OVEN-01,Secong heating zone
+EQ-PACK-LABELER-01,Labeling Unit,UTILPACK,UtilPacking,EQ-PACKAGE-01,Applies labels
+EQ-MIX-02,Mixer #2,MIXER,Mixer,,Primary dough mixer
+EQ-OVEN-02,Oven #2,OVEN,Oven,,Main baking oven
+EQ-PACKAGE-02,Package #2,PACK,Packaging,,Main packaging machine
+EQ-MIX-MOTOR-02,Mixer Motor,UTILMIXER,UtilMixer,EQ-MIX-02,Electric drive motor of Mixer
+EQ-OVEN-ZONE-02,OvenZone,UTILOVEN,UtilOven,EQ-OVEN-02,First heating zone
+EQ-OVEN-ZONE-02,OvenZone,UTILOVEN,UtilOven,EQ-OVEN-02,Secong heating zone
+EQ-PACK-LABELER-02,Labeling Unit,UTILPACK,UtilPacking,EQ-PACKAGE-02,Applies labels
+EQ-MIX-03,Mixer #3,MIXER,Mixer,,Primary dough mixer
+EQ-OVEN-03,Oven #3,OVEN,Oven,,Main baking oven
+EQ-PACKAGE-03,Package #3,PACK,Packaging,,Main packaging machine
+EQ-MIX-MOTOR-03,Mixer Motor,UTILMIXER,UtilMixer,EQ-MIX-03,Electric drive motor of Mixer
+EQ-OVEN-ZONE-03,OvenZone,UTILOVEN,UtilOven,EQ-OVEN-03,First heating zone
+EQ-OVEN-ZONE-03,OvenZone,UTILOVEN,UtilOven,EQ-OVEN-03,Secong heating zone
+EQ-PACK-LABELER-03,Labeling Unit,UTILPACK,UtilPacking,EQ-PACKAGE-03,Applies labels

@@ -2,6 +2,16 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
 // Database Schema
 interface MasterDataDB extends DBSchema {
+    equipmentClassProperties: {
+      key: string;
+      value: EquipmentClassPropertyRecord;
+      indexes: { 'by-class': string; 'by-updated': Date };
+    };
+    equipmentClassPropertiesAssignments: {
+      key: string;
+      value: EquipmentClassPropertyAssignmentRecord;
+      indexes: { 'by-class-property': string; 'by-equipment-property': string; 'by-updated': Date };
+    };
   materialClasses: {
     key: string;
     value: MaterialClassRecord;
@@ -144,6 +154,32 @@ interface MasterDataDB extends DBSchema {
   };
 }
 
+// Equipment Class Property Records
+export interface EquipmentClassPropertyRecord extends BaseRecord {
+  id: string;
+  equipmentClassId: string;
+  propertyName: string;
+  valueDataType: string;
+  unit?: string;
+  minValue?: number | string;
+  maxValue?: number | string;
+  description: string;
+}
+
+export interface EquipmentClassPropertyAssignmentRecord extends BaseRecord {
+  id: string;
+  equipmentClassPropertyId: string;
+  equipmentPropertyId: string;
+  propertyName: string;
+  description: string;
+  valueDataType: string;
+  unit?: string;
+  minValue?: number | string;
+  maxValue?: number | string;
+}
+
+
+
 // Record Interfaces with metadata
 export interface BaseRecord {
   createdAt: Date;
@@ -209,6 +245,7 @@ export interface EquipmentClassRecord extends BaseRecord {
   id: string;
   name: string;
   description: string;
+  parentId?: string;
 }
 
 export interface EquipmentRecord extends BaseRecord {
@@ -218,7 +255,7 @@ export interface EquipmentRecord extends BaseRecord {
   className: string;
   description?: string;
   productionLineId?: string;
-  parentEquipmentId?: string;
+  equipmentParent?: string;
 }
 
 export interface ProcessSegmentRecord extends BaseRecord {
@@ -606,7 +643,21 @@ class MasterDataDatabase {
           oeeStore.createIndex('by-record', 'OperationsEventRecordID');
           oeeStore.createIndex('by-updated', 'updatedAt');
         }
-      },
+
+        // Equipment Class Properties
+        if (!db.objectStoreNames.contains('equipmentClassProperties')) {
+          const ecpropStore = db.createObjectStore('equipmentClassProperties', { keyPath: 'id' });
+          ecpropStore.createIndex('by-class', 'equipmentClassId');
+          ecpropStore.createIndex('by-updated', 'updatedAt');
+        }
+        // Equipment Class Property Assignments
+        if (!db.objectStoreNames.contains('equipmentClassPropertiesAssignments')) {
+          const ecpropAssignStore = db.createObjectStore('equipmentClassPropertiesAssignments', { keyPath: 'id' });
+          ecpropAssignStore.createIndex('by-class-property', 'equipmentClassPropertyId');
+          ecpropAssignStore.createIndex('by-equipment-property', 'equipmentPropertyId');
+          ecpropAssignStore.createIndex('by-updated', 'updatedAt');
+        }
+      }
     });
   }
 
@@ -719,6 +770,8 @@ class MasterDataDatabase {
       'equipment',
       'equipmentProperties',
       'equipmentPropertyAssignments',
+      'equipmentClassProperties',
+      'equipmentClassPropertiesAssignments',
       'processSegments',
       'segmentBOMs',
       'equipmentUsages',
@@ -743,6 +796,8 @@ class MasterDataDatabase {
     equipment?: any[];
     equipmentProperties?: any[];
     equipmentPropertyAssignments?: any[];
+    equipmentClassProperties?: any[];
+    equipmentClassPropertiesAssignments?: any[];
     processSegments?: any[];
     segmentBOMs?: any[];
     equipmentUsages?: any[];
@@ -787,20 +842,38 @@ class MasterDataDatabase {
       }
     }
     if (csvData.equipmentProperties) {
-      console.log('Importing equipment properties:', csvData.equipmentProperties.length);
+        console.log('[DB Import] equipmentProperties:', csvData.equipmentProperties.length);
       try {
-        await this.bulkAdd('equipmentProperties', csvData.equipmentProperties);
+          await this.bulkAdd('equipmentProperties', csvData.equipmentProperties);
       } catch (error) {
-        console.error('Failed to import equipment properties:', error, csvData.equipmentProperties);
+          console.error('[DB Import] Failed to import equipmentProperties:', error, csvData.equipmentProperties);
         throw error;
       }
     }
     if (csvData.equipmentPropertyAssignments) {
-      console.log('Importing equipment property assignments:', csvData.equipmentPropertyAssignments.length);
+        console.log('[DB Import] equipmentPropertyAssignments:', csvData.equipmentPropertyAssignments.length);
       try {
-        await this.bulkAdd('equipmentPropertyAssignments', csvData.equipmentPropertyAssignments);
+          await this.bulkAdd('equipmentPropertyAssignments', csvData.equipmentPropertyAssignments);
       } catch (error) {
-        console.error('Failed to import equipment property assignments:', error, csvData.equipmentPropertyAssignments);
+          console.error('[DB Import] Failed to import equipmentPropertyAssignments:', error, csvData.equipmentPropertyAssignments);
+        throw error;
+      }
+    }
+    if (csvData.equipmentClassProperties) {
+        console.log('[DB Import] equipmentClassProperties:', csvData.equipmentClassProperties.length);
+      try {
+          await this.bulkAdd('equipmentClassProperties', csvData.equipmentClassProperties);
+      } catch (error) {
+          console.error('[DB Import] Failed to import equipmentClassProperties:', error, csvData.equipmentClassProperties);
+        throw error;
+      }
+    }
+    if (csvData.equipmentClassPropertiesAssignments) {
+        console.log('[DB Import] equipmentClassPropertiesAssignments:', csvData.equipmentClassPropertiesAssignments.length);
+      try {
+          await this.bulkAdd('equipmentClassPropertiesAssignments', csvData.equipmentClassPropertiesAssignments);
+      } catch (error) {
+          console.error('[DB Import] Failed to import equipmentClassPropertiesAssignments:', error, csvData.equipmentClassPropertiesAssignments);
         throw error;
       }
     }
@@ -823,27 +896,27 @@ class MasterDataDatabase {
       await this.bulkAdd('lineEquipment', csvData.lineEquipment);
     }
     if (csvData.operationEventDefinitions) {
-      console.log('Importing operation event definitions:', csvData.operationEventDefinitions.length);
+        console.log('[DB Import] operationEventDefinitions:', csvData.operationEventDefinitions.length);
       await this.bulkAdd('operationEventDefinitions', csvData.operationEventDefinitions);
     }
 
     if (csvData.operationEventDefSegmentAssignments) {
-      console.log('Importing operation event def segment assignments:', csvData.operationEventDefSegmentAssignments.length);
+        console.log('[DB Import] operationEventDefSegmentAssignments:', csvData.operationEventDefSegmentAssignments.length);
       await this.bulkAdd('operationEventDefSegmentAssignments', csvData.operationEventDefSegmentAssignments);
     }
 
     if (csvData.operationEventDefinitionProperties) {
-      console.log('Importing operation event definition properties:', csvData.operationEventDefinitionProperties.length);
+        console.log('[DB Import] operationEventDefinitionProperties:', csvData.operationEventDefinitionProperties.length);
       await this.bulkAdd('operationEventDefinitionProperties', csvData.operationEventDefinitionProperties);
     }
 
     if (csvData.operationEventDefinitionPropertyAssignments) {
-      console.log('Importing operation event definition property assignments:', csvData.operationEventDefinitionPropertyAssignments.length);
+        console.log('[DB Import] operationEventDefinitionPropertyAssignments:', csvData.operationEventDefinitionPropertyAssignments.length);
       await this.bulkAdd('operationEventDefinitionPropertyAssignments', csvData.operationEventDefinitionPropertyAssignments);
     }
 
     if (csvData.operationsEventClasses) {
-      console.log('Importing operations event classes:', csvData.operationsEventClasses.length);
+        console.log('[DB Import] operationsEventClasses:', csvData.operationsEventClasses.length);
       await this.bulkAdd('operationsEventClasses', csvData.operationsEventClasses);
     }
 

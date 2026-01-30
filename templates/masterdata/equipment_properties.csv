@@ -5,8 +5,14 @@ EP-MIX-TORQ,MixerTorqueNm,Mixer shaft torque,DECIMAL,Nm,200,900
 EP-OVEN-TEMP,OvenChamberTempC,Oven chamber temperature,DECIMAL,C,180,260
 EP-OVEN-HUM,OvenHumidityPct,Oven chamber humidity,DECIMAL,%,5,80
 EP-OVEN-PWR,OvenPowerKW,Oven power consumption,DECIMAL,kW,20,120
-EP-VIB,EquipmentVibrationRMS,Equipment vibration RMS,DECIMAL,mm/s,0.2,6
-EP-CTRL,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
-EP-STATE,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
 EP-TEMPERATURE,OperatingTemperature,Operating Temperature,DECIMAL,Celsius,180,250
 EP-PRESSURE,OperatingPressure,Operating Pressure,DECIMAL,Bar,1.3,1.7
+EP-VIB,EquipmentVibrationRMS,Equipment vibration RMS,DECIMAL,mm/s,0.2,6
+EP-OVEN-CTRL,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
+EP-OVEN-STATE,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
+EP-MIX-CTRL,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
+EP-MIX-STATE,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
+EP-PACK-CTRL,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
+EP-PACK-STATE,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
+EP-OVEN-ZONE-HEAT,Oven Zone Heat,Oven Zone Heat,DECIMAL,Celsius,0,250
+EP-MIX-MOTORSPEED,MixerMotorSpeed,Mixer Motor Speed,DECIMAL,RPM,40,80

@@ -75,26 +75,35 @@ export class HierarchyScopeConverter {
     for (const flatRecord of flatRecords) {
       // Get the site/plant ID for this row
       const siteId = flatRecord.Site;
-      
       // For each equipment level in the flat record, create a row-based record
       for (const level of this.equipmentLevels) {
         const equipmentID = flatRecord[level as keyof HierarchyScopeFlatRecord] as string;
-        
         if (!equipmentID || equipmentID === '') {
           continue; // Skip empty levels
         }
-
         // Create unique key to avoid duplicates
         const uniqueKey = `${equipmentID}-${level}`;
         if (uniqueEntries.has(uniqueKey)) {
           continue; // Skip if already added
         }
-
         let rowBasedId = '';
         let mappedEquipmentID = equipmentID;
-
-        // Map Site level to Plants
-        if (level === 'Site') {
+        // Enterprise level: do not include plantId
+        if (level === 'Enterprise') {
+          rowBasedId = `HS-${equipmentID}-Enterprise`;
+          result.push({
+            id: rowBasedId,
+            equipmentID,
+            equipmentLevel: level,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            version: 1
+          });
+          uniqueEntries.add(uniqueKey);
+          equipmentIdMapping.set(`${equipmentID}-${level}`, rowBasedId);
+        }
+        // Site/Plant level: do not include plantId in key, just use plant id
+        else if (level === 'Site') {
           const plant = plants.find(p => p.id === equipmentID || p.name === equipmentID);
           if (plant) {
             mappedEquipmentID = plant.id;
@@ -104,7 +113,8 @@ export class HierarchyScopeConverter {
               equipmentID: plant.id,
               equipmentLevel: 'Site',
               createdAt: new Date(),
-              updatedAt: new Date()
+              updatedAt: new Date(),
+              version: 1
             });
             uniqueEntries.add(uniqueKey);
             equipmentIdMapping.set(`${equipmentID}-${level}`, rowBasedId);
@@ -113,40 +123,40 @@ export class HierarchyScopeConverter {
             console.warn('[Converter] No plant found for Site:', equipmentID);
           }
         }
-        // Map Production Line level to Production Lines
-        else if (level === 'Production Line') {
-          const prodLine = productionLines.find(pl => pl.id === equipmentID || pl.name === equipmentID);
-          if (prodLine) {
-            mappedEquipmentID = prodLine.id;
-            // Concatenate site ID with production line ID
-            rowBasedId = `HS-${siteId}-${prodLine.id}-ProductionLine`;
+        // For all levels below Site, include plantId in the key
+        else if (siteId) {
+          if (level === 'Production Line') {
+            const prodLine = productionLines.find(pl => pl.id === equipmentID || pl.name === equipmentID);
+            if (prodLine) {
+              mappedEquipmentID = prodLine.id;
+              rowBasedId = `HS-${siteId}-${prodLine.id}-ProductionLine`;
+              result.push({
+                id: rowBasedId,
+                equipmentID: prodLine.id,
+                equipmentLevel: 'Production Line',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                version: 1
+              });
+              uniqueEntries.add(uniqueKey);
+              equipmentIdMapping.set(`${equipmentID}-${level}`, rowBasedId);
+              console.log('[Converter] Mapped Production Line:', equipmentID, '->', prodLine.id, 'ID:', rowBasedId);
+            } else {
+              console.warn('[Converter] No production line found for:', equipmentID);
+            }
+          } else {
+            rowBasedId = `HS-${siteId}-${equipmentID}-${level.replace(/\s+/g, '')}`;
             result.push({
               id: rowBasedId,
-              equipmentID: prodLine.id,
-              equipmentLevel: 'Production Line',
+              equipmentID,
+              equipmentLevel: level,
               createdAt: new Date(),
-              updatedAt: new Date()
+              updatedAt: new Date(),
+              version: 1
             });
             uniqueEntries.add(uniqueKey);
             equipmentIdMapping.set(`${equipmentID}-${level}`, rowBasedId);
-            console.log('[Converter] Mapped Production Line:', equipmentID, '->', prodLine.id, 'ID:', rowBasedId);
-          } else {
-            console.warn('[Converter] No production line found for:', equipmentID);
           }
-        }
-        // For other levels, concatenate site ID with equipment ID
-        else {
-          // Concatenate site ID with equipment ID
-          rowBasedId = `HS-${siteId}-${equipmentID}-${level.replace(/\s+/g, '')}`;
-          result.push({
-            id: rowBasedId,
-            equipmentID,
-            equipmentLevel: level,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-          uniqueEntries.add(uniqueKey);
-          equipmentIdMapping.set(`${equipmentID}-${level}`, rowBasedId);
         }
       }
     }
@@ -300,6 +310,7 @@ export class HierarchyScopeConverter {
       
       const relationshipRecords: HierarchyScopeParentChildRecord[] = relationships.map(r => ({
         ...r,
+        version: 1,
         createdAt: new Date(),
         updatedAt: new Date()
       }));

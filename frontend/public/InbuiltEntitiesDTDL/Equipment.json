@@ -80,6 +80,16 @@
             "isProperNoun": "false"
         },
         {
+            "name": "equipmentParent",
+            "description": "The parent equipment that this equipment is part of in the equipment hierarchy.",
+            "type": "String",
+            "mandatory": "false",
+            "semanticRelevantFlag": "true",
+            "groupBy": "false",
+            "primaryKey": "false",
+            "isProperNoun": "false"
+        },
+        {
             "name": "assetsystemrefid",
             "description": "Asset/ERP System of Record Identifier for Equipment (AssetID)",
             "type": "Alphanumeric",
@@ -250,6 +260,13 @@
                 "displayName": "Spatial definition",
                 "description": "Spatially defines the equipment as a zero-dimensional point, one dimensional line, or two dimensional shape or three dimensional solid.",
                 "schema": "dtmi:digitaltwins:isa95:SpatialDefinition;1"
+            },
+            {
+                "@type": "Property",
+                "name": "equipmentParent",
+                "displayName": "Equipment Parent",
+                "description": "The parent equipment that this equipment is part of in the equipment hierarchy.",
+                "schema": "string"
             },
             {
                 "@type": "Property",

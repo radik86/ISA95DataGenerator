@@ -86,6 +86,7 @@ interface EquipmentClass {
   id: string;
   name: string;
   description: string;
+  parentId?: string;
 }
 
 interface Equipment {
@@ -95,7 +96,7 @@ interface Equipment {
   className: string;
   description?: string;
   productionLineId?: string;
-  parentEquipmentId?: string;
+  equipmentParent?: string;
 }
 
 interface EquipmentProperty {
@@ -115,6 +116,30 @@ interface EquipmentPropertyAssignment {
   equipmentPropertyId: string;
   samplingMode: string;
   samplingIntervalSeconds?: number;
+}
+
+interface EquipmentClassProperty {
+  id: string;
+  equipmentClassId: string;
+  propertyName: string;
+  description: string;
+  valueDataType: string;
+  unit?: string;
+  minValue?: number | string;
+  maxValue?: number | string;
+}
+
+
+interface EquipmentClassPropertyAssignment {
+  id: string;
+  equipmentClassPropertyId: string;
+  equipmentPropertyId: string;
+  propertyName: string;
+  description: string;
+  valueDataType: string;
+  unit?: string;
+  minValue?: number | string;
+  maxValue?: number | string;
 }
 
 interface ProcessSegment {
@@ -294,6 +319,15 @@ interface MaterialDefinitionPropertyAssignment {
 }
 
 const MasterDataManager: React.FC = () => {
+    // Equipment Class Property State
+    const [equipmentClassProperties, setEquipmentClassProperties] = useState<EquipmentClassProperty[]>([]);
+    const [equipmentClassPropertyDialog, setEquipmentClassPropertyDialog] = useState(false);
+    const [editingEquipmentClassProperty, setEditingEquipmentClassProperty] = useState<EquipmentClassProperty | null>(null);
+
+    // Equipment Class Property Assignment State
+    const [equipmentClassPropertyAssignments, setEquipmentClassPropertyAssignments] = useState<EquipmentClassPropertyAssignment[]>([]);
+    const [equipmentClassPropertyAssignmentDialog, setEquipmentClassPropertyAssignmentDialog] = useState(false);
+    const [editingEquipmentClassPropertyAssignment, setEditingEquipmentClassPropertyAssignment] = useState<EquipmentClassPropertyAssignment | null>(null);
   const [categoryTab, setCategoryTab] = useState(0); // 0: Materials, 1: Equipment & Facilities, 2: Production, 3: Operations
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -461,7 +495,7 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, mdp, mdpa, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee] = await Promise.all([
+      const [mc, m, ml, ms, mdp, mdpa, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
         masterDataDB.getAll('materialClasses'),
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('materialLots'),
@@ -491,6 +525,8 @@ const MasterDataManager: React.FC = () => {
         masterDataDB.getAll('operationsEventClasses'),
         masterDataDB.getAll('operationsEventRecords'),
         masterDataDB.getAll('operationsEventEntries'),
+        masterDataDB.getAll('equipmentClassProperties'),
+        masterDataDB.getAll('equipmentClassPropertiesAssignments'),
       ]);
 
       setMaterialClasses(mc);
@@ -536,7 +572,84 @@ const MasterDataManager: React.FC = () => {
         shiftCrewAssignments: sca.length
       });
       
+      setEquipmentClassProperties(ecprop);
+      setEquipmentClassPropertyAssignments(ecpropAssign);
       setLoading(false);
+          {/* Equipment Class Properties Section */}
+          {categoryTab === 1 && (
+            <Box sx={{ p: 3 }}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Equipment Class Properties</Typography>
+              <TableContainer component={Paper} sx={{ mb: 2 }}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>Equipment Class</TableCell>
+                      <TableCell>Property Name</TableCell>
+                      <TableCell>Data Type</TableCell>
+                      <TableCell>Unit</TableCell>
+                      <TableCell>Min</TableCell>
+                      <TableCell>Max</TableCell>
+                      <TableCell>Description</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {equipmentClassProperties.map((prop) => (
+                      <TableRow key={prop.id}>
+                        <TableCell>{prop.id}</TableCell>
+                        <TableCell>{equipmentClasses.find(ec => ec.id === prop.equipmentClassId)?.name || prop.equipmentClassId}</TableCell>
+                        <TableCell>{prop.propertyName}</TableCell>
+                        <TableCell>{prop.valueDataType}</TableCell>
+                        <TableCell>{prop.unit}</TableCell>
+                        <TableCell>{prop.minValue}</TableCell>
+                        <TableCell>{prop.maxValue}</TableCell>
+                        <TableCell>{prop.description}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+
+          {/* Equipment Class Property Assignments Section */}
+          {categoryTab === 1 && (
+            <Box sx={{ p: 3 }}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Equipment Class Property Assignments</Typography>
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>Class Property</TableCell>
+                      <TableCell>Equipment Property</TableCell>
+                      <TableCell>Data Type</TableCell>
+                      <TableCell>Unit</TableCell>
+                      <TableCell>Min</TableCell>
+                      <TableCell>Max</TableCell>
+                      <TableCell>Description</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {equipmentClassPropertyAssignments.map((assign) => (
+                      <TableRow key={assign.id}>
+                        <TableCell>{assign.id}</TableCell>
+                        <TableCell>{equipmentClassProperties.find(p => p.id === assign.equipmentClassPropertyId)?.propertyName || assign.equipmentClassPropertyId}</TableCell>
+                        <TableCell>{equipmentProperties.find(ep => ep.id === assign.equipmentPropertyId)?.name || assign.equipmentPropertyId}</TableCell>
+                        <TableCell>{assign.valueDataType}</TableCell>
+                        <TableCell>{assign.unit}</TableCell>
+                        <TableCell>{assign.minValue}</TableCell>
+                        <TableCell>{assign.maxValue}</TableCell>
+                        <TableCell>{assign.description}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
     } catch (error) {
       console.error('Failed to load data:', error);
       showSnackbar('Failed to load data from database', 'error');
@@ -1955,6 +2068,8 @@ const MasterDataManager: React.FC = () => {
             <Tab label="Equipment" />
             <Tab label="Properties" />
             <Tab label="Prop. Assignments" />
+            <Tab label="Class Properties" />
+            <Tab label="Class Prop. Assignments" />
             <Tab label="Plants" />
             <Tab label="Lines" />
             <Tab label="Line Equipment" />
@@ -2030,7 +2145,86 @@ const MasterDataManager: React.FC = () => {
               />
             )}
 
+
             {tabValue === 4 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Equipment Class Properties</Typography>
+                  {/* Add button can be implemented here if needed */}
+                </Box>
+                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Equipment Class</TableCell>
+                        <TableCell>Property Name</TableCell>
+                        <TableCell>Data Type</TableCell>
+                        <TableCell>Unit</TableCell>
+                        <TableCell>Min</TableCell>
+                        <TableCell>Max</TableCell>
+                        <TableCell>Description</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {equipmentClassProperties.map((prop) => (
+                        <TableRow key={prop.id}>
+                          <TableCell>{prop.id}</TableCell>
+                          <TableCell>{equipmentClasses.find(ec => ec.id === prop.equipmentClassId)?.name || prop.equipmentClassId}</TableCell>
+                          <TableCell>{prop.propertyName}</TableCell>
+                          <TableCell>{prop.valueDataType}</TableCell>
+                          <TableCell>{prop.unit}</TableCell>
+                          <TableCell>{prop.minValue}</TableCell>
+                          <TableCell>{prop.maxValue}</TableCell>
+                          <TableCell>{prop.description}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 5 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Equipment Class Property Assignments</Typography>
+                  {/* Add button can be implemented here if needed */}
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Class Property</TableCell>
+                        <TableCell>Equipment Property</TableCell>
+                        <TableCell>Data Type</TableCell>
+                        <TableCell>Unit</TableCell>
+                        <TableCell>Min</TableCell>
+                        <TableCell>Max</TableCell>
+                        <TableCell>Description</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {equipmentClassPropertyAssignments.map((assign) => (
+                        <TableRow key={assign.id}>
+                          <TableCell>{assign.id}</TableCell>
+                          <TableCell>{equipmentClassProperties.find(p => p.id === assign.equipmentClassPropertyId)?.propertyName || assign.equipmentClassPropertyId}</TableCell>
+                          <TableCell>{equipmentProperties.find(ep => ep.id === assign.equipmentPropertyId)?.name || assign.equipmentPropertyId}</TableCell>
+                          <TableCell>{assign.valueDataType}</TableCell>
+                          <TableCell>{assign.unit}</TableCell>
+                          <TableCell>{assign.minValue}</TableCell>
+                          <TableCell>{assign.maxValue}</TableCell>
+                          <TableCell>{assign.description}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 6 && (
               <PlantTab
                 data={plants}
                 onAdd={() => {
@@ -2045,7 +2239,7 @@ const MasterDataManager: React.FC = () => {
               />
             )}
 
-            {tabValue === 5 && (
+            {tabValue === 7 && (
               <ProductionLineTab
                 data={productionLines}
                 plants={plants}
@@ -2061,7 +2255,7 @@ const MasterDataManager: React.FC = () => {
               />
             )}
 
-            {tabValue === 6 && (
+            {tabValue === 8 && (
               <LineEquipmentTab
                 data={lineEquipment}
                 productionLines={productionLines}
@@ -2079,7 +2273,7 @@ const MasterDataManager: React.FC = () => {
               />
             )}
 
-            {tabValue === 7 && (
+            {tabValue === 9 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="h6">Hierarchy Scopes</Typography>
@@ -2130,7 +2324,7 @@ const MasterDataManager: React.FC = () => {
               </Box>
             )}
 
-            {tabValue === 8 && (
+            {tabValue === 10 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="h6">Hierarchy Scopes Flat</Typography>
@@ -2221,7 +2415,7 @@ const MasterDataManager: React.FC = () => {
               </Box>
             )}
 
-            {tabValue === 9 && (
+            {tabValue === 11 && (
               <Box>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="h6">Hierarchy Scope Parent-Child Relationships</Typography>
@@ -2895,6 +3089,7 @@ const MasterDataManager: React.FC = () => {
       <EquipmentClassDialog
         open={equipmentClassDialog}
         data={editingEquipmentClass}
+        equipmentClasses={equipmentClasses}
         onClose={() => {
           setEquipmentClassDialog(false);
           setEditingEquipmentClass(null);
@@ -3147,6 +3342,7 @@ const MaterialClassTab: React.FC<MaterialClassTabProps> = ({ data, onAdd, onEdit
               <TableCell>ID</TableCell>
               <TableCell>Name</TableCell>
               <TableCell>Description</TableCell>
+              <TableCell>Parent Class</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -3156,6 +3352,7 @@ const MaterialClassTab: React.FC<MaterialClassTabProps> = ({ data, onAdd, onEdit
                 <TableCell><Chip label={row.id} size="small" /></TableCell>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{row.description}</TableCell>
+                <TableCell>{row.parentId || '-'}</TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => onEdit(row)}>
                     <EditIcon />
@@ -3425,6 +3622,7 @@ const EquipmentClassTab: React.FC<EquipmentClassTabProps> = ({ data, onAdd, onEd
               <TableCell>ID</TableCell>
               <TableCell>Name</TableCell>
               <TableCell>Description</TableCell>
+              <TableCell>Parent Class</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -3434,6 +3632,7 @@ const EquipmentClassTab: React.FC<EquipmentClassTabProps> = ({ data, onAdd, onEd
                 <TableCell><Chip label={row.id} size="small" /></TableCell>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{row.description}</TableCell>
+                <TableCell>{row.parentId || '-'}</TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => onEdit(row)}>
                     <EditIcon />
@@ -3486,7 +3685,7 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ data, equipmentClasses, pro
             {data.map((row) => {
               const prodLine = productionLines.find(pl => pl.id === row.productionLineId);
               const plant = plants.find(p => p.id === prodLine?.plantId);
-              const parentEquipment = data.find(e => e.id === row.parentEquipmentId);
+              const parentEquipment = data.find(e => e.id === row.equipmentParent);
               return (
                 <TableRow key={row.id}>
                   <TableCell><Chip label={row.id} size="small" /></TableCell>
@@ -4712,20 +4911,21 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
 interface EquipmentClassDialogProps {
   open: boolean;
   data: EquipmentClass | null;
+  equipmentClasses: EquipmentClass[];
   onClose: () => void;
   onSave: (data: EquipmentClass) => void;
 }
 
-const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data, onClose, onSave }) => {
+const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data, equipmentClasses, onClose, onSave }) => {
   const [formData, setFormData] = useState<EquipmentClass>(
-    data || { id: '', name: '', description: '' }
+    data || { id: '', name: '', description: '', parentId: '' }
   );
 
   React.useEffect(() => {
     if (data) {
       setFormData(data);
     } else {
-      setFormData({ id: '', name: '', description: '' });
+      setFormData({ id: '', name: '', description: '', parentId: '' });
     }
   }, [data, open]);
 
@@ -4770,6 +4970,27 @@ const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data,
               multiline
               rows={2}
             />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Parent Class (Optional)</InputLabel>
+              <Select
+                value={formData.parentId || ''}
+                onChange={(e) => setFormData({ ...formData, parentId: e.target.value || undefined })}
+                label="Parent Class (Optional)"
+              >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+                {equipmentClasses
+                  .filter(cls => cls.id !== formData.id) // Prevent self-reference
+                  .map((cls) => (
+                  <MenuItem key={cls.id} value={cls.id}>
+                    {cls.name} ({cls.id})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
         </Grid>
       </DialogContent>

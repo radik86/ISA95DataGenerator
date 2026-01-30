@@ -28,6 +28,8 @@ export interface ParsedCSVData {
   shifts?: any[];
   crews?: any[];
   shiftCrewAssignments?: any[];
+  equipmentClassProperties?: any[];
+  equipmentClassPropertiesAssignments?: any[];
 }
 
 class CSVParser {
@@ -197,11 +199,19 @@ class CSVParser {
 
   parseEquipmentClasses(csvText: string): any[] {
     const records = this.parseCSV(csvText);
-    return records.map(r => ({
-      id: r.EquipmentClassID,
-      name: r.EquipmentClassName,
-      description: r.Description || '',
-    }));
+    return records.map(r => {
+      const id = r.EquipmentClassID || r['EquipmentClassID'] || '';
+      if (!id) {
+        console.error('Equipment class record missing ID:', r);
+        throw new Error('Equipment class record missing EquipmentClassID');
+      }
+      return {
+        id: id,
+        name: r.EquipmentClassName || r['EquipmentClassName'] || '',
+        description: r.Description || r['Description'] || '',
+        parentId: r.EquipmentClassParentID || r['EquipmentClassParentID'] || '',
+      };
+    }).filter(record => record.id); // Filter out records with empty IDs
   }
 
   parseEquipment(csvText: string): any[] {
@@ -212,6 +222,7 @@ class CSVParser {
       classId: r.EquipmentClassID,
       className: r.EquipmentClass,
       description: r.EquipmentDescription || '',
+      equipmentParent: r.EquipmentParentId || '',
     }));
   }
 
@@ -479,6 +490,29 @@ class CSVParser {
         'Storage Unit': r['Storage Unit'] || r.StorageUnit || '',
       };
     });
+  }
+
+  parseEquipmentClassProperties(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.EquipmentClassPropertyId,
+      equipmentClassId: r.EquipmentClassId,
+      propertyName: r.PropertyName,
+      description: r.Description || '',
+      valueDataType: r.ValueDataType || '',
+      unit: r.Unit || '',
+      minValue: r.MinValue || '',
+      maxValue: r.MaxValue || '',
+    }));
+  }
+
+  parseEquipmentClassPropertiesAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: `${r.EquipmentClassPropertyId || ''}_${r.EquipmentPropertyId || ''}`,
+      equipmentClassPropertyId: r.EquipmentClassPropertyId,
+      equipmentPropertyId: r.EquipmentPropertyId,
+    }));
   }
 
   async parseAllFromFiles(files: {
