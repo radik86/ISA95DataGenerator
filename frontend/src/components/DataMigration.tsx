@@ -1315,8 +1315,8 @@ const DataMigration: React.FC = () => {
     const sourceTable = dataSource?.tables.find(t => t.name === selectedSourceTable);
     if (!sourceTable) return;
 
-    const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1);
-    const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2);
+    const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1 || e.name === bridgeEntity1);
+    const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2 || e.name === bridgeEntity2);
 
     if (!entity1 || !entity2) return;
 
@@ -1399,8 +1399,8 @@ const DataMigration: React.FC = () => {
       return;
     }
 
-    const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1);
-    const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2);
+    const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1 || e.name === bridgeEntity1);
+    const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2 || e.name === bridgeEntity2);
     
     if (!entity1 || !entity2) {
       setAvailableRelationships([]);
@@ -1462,8 +1462,8 @@ const DataMigration: React.FC = () => {
 
     try {
       const sourceData = await loadSourceData(selectedSourceTable);
-      const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1);
-      const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2);
+      const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1 || e.name === bridgeEntity1);
+      const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2 || e.name === bridgeEntity2);
       
       if (!entity1 || !entity2) return;
 
@@ -2237,7 +2237,17 @@ const DataMigration: React.FC = () => {
       };
 
       const sourceData = await getTableDataFunc(mapping.sourceTable);
-      const previewRows = sourceData.slice(0, 5); // Preview first 5 rows
+      
+      // Apply filters if configured
+      let filteredSourceData = sourceData;
+      if (mapping.filters && mapping.filters.length > 0) {
+        const enabledFilters = mapping.filters.filter(f => f.enabled);
+        if (enabledFilters.length > 0) {
+          filteredSourceData = applyFilters(sourceData, enabledFilters);
+        }
+      }
+      
+      const previewRows = filteredSourceData.slice(0, 5); // Preview first 5 rows
 
       // Generate preview with field mappings applied
       const previews = previewRows.map((row, idx) => {
@@ -2685,8 +2695,8 @@ const DataMigration: React.FC = () => {
           // Special handling for bridge tables
           if (mapping.isBridge && mapping.bridgeEntity1 && mapping.bridgeEntity2 && 
               mapping.bridgeEntity1Column && mapping.bridgeEntity2Column) {
-            const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1);
-            const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2);
+            const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
+            const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
             
             if (entity1 && entity2) {
               // Bridge table structure: lookup values from source, actual PKs come from generated entity files
@@ -3259,8 +3269,8 @@ const DataMigration: React.FC = () => {
         csvRows.push('Bridge Table Name,Source Table,First Entity,First Entity Column,Second Entity,Second Entity Column,Relationship Type,Enabled');
         
         bridgeMappings.forEach(mapping => {
-          const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1);
-          const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2);
+          const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
+          const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
           csvRows.push(
             `"${mapping.targetEntity}","${mapping.sourceTable}","${entity1?.name || mapping.bridgeEntity1}","${mapping.bridgeEntity1Column || ''}","${entity2?.name || mapping.bridgeEntity2}","${mapping.bridgeEntity2Column || ''}","${mapping.relationshipType || ''}","${mapping.enabled}"`
           );
@@ -3751,11 +3761,11 @@ const DataMigration: React.FC = () => {
                           </Alert>
                           <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Chip label={isa95Entities.find(e => e.tableName === mapping.bridgeEntity1)?.name || mapping.bridgeEntity1} color="primary" size="small" />
+                              <Chip label={isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1)?.name || mapping.bridgeEntity1} color="primary" size="small" />
                               <Typography variant="body2">← Column: {mapping.bridgeEntity1Column}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Chip label={isa95Entities.find(e => e.tableName === mapping.bridgeEntity2)?.name || mapping.bridgeEntity2} color="secondary" size="small" />
+                              <Chip label={isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2)?.name || mapping.bridgeEntity2} color="secondary" size="small" />
                               <Typography variant="body2">← Column: {mapping.bridgeEntity2Column}</Typography>
                             </Box>
                           </Box>
@@ -4161,8 +4171,8 @@ const DataMigration: React.FC = () => {
                 if (!mapping.isBridge) return null;
                 
                 const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
-                const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1);
-                const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2);
+                const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
+                const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
 
                 return (
                   <Accordion 
