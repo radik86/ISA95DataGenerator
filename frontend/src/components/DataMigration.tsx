@@ -1527,6 +1527,10 @@ const DataMigration: React.FC = () => {
     }
   };
 
+  const handleToggleFilter = (mappingIndex: number, filterIndex: number, enabled: boolean) => {
+    handleUpdateFilter(mappingIndex, filterIndex, 'enabled', enabled);
+  };
+
   const applyFilters = (data: any[], filters: TableFilter[]): any[] => {
     if (!filters || filters.length === 0) return data;
 
@@ -4197,6 +4201,77 @@ const DataMigration: React.FC = () => {
                           color="primary"
                         />
                       </Box>
+
+                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 3 }}>
+                        Source Table Filters
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                        Filter source table records based on column values (applied before migration)
+                      </Typography>
+
+                      <Box sx={{ mb: 3 }}>
+                        {mapping.filters && mapping.filters.length > 0 ? (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                            {mapping.filters.map((filter, filterIndex) => (
+                              <Box 
+                                key={filterIndex} 
+                                sx={{ 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: 1, 
+                                  p: 1, 
+                                  border: 1, 
+                                  borderColor: 'divider', 
+                                  borderRadius: 1,
+                                  cursor: 'pointer',
+                                  '&:hover': { bgcolor: 'action.hover' }
+                                }}
+                                onClick={() => {
+                                  setSelectedFilter({ mappingIndex: originalIndex, filterIndex });
+                                  setFilterDialog(true);
+                                }}
+                              >
+                                <FormControlLabel
+                                  control={
+                                    <Checkbox
+                                      checked={filter.enabled}
+                                      onChange={(e) => handleToggleFilter(originalIndex, filterIndex, e.target.checked)}
+                                      size="small"
+                                    />
+                                  }
+                                  label=""
+                                />
+                                <Chip label={filter.column} size="small" color="primary" />
+                                <Chip label={filter.operator.replace('_', ' ')} size="small" variant="outlined" />
+                                {filter.operator !== 'is_null' && filter.operator !== 'is_not_null' && filter.operator !== 'is_empty' && filter.operator !== 'is_not_empty' && (
+                                  <Chip label={`"${filter.value || ''}"`} size="small" variant="outlined" />
+                                )}
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleRemoveFilter(originalIndex, filterIndex)}
+                                  color="error"
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>
+                            No filters configured - all records will be migrated
+                          </Typography>
+                        )}
+
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={() => handleAddFilter(originalIndex)}
+                        >
+                          Add Filter
+                        </Button>
+                      </Box>
+
                       <Button
                         startIcon={<DeleteIcon />}
                         onClick={() => handleRemoveMapping(originalIndex)}

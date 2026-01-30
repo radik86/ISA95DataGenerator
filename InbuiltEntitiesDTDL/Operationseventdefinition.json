@@ -161,16 +161,6 @@
             "groupBy": "false",
             "primaryKey": "false",
             "isProperNoun": "false"
-        },
-        {
-            "name": "OperationsEventClassId",
-            "description": "The operations event class ID that this event definition belongs to. Maps to the isAMemberOf relationship.",
-            "type": "String",
-            "mandatory": "false",
-            "semanticRelevantFlag": "true",
-            "groupBy": "false",
-            "primaryKey": "false",
-            "isProperNoun": "false"
         }
     ],
     "tags": {

@@ -255,7 +255,7 @@ export interface EquipmentRecord extends BaseRecord {
   className: string;
   description?: string;
   productionLineId?: string;
-  equipmentParent?: string;
+  parentEquipmentId?: string;
 }
 
 export interface ProcessSegmentRecord extends BaseRecord {

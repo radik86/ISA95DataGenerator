@@ -222,7 +222,7 @@ class CSVParser {
       classId: r.EquipmentClassID,
       className: r.EquipmentClass,
       description: r.EquipmentDescription || '',
-      equipmentParent: r.EquipmentParentId || '',
+      parentEquipmentId: r.EquipmentParentId || '',
     }));
   }
 

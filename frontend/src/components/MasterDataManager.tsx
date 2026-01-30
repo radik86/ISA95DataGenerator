@@ -96,7 +96,7 @@ interface Equipment {
   className: string;
   description?: string;
   productionLineId?: string;
-  equipmentParent?: string;
+  parentEquipmentId?: string;
 }
 
 interface EquipmentProperty {
@@ -1591,8 +1591,8 @@ const MasterDataManager: React.FC = () => {
         await ecWritable.close();
 
         // Export Equipment
-        const eHeaders = 'EquipmentID,EquipmentName,EquipmentClassID,EquipmentDescription';
-        const eRows = equipment.map(e => `${e.id},${e.name},${e.classId},${e.description || ''}`).join('\n');
+        const eHeaders = 'EquipmentID,EquipmentName,EquipmentClassID,EquipmentDescription,EquipmentParentId';
+        const eRows = equipment.map(e => `${e.id},${e.name},${e.classId},${e.description || ''},${e.parentEquipmentId || ''}`).join('\n');
         const eCsv = `${eHeaders}\n${eRows}`;
         const eFileHandle = await dirHandle.getFileHandle('equipment.csv', { create: true });
         const eWritable = await eFileHandle.createWritable();
@@ -1739,8 +1739,8 @@ const MasterDataManager: React.FC = () => {
       downloadCSV(`${ecHeaders}\n${ecRows}`, 'equipment_classes.csv');
 
       // Export Equipment
-      const eHeaders = 'EquipmentID,EquipmentName,EquipmentClassID,EquipmentDescription';
-      const eRows = equipment.map(e => `${e.id},${e.name},${e.classId},${e.description || ''}`).join('\n');
+      const eHeaders = 'EquipmentID,EquipmentName,EquipmentClassID,EquipmentDescription,EquipmentParentId';
+      const eRows = equipment.map(e => `${e.id},${e.name},${e.classId},${e.description || ''},${e.parentEquipmentId || ''}`).join('\n');
       downloadCSV(`${eHeaders}\n${eRows}`, 'equipment.csv');
 
       // Export Equipment Properties
@@ -3685,7 +3685,7 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ data, equipmentClasses, pro
             {data.map((row) => {
               const prodLine = productionLines.find(pl => pl.id === row.productionLineId);
               const plant = plants.find(p => p.id === prodLine?.plantId);
-              const parentEquipment = data.find(e => e.id === row.equipmentParent);
+              const parentEquipment = data.find(e => e.id === row.parentEquipmentId);
               return (
                 <TableRow key={row.id}>
                   <TableCell><Chip label={row.id} size="small" /></TableCell>
@@ -4244,7 +4244,7 @@ const MaterialClassDialog: React.FC<MaterialClassDialogProps> = ({ open, data, o
       <DialogTitle>{data ? 'Edit' : 'Add'} Material Class</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Class ID"
@@ -4254,7 +4254,7 @@ const MaterialClassDialog: React.FC<MaterialClassDialogProps> = ({ open, data, o
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Class Name"
@@ -4263,7 +4263,7 @@ const MaterialClassDialog: React.FC<MaterialClassDialogProps> = ({ open, data, o
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -4326,7 +4326,7 @@ const MaterialDialog: React.FC<MaterialDialogProps> = ({ open, data, materialCla
       <DialogTitle>{data ? 'Edit' : 'Add'} Material</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Material ID"
@@ -4336,7 +4336,7 @@ const MaterialDialog: React.FC<MaterialDialogProps> = ({ open, data, materialCla
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Material Name"
@@ -4345,7 +4345,7 @@ const MaterialDialog: React.FC<MaterialDialogProps> = ({ open, data, materialCla
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Material Class</InputLabel>
               <Select
@@ -4361,7 +4361,7 @@ const MaterialDialog: React.FC<MaterialDialogProps> = ({ open, data, materialCla
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Default UoM"
@@ -4370,7 +4370,7 @@ const MaterialDialog: React.FC<MaterialDialogProps> = ({ open, data, materialCla
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -4447,7 +4447,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
       <DialogTitle>{data ? 'Edit' : 'Add'} Material Lot</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Lot ID"
@@ -4457,7 +4457,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               required
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <FormControl fullWidth required>
               <InputLabel>Material</InputLabel>
               <Select
@@ -4473,7 +4473,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Quantity"
@@ -4483,7 +4483,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               required
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="UoM"
@@ -4492,7 +4492,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               required
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Received DateTime"
@@ -4502,7 +4502,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Produced DateTime"
@@ -4512,7 +4512,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Supplier/Producer ID"
@@ -4520,7 +4520,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               onChange={(e) => setFormData({ ...formData, supplierOrProducerId: e.target.value })}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Supplier/Producer Name"
@@ -4528,7 +4528,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               onChange={(e) => setFormData({ ...formData, supplierOrProducerName: e.target.value })}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Produced By Process Segment ID"
@@ -4536,7 +4536,7 @@ const MaterialLotDialog: React.FC<MaterialLotDialogProps> = ({ open, data, mater
               onChange={(e) => setFormData({ ...formData, producedByProcessSegmentId: e.target.value })}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth>
               <InputLabel>Parent Lot (Optional)</InputLabel>
               <Select
@@ -4621,7 +4621,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
       <DialogTitle>{data ? 'Edit' : 'Add'} Material Sublot</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Sublot ID"
@@ -4631,7 +4631,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <FormControl fullWidth required>
               <InputLabel>Material Lot</InputLabel>
               <Select
@@ -4650,7 +4650,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Quantity"
@@ -4660,7 +4660,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Unit of Measure"
@@ -4669,7 +4669,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Storage Location"
@@ -4677,7 +4677,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
               onChange={(e) => setFormData({ ...formData, storageLocation: e.target.value })}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Status"
@@ -4686,7 +4686,7 @@ const MaterialSublotDialog: React.FC<MaterialSublotDialogProps> = ({ open, data,
               placeholder="e.g., Available, Reserved, Quarantined"
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               fullWidth
               label="Disposition"
@@ -4738,7 +4738,7 @@ const MaterialDefinitionPropertyDialog: React.FC<MaterialDefinitionPropertyDialo
       <DialogTitle>{data ? 'Edit' : 'Add'} Material Definition Property</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Property ID"
@@ -4748,7 +4748,7 @@ const MaterialDefinitionPropertyDialog: React.FC<MaterialDefinitionPropertyDialo
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Value"
@@ -4757,7 +4757,7 @@ const MaterialDefinitionPropertyDialog: React.FC<MaterialDefinitionPropertyDialo
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -4767,7 +4767,7 @@ const MaterialDefinitionPropertyDialog: React.FC<MaterialDefinitionPropertyDialo
               rows={2}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Unit of Measure"
@@ -4839,7 +4839,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
       <DialogTitle>{data ? 'Edit' : 'Add'} Material Definition Property Assignment</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Material Definition</InputLabel>
               <Select
@@ -4855,7 +4855,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Property</InputLabel>
               <Select
@@ -4872,7 +4872,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Value"
@@ -4880,7 +4880,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
               disabled
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -4890,7 +4890,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
               rows={2}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Unit of Measure"
@@ -4942,7 +4942,7 @@ const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data,
       <DialogTitle>{data ? 'Edit' : 'Add'} Equipment Class</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Class ID"
@@ -4952,7 +4952,7 @@ const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Class Name"
@@ -4961,7 +4961,7 @@ const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -4971,7 +4971,7 @@ const EquipmentClassDialog: React.FC<EquipmentClassDialogProps> = ({ open, data,
               rows={2}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth>
               <InputLabel>Parent Class (Optional)</InputLabel>
               <Select
@@ -5048,7 +5048,7 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
       <DialogTitle>{data ? 'Edit' : 'Add'} Equipment</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Equipment ID"
@@ -5058,7 +5058,7 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Equipment Name"
@@ -5067,7 +5067,7 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Equipment Class</InputLabel>
               <Select
@@ -5083,7 +5083,7 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth>
               <InputLabel>Production Line (Optional)</InputLabel>
               <Select
@@ -5105,7 +5105,7 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth>
               <InputLabel>Parent Equipment (Optional)</InputLabel>
               <Select
@@ -5126,7 +5126,7 @@ const EquipmentDialog: React.FC<EquipmentDialogProps> = ({ open, data, equipment
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -5179,7 +5179,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
       <DialogTitle>{data ? 'Edit' : 'Add'} Equipment Property</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Property ID"
@@ -5189,7 +5189,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Property Name"
@@ -5198,7 +5198,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth required>
               <InputLabel>Data Type</InputLabel>
               <Select
@@ -5213,7 +5213,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Unit"
@@ -5221,7 +5221,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
               onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Min Value"
@@ -5233,7 +5233,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
               }}
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Max Value"
@@ -5245,7 +5245,7 @@ const EquipmentPropertyDialog: React.FC<EquipmentPropertyDialogProps> = ({ open,
               }}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -5301,7 +5301,7 @@ const EquipmentPropertyAssignmentDialog: React.FC<EquipmentPropertyAssignmentDia
       <DialogTitle>{data ? 'Edit' : 'Add'} Equipment Property Assignment</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Assignment ID"
@@ -5311,7 +5311,7 @@ const EquipmentPropertyAssignmentDialog: React.FC<EquipmentPropertyAssignmentDia
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Equipment</InputLabel>
               <Select
@@ -5327,7 +5327,7 @@ const EquipmentPropertyAssignmentDialog: React.FC<EquipmentPropertyAssignmentDia
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Process Segment</InputLabel>
               <Select
@@ -5343,7 +5343,7 @@ const EquipmentPropertyAssignmentDialog: React.FC<EquipmentPropertyAssignmentDia
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Equipment Property</InputLabel>
               <Select
@@ -5359,7 +5359,7 @@ const EquipmentPropertyAssignmentDialog: React.FC<EquipmentPropertyAssignmentDia
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth required>
               <InputLabel>Sampling Mode</InputLabel>
               <Select
@@ -5373,7 +5373,7 @@ const EquipmentPropertyAssignmentDialog: React.FC<EquipmentPropertyAssignmentDia
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Sampling Interval (seconds)"
@@ -5428,7 +5428,7 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
       <DialogTitle>{data ? 'Edit' : 'Add'} Process Segment</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Process Segment ID"
@@ -5438,7 +5438,7 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Segment Name"
@@ -5447,7 +5447,7 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Product Material</InputLabel>
               <Select
@@ -5463,7 +5463,7 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Sequence"
@@ -5473,7 +5473,7 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Duration (hours)"
@@ -5570,7 +5570,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
         </Alert>
         
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="BOM Line ID"
@@ -5582,7 +5582,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
             />
           </Grid>
           
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>1. Select Product</InputLabel>
               <Select
@@ -5602,7 +5602,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
             </FormControl>
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required disabled={!selectedProduct}>
               <InputLabel>2. Select Process Segment</InputLabel>
               <Select
@@ -5629,7 +5629,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
             )}
           </Grid>
           
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>3. Select Material</InputLabel>
               <Select
@@ -5665,7 +5665,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
             </FormControl>
           </Grid>
 
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="4. Qty Per Unit"
@@ -5677,7 +5677,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
               helperText="Amount needed per 1 unit of product"
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Unit of Measure"
@@ -5687,7 +5687,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
               helperText="Auto-filled from material"
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>5. Material Use</InputLabel>
               <Select
@@ -5780,7 +5780,7 @@ const EquipmentUsageDialog: React.FC<EquipmentUsageDialogProps> = ({ open, data,
           </Alert>
         )}
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Equipment Usage ID"
@@ -5790,7 +5790,7 @@ const EquipmentUsageDialog: React.FC<EquipmentUsageDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Process Segment</InputLabel>
               <Select
@@ -5809,7 +5809,7 @@ const EquipmentUsageDialog: React.FC<EquipmentUsageDialogProps> = ({ open, data,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Equipment</InputLabel>
               <Select
@@ -5825,7 +5825,7 @@ const EquipmentUsageDialog: React.FC<EquipmentUsageDialogProps> = ({ open, data,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Role"
@@ -5834,7 +5834,7 @@ const EquipmentUsageDialog: React.FC<EquipmentUsageDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Capacity Per Run (EA)"
@@ -6102,7 +6102,7 @@ const PlantDialog: React.FC<PlantDialogProps> = ({ open, data, onClose, onSave }
       <DialogTitle>{data ? 'Edit' : 'Add'} Plant</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Plant ID"
@@ -6112,7 +6112,7 @@ const PlantDialog: React.FC<PlantDialogProps> = ({ open, data, onClose, onSave }
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Plant Name"
@@ -6121,7 +6121,7 @@ const PlantDialog: React.FC<PlantDialogProps> = ({ open, data, onClose, onSave }
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Location"
@@ -6129,7 +6129,7 @@ const PlantDialog: React.FC<PlantDialogProps> = ({ open, data, onClose, onSave }
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6184,7 +6184,7 @@ const ProductionLineDialog: React.FC<ProductionLineDialogProps> = ({ open, data,
       <DialogTitle>{data ? 'Edit' : 'Add'} Production Line</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Production Line ID"
@@ -6194,7 +6194,7 @@ const ProductionLineDialog: React.FC<ProductionLineDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Production Line Name"
@@ -6203,7 +6203,7 @@ const ProductionLineDialog: React.FC<ProductionLineDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Plant</InputLabel>
               <Select
@@ -6219,7 +6219,7 @@ const ProductionLineDialog: React.FC<ProductionLineDialogProps> = ({ open, data,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6279,7 +6279,7 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
       <DialogTitle>{data ? 'Edit' : 'Add'} Line Equipment</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Line Equipment ID"
@@ -6289,7 +6289,7 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Plant</InputLabel>
               <Select
@@ -6305,7 +6305,7 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Production Line</InputLabel>
               <Select
@@ -6329,7 +6329,7 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
               </Typography>
             )}
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Equipment</InputLabel>
               <Select
@@ -6345,7 +6345,7 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Sequence"
@@ -6355,7 +6355,7 @@ const LineEquipmentDialog: React.FC<LineEquipmentDialogProps> = ({ open, data, p
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6409,7 +6409,7 @@ const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }
       <DialogTitle>{data ? 'Edit' : 'Add'} Shift</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Shift ID"
@@ -6419,7 +6419,7 @@ const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Shift Number</InputLabel>
               <Select
@@ -6434,7 +6434,7 @@ const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Shift Name"
@@ -6443,7 +6443,7 @@ const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Start Time"
@@ -6454,7 +6454,7 @@ const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="End Time"
@@ -6465,7 +6465,7 @@ const ShiftDialog: React.FC<ShiftDialogProps> = ({ open, data, onClose, onSave }
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6519,7 +6519,7 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
       <DialogTitle>{data ? 'Edit' : 'Add'} Crew</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Crew ID"
@@ -6529,7 +6529,7 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Crew Name"
@@ -6538,7 +6538,7 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="People Count"
@@ -6548,7 +6548,7 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Skills"
@@ -6557,7 +6557,7 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
               helperText="Comma-separated list of skills"
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6611,7 +6611,7 @@ const OperationsEventClassDialog: React.FC<OperationsEventClassDialogProps> = ({
       <DialogTitle>{data ? 'Edit' : 'Add'} Operations Event Class</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Class ID"
@@ -6621,7 +6621,7 @@ const OperationsEventClassDialog: React.FC<OperationsEventClassDialogProps> = ({
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Class Name"
@@ -6630,7 +6630,7 @@ const OperationsEventClassDialog: React.FC<OperationsEventClassDialogProps> = ({
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6698,7 +6698,7 @@ const OperationsEventRecordDialog: React.FC<OperationsEventRecordDialogProps> = 
       <DialogTitle>{data ? 'Edit' : 'Add'} Operations Event Record</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Record ID"
@@ -6708,7 +6708,7 @@ const OperationsEventRecordDialog: React.FC<OperationsEventRecordDialogProps> = 
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth required>
               <InputLabel>Event Definition</InputLabel>
               <Select
@@ -6724,7 +6724,7 @@ const OperationsEventRecordDialog: React.FC<OperationsEventRecordDialogProps> = 
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth>
               <InputLabel>Severity</InputLabel>
               <Select
@@ -6739,7 +6739,7 @@ const OperationsEventRecordDialog: React.FC<OperationsEventRecordDialogProps> = 
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth>
               <InputLabel>Status</InputLabel>
               <Select
@@ -6754,7 +6754,7 @@ const OperationsEventRecordDialog: React.FC<OperationsEventRecordDialogProps> = 
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Comments"
@@ -6820,7 +6820,7 @@ const OperationsEventEntryDialog: React.FC<OperationsEventEntryDialogProps> = ({
       <DialogTitle>{data ? 'Edit' : 'Add'} Operations Event Entry</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Entry ID"
@@ -6830,7 +6830,7 @@ const OperationsEventEntryDialog: React.FC<OperationsEventEntryDialogProps> = ({
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth required>
               <InputLabel>Event Record</InputLabel>
               <Select
@@ -6846,7 +6846,7 @@ const OperationsEventEntryDialog: React.FC<OperationsEventEntryDialogProps> = ({
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth>
               <InputLabel>Entry Type</InputLabel>
               <Select
@@ -6861,7 +6861,7 @@ const OperationsEventEntryDialog: React.FC<OperationsEventEntryDialogProps> = ({
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -6931,7 +6931,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
       <DialogTitle>{data ? 'Edit' : 'Add'} Operation Event Definition</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Event Definition ID"
@@ -6941,7 +6941,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Event Code"
@@ -6950,7 +6950,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Event Category"
@@ -6958,7 +6958,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               onChange={(e) => setFormData({ ...formData, eventCategory: e.target.value })}
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Root Cause Type"
@@ -6966,7 +6966,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               onChange={(e) => setFormData({ ...formData, rootCauseType: e.target.value })}
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -6977,7 +6977,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               label="Causes Downtime"
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -6988,7 +6988,7 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               label="Causes Scrap"
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -7044,7 +7044,7 @@ const ShiftCrewAssignmentDialog: React.FC<ShiftCrewAssignmentDialogProps> = ({ o
       <DialogTitle>{data ? 'Edit' : 'Add'} Shift-Crew Assignment</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Assignment ID"
@@ -7054,7 +7054,7 @@ const ShiftCrewAssignmentDialog: React.FC<ShiftCrewAssignmentDialogProps> = ({ o
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Shift</InputLabel>
               <Select
@@ -7070,7 +7070,7 @@ const ShiftCrewAssignmentDialog: React.FC<ShiftCrewAssignmentDialogProps> = ({ o
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Crew</InputLabel>
               <Select
@@ -7086,7 +7086,7 @@ const ShiftCrewAssignmentDialog: React.FC<ShiftCrewAssignmentDialogProps> = ({ o
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Effective Date"
@@ -7097,7 +7097,7 @@ const ShiftCrewAssignmentDialog: React.FC<ShiftCrewAssignmentDialogProps> = ({ o
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Expiry Date"
@@ -7168,7 +7168,7 @@ const HierarchyScopeDialog: React.FC<HierarchyScopeDialogProps> = ({ open, data,
       <DialogTitle>{data ? 'Edit' : 'Add'} Hierarchy Scope</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Hierarchy Scope ID"
@@ -7178,7 +7178,7 @@ const HierarchyScopeDialog: React.FC<HierarchyScopeDialogProps> = ({ open, data,
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Equipment Level</InputLabel>
               <Select
@@ -7192,7 +7192,7 @@ const HierarchyScopeDialog: React.FC<HierarchyScopeDialogProps> = ({ open, data,
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             {formData.equipmentLevel === 'Site' ? (
               <FormControl fullWidth required>
                 <InputLabel>Plant</InputLabel>

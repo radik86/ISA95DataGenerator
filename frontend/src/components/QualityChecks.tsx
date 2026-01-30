@@ -1208,7 +1208,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
       <DialogTitle>{rule ? 'Edit' : 'Add'} Quality Rule</DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Rule Name"
@@ -1217,7 +1217,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
               required
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth required>
               <InputLabel>Category</InputLabel>
               <Select
@@ -1233,7 +1233,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <FormControl fullWidth required>
               <InputLabel>Severity</InputLabel>
               <Select
@@ -1247,7 +1247,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Entity Name (Optional)"
@@ -1255,7 +1255,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
               onChange={(e) => setFormData({ ...formData, entityName: e.target.value })}
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               label="Field Name (Optional)"
@@ -1263,7 +1263,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
               onChange={(e) => setFormData({ ...formData, fieldName: e.target.value })}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -1274,7 +1274,7 @@ const QualityRuleDialog: React.FC<QualityRuleDialogProps> = ({ open, rule, onClo
               required
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <TextField
               fullWidth
               label="SQL Code"
