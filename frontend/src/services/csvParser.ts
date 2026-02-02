@@ -364,6 +364,7 @@ class CSVParser {
         causesDowntime,
         causesScrap,
         rootCauseType: r.RootCauseType,
+        eventType: r.EventType || 'Alarm',
       };
     });
     console.log('[CSV Parser] First parsed record:', parsed[0]);
