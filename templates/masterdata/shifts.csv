@@ -1,5 +1,4 @@
 ShiftID,ShiftNumber,ShiftName,StartTime,EndTime,Description
-SHIFT-001,1,Morning Shift,06:00,14:00,Day shift covering morning production hours
+SHIFT-001,1,Morning Shift,6:00,14:00,Day shift covering morning production hours
 SHIFT-002,2,Afternoon Shift,14:00,22:00,Afternoon and evening production shift
-SHIFT-003,3,Night Shift,22:00,06:00,Overnight production shift
-SHIFT-004,4,Weekend Shift,08:00,20:00,Extended shift for weekend operations
+SHIFT-003,3,Night Shift,22:00,6:00,Overnight production shift

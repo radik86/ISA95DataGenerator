@@ -780,6 +780,10 @@ const ProcessDataGenerator: React.FC = () => {
       // Generate Operations Events per segment requirement (not per run)
       // Always generate mandatory events
       // Conditional events (downtime, scrap) only if conditions are met
+      console.log(`[Operations Events] Starting generation - scrap=${scrapProducedPercent}%, delay=${productionDelayMinutes} min`);
+      console.log(`[Operations Events] Total segment requirements: ${sortedSegReqs.length}`);
+      console.log(`[Operations Events] Total event definitions: ${operationEventDefinitions.length}`);
+      console.log(`[Operations Events] Total event-segment assignments: ${operationEventDefSegmentAssignments.length}`);
       console.log(`[Operations Events] Checking segment requirements - scrap=${scrapProducedPercent}, delay=${productionDelayMinutes}`);
       
       for (const segReq of sortedSegReqs) {
@@ -889,6 +893,8 @@ const ProcessDataGenerator: React.FC = () => {
           console.log(`[Operations Events] No events to generate for segment ${segReq.processSegmentId}`);
         }
       }
+
+      console.log(`[Operations Events] TOTAL GENERATED: ${generatedOperationsEvents.length} operations events`);
 
       // Generate Operations Event Records and Entries based on Operations Events
       const generatedOperationsEventRecords: OperationsEventRecord[] = [];
@@ -1172,6 +1178,14 @@ const ProcessDataGenerator: React.FC = () => {
               return currentDate >= effectiveDate && currentDate <= expiryDate;
             });
             
+            console.log(`[Segment Data] Shift ${coveringShift.shift.shiftName}: Found ${applicableCrewAssignments.length} applicable crew assignments (total shift crew assignments: ${shiftCrewAssignments.filter(sca => sca.shiftId === coveringShift.shift.id).length})`);
+            
+            if (applicableCrewAssignments.length === 0 && shiftCrewAssignments.filter(sca => sca.shiftId === coveringShift.shift.id).length > 0) {
+              const assignmentsForThisShift = shiftCrewAssignments.filter(sca => sca.shiftId === coveringShift.shift.id);
+              console.log(`[Segment Data] WARNING: Shift ${coveringShift.shift.shiftName} has crew assignments but none are valid for current date ${currentDate.toISOString()}`);
+              console.log(`[Segment Data] Sample crew assignment for this shift:`, assignmentsForThisShift[0]);
+            }
+            
             // Create crew records for each assigned crew for this segment response
             for (const crewAssignment of applicableCrewAssignments) {
               const crew = crews.find(c => c.id === crewAssignment.crewId);
@@ -1277,9 +1291,106 @@ const ProcessDataGenerator: React.FC = () => {
             generatedPropertyTracking.push(tracking);
           }
         }
+
+        // Generate property tracking for child equipment of this parent equipment
+        // Find child equipment where parent equipment ID matches
+        // Note: CSV uses 'equipmentParentId' but database might have different casing
+        const childEquipment = equipment.filter(eq => 
+          eq.equipmentParentId === eqActual.equipmentId || 
+          eq.parentEquipmentId === eqActual.equipmentId ||
+          (eq as any).EquipmentParentId === eqActual.equipmentId
+        );
+        
+        console.log(`[Child Equipment] Parent equipment ${eqActual.equipmentId}: Found ${childEquipment.length} child equipment`);
+        if (childEquipment.length > 0) {
+          console.log(`[Child Equipment] Child IDs:`, childEquipment.map(ce => ce.id));
+        } else {
+          // Debug: Check what fields are actually available
+          const sampleEq = equipment[0];
+          if (sampleEq) {
+            console.log(`[Child Equipment] DEBUG - Sample equipment keys:`, Object.keys(sampleEq));
+          }
+        }
+        
+        for (const childEq of childEquipment) {
+          // Find property assignments for this child equipment and process segment
+          const childPropertyAssignments = equipmentPropertyAssignments.filter(
+            epa => epa.equipmentId === childEq.id && 
+                   epa.processSegmentId === segResp.processSegmentId
+          );
+
+          console.log(`[Child Equipment] Child ${childEq.id} in segment ${segResp.processSegmentId}: Found ${childPropertyAssignments.length} property assignments`);
+
+          for (const assignment of childPropertyAssignments) {
+            // Find the property definition to get min/max ranges
+            const property = equipmentProperties.find(ep => ep.id === assignment.equipmentPropertyId);
+            if (!property) continue;
+
+            // Calculate sampling interval (use assignment's interval if specified, otherwise default to 30 seconds)
+            const samplingInterval = assignment.samplingIntervalSeconds || SAMPLING_INTERVAL_SECONDS;
+
+            // Use the parent equipment's start and end times
+            const startTime = new Date(eqActual.actualStartDateTime.replace(' ', 'T') + 'Z');
+            const endTime = new Date(eqActual.actualEndDateTime.replace(' ', 'T') + 'Z');
+            const durationMs = endTime.getTime() - startTime.getTime();
+
+            // Generate tracking records at specified intervals using parent equipment's time range
+            const numSamples = Math.floor(durationMs / (samplingInterval * 1000)) + 1;
+
+            for (let i = 0; i < numSamples; i++) {
+              const sampleTime = new Date(startTime.getTime() + (i * samplingInterval * 1000));
+              
+              // Don't generate samples after the equipment end time
+              if (sampleTime > endTime) break;
+
+              // Generate value based on property data type
+              let value: number | string;
+              
+              if (property.valueDataType === 'DECIMAL' || property.valueDataType === 'INTEGER') {
+                // For numeric types, generate random value within min/max range
+                const minValue = typeof property.minValue === 'number' ? property.minValue : 0;
+                const maxValue = typeof property.maxValue === 'number' ? property.maxValue : 100;
+                const numericValue = minValue + Math.random() * (maxValue - minValue);
+                value = property.valueDataType === 'INTEGER' ? Math.round(numericValue) : Math.round(numericValue * 100) / 100;
+              } else if (property.valueDataType === 'STRING') {
+                // For string types, use minValue if available (could be comma-separated list), otherwise maxValue
+                if (property.minValue && typeof property.minValue === 'string') {
+                  const possibleValues = property.minValue.split(',').map(v => v.trim());
+                  value = possibleValues[Math.floor(Math.random() * possibleValues.length)];
+                } else if (property.maxValue && typeof property.maxValue === 'string') {
+                  value = property.maxValue;
+                } else {
+                  value = 'N/A';
+                }
+              } else if (property.valueDataType === 'BOOLEAN') {
+                // For boolean types, randomly choose true or false
+                value = Math.random() > 0.5 ? 'true' : 'false';
+              } else {
+                value = 'N/A';
+              }
+
+              const trackingId = `PROP-TRACK-${eqActual.id}-CHILD-${childEq.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`;
+
+              const tracking: EquipmentPropertyTracking = {
+                id: trackingId,
+                segmentResponseId: eqActual.segmentResponseId,
+                equipmentId: childEq.id,
+                equipmentPropertyId: assignment.equipmentPropertyId,
+                equipmentPropertyName: property.name,
+                value: value,
+                uom: property.unit || '',
+                createdTimestamp: sampleTime.toISOString().slice(0, 19).replace('T', ' '),
+              };
+
+              generatedPropertyTracking.push(tracking);
+            }
+          }
+        }
       }
 
-      console.log(`Generated ${generatedPropertyTracking.length} equipment property tracking records`);
+      const parentTrackingCount = generatedPropertyTracking.filter(t => !t.id.includes('CHILD')).length;
+      const childTrackingCount = generatedPropertyTracking.filter(t => t.id.includes('CHILD')).length;
+      console.log(`Generated ${generatedPropertyTracking.length} equipment property tracking records (${parentTrackingCount} parent, ${childTrackingCount} child)`);
 
       // Create Operations Response using tracked earliest start and latest end
       if (!operationsStartTime || !operationsEndTime) {
@@ -3867,6 +3978,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>Event Definition</TableCell>
                           <TableCell>Event Code</TableCell>
                           <TableCell>Event Category</TableCell>
+                          <TableCell>Event Type</TableCell>
                           <TableCell>Effective Timestamp</TableCell>
                           <TableCell>Notes</TableCell>
                         </TableRow>
@@ -3888,6 +4000,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                                   color={eventDef?.causesDowntime ? 'error' : 'warning'}
                                   size="small"
                                 />
+                              </TableCell>
+                              <TableCell>
+                                <Chip label={event.eventType || 'N/A'} size="small" color="info" />
                               </TableCell>
                               <TableCell>{event.effectiveTimestamp}</TableCell>
                               <TableCell>{event.notes}</TableCell>
