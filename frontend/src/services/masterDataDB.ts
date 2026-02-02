@@ -332,6 +332,7 @@ export interface OperationEventDefinitionRecord extends BaseRecord {
   causesDowntime: boolean;
   causesScrap: boolean;
   rootCauseType: string;
+  eventType: string;
 }
 
 export interface OperationEventDefinitionPropertyRecord extends BaseRecord {

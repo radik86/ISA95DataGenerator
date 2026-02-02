@@ -198,6 +198,7 @@ interface OperationEventDefinition {
   causesDowntime: boolean;
   causesScrap: boolean;
   rootCauseType: string;
+  eventType: string;
 }
 
 interface OperationEventDefinitionProperty {
@@ -6898,7 +6899,8 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
       description: '', 
       causesDowntime: false, 
       causesScrap: false, 
-      rootCauseType: '' 
+      rootCauseType: '',
+      eventType: '' 
     }
   );
 
@@ -6913,7 +6915,8 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
         description: '', 
         causesDowntime: false, 
         causesScrap: false, 
-        rootCauseType: '' 
+        rootCauseType: '',
+        eventType: '' 
       });
     }
   }, [data, open]);
@@ -6964,6 +6967,14 @@ const OperationEventDefinitionDialog: React.FC<OperationEventDefinitionDialogPro
               label="Root Cause Type"
               value={formData.rootCauseType}
               onChange={(e) => setFormData({ ...formData, rootCauseType: e.target.value })}
+            />
+          </Grid>
+          <Grid xs={6}>
+            <TextField
+              fullWidth
+              label="Event Type"
+              value={formData.eventType}
+              onChange={(e) => setFormData({ ...formData, eventType: e.target.value })}
             />
           </Grid>
           <Grid xs={6}>

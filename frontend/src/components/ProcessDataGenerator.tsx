@@ -146,6 +146,7 @@ interface OperationsEvent {
   operationsEventDefinitionId: string;
   effectiveTimestamp: string;
   notes: string;
+  eventType: string;
 }
 
 interface OperationsEventRecord {
@@ -157,6 +158,7 @@ interface OperationsEventRecord {
   effectiveTime: string;
   segmentResponseId: string;
   equipmentId: string;
+  eventType: string;
 }
 
 interface OperationsEventEntry {
@@ -203,6 +205,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [processSegments, setProcessSegments] = useState<any[]>([]);
   const [segmentBOMs, setSegmentBOMs] = useState<any[]>([]);
   const [equipmentUsages, setEquipmentUsages] = useState<any[]>([]);
+  const [lineEquipment, setLineEquipment] = useState<any[]>([]);
   const [productionLines, setProductionLines] = useState<any[]>([]);
   const [plants, setPlants] = useState<any[]>([]);
   const [equipmentProperties, setEquipmentProperties] = useState<any[]>([]);
@@ -338,12 +341,13 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, pl, p, eprop, epa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca] = await Promise.all([
+      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
         masterDataDB.getAll('segmentBOMs'),
         masterDataDB.getAll('equipmentUsages'),
+        masterDataDB.getAll('lineEquipment'),
         masterDataDB.getAll('productionLines'),
         masterDataDB.getAll('plants'),
         masterDataDB.getAll('equipmentProperties'),
@@ -364,6 +368,7 @@ const ProcessDataGenerator: React.FC = () => {
       setProcessSegments(ps);
       setSegmentBOMs(bom);
       setEquipmentUsages(eu);
+      setLineEquipment(le);
       setProductionLines(pl);
       setPlants(p);
       setEquipmentProperties(eprop);
@@ -484,7 +489,14 @@ const ProcessDataGenerator: React.FC = () => {
         const segmentDuration = processSegment?.durationHours || 2;
         
         // Get equipment usage for capacity calculation
-        const eqUsages = equipmentUsages.filter(eu => eu.processSegmentId === segReq.processSegmentId);
+        // Filter by process segment AND by equipment assigned to the selected plant and production line
+        const lineEquipmentIds = lineEquipment
+          .filter(le => le.productionLineId === lineId && le.plantId === plantId)
+          .map(le => le.equipmentId);
+        const eqUsages = equipmentUsages.filter(eu => 
+          eu.processSegmentId === segReq.processSegmentId && 
+          lineEquipmentIds.includes(eu.equipmentId)
+        );
         const equipmentCapacity = eqUsages.length > 0 ? eqUsages[0].capacityPerRun : 100;
         
         console.log(`[Seq ${segReq.sequence}] Process segment: ${processSegment.name}, Duration: ${segmentDuration}h, Equipment capacity: ${equipmentCapacity}`);
@@ -867,6 +879,7 @@ const ProcessDataGenerator: React.FC = () => {
                 operationsEventDefinitionId: assignment.operationsEventDefinitionId,
                 effectiveTimestamp: eventTime.toISOString().slice(0, 19).replace('T', ' '),
                 notes: `${eventDef?.description || 'Event'} (${startOrEnd === 'end' ? 'End' : 'Start'}) - ${assignment.notes}`,
+                eventType: eventDef?.eventType || 'Alarm',
               };
               generatedOperationsEvents.push(operationsEvent);
               console.log(`[Operations Events] Created ${assignment.isMandatory ? 'MANDATORY' : 'conditional'} event: ${operationsEvent.id} (${eventDef?.eventCode}) at ${startOrEnd}`);
@@ -906,6 +919,7 @@ const ProcessDataGenerator: React.FC = () => {
           effectiveTime: opsEvent.effectiveTimestamp,
           segmentResponseId: opsEvent.segmentResponseId,
           equipmentId: selectedEquipment,
+          eventType: opsEvent.eventType || 'Alarm',
         };
         generatedOperationsEventRecords.push(operationsEventRecord);
         
@@ -2019,7 +2033,14 @@ const ProcessDataGenerator: React.FC = () => {
         }
 
         // Generate Equipment Requirements based on Equipment Usage
-        const eqUsages = equipmentUsages.filter(eu => eu.processSegmentId === segment.id);
+        // Filter by process segment AND by equipment assigned to the selected plant and production line
+        const lineEquipmentIds = lineEquipment
+          .filter(le => le.productionLineId === formData.lineId && le.plantId === formData.plantId)
+          .map(le => le.equipmentId);
+        const eqUsages = equipmentUsages.filter(eu => 
+          eu.processSegmentId === segment.id && 
+          lineEquipmentIds.includes(eu.equipmentId)
+        );
         eqUsages.forEach((usage, eqIndex) => {
           const eqReqId = `SER-${formData.plantId}-${formData.lineId}-${dateTimeStr}-${String(eqIndex + 1).padStart(3, '0')}-${segment.id}`;
           const equipmentItem = equipment.find(e => e.id === usage.equipmentId);

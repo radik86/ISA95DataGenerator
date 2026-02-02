@@ -788,6 +788,7 @@ const DataMigration: React.FC = () => {
             { name: 'operationsEventDefinitionId', type: 'string', sample: operationsEvents?.[0]?.operationsEventDefinitionId },
             { name: 'effectiveTimestamp', type: 'datetime', sample: operationsEvents?.[0]?.effectiveTimestamp },
             { name: 'notes', type: 'string', sample: operationsEvents?.[0]?.notes },
+            { name: 'eventType', type: 'string', sample: operationsEvents?.[0]?.eventType },
           ],
         },
         {
@@ -803,6 +804,7 @@ const DataMigration: React.FC = () => {
             { name: 'segmentResponseId', type: 'string', sample: operationsEventRecords?.[0]?.segmentResponseId },
             { name: 'equipmentId', type: 'string', sample: operationsEventRecords?.[0]?.equipmentId },
             { name: 'comments', type: 'string', sample: operationsEventRecords?.[0]?.comments },
+            { name: 'eventType', type: 'string', sample: operationsEventRecords?.[0]?.eventType },
           ],
         },
         {
@@ -907,6 +909,7 @@ const DataMigration: React.FC = () => {
             { name: 'description', type: 'string', sample: operationEventDefinitions[0]?.description },
             { name: 'eventCategory', type: 'string', sample: operationEventDefinitions[0]?.eventCategory },
             { name: 'rootCauseType', type: 'string', sample: operationEventDefinitions[0]?.rootCauseType },
+            { name: 'eventType', type: 'string', sample: operationEventDefinitions[0]?.eventType },
             { name: 'causesDowntime', type: 'boolean', sample: String(operationEventDefinitions[0]?.causesDowntime) },
             { name: 'causesScrap', type: 'boolean', sample: String(operationEventDefinitions[0]?.causesScrap) },
           ],
