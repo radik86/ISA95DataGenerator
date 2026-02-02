@@ -1845,6 +1845,16 @@ const DataMigration: React.FC = () => {
         const hasSourceFields = ifThenSourceFields.length > 0 && ifThenSourceFields.some(f => f.trim());
         const hasSourceField = ifThenSourceField && ifThenSourceField.trim();
         
+        console.log('[IfThen Rule Save] Building parameters:', {
+          ifThenSourceField,
+          ifThenSourceFields,
+          hasSourceField,
+          hasSourceFields,
+          ifThenCondition,
+          ifThenTrueValue,
+          ifThenFalseValue
+        });
+        
         if (!hasSourceFields && !hasSourceField) {
           showSnackbar('Please select at least one source field', 'error');
           return;
@@ -1860,6 +1870,8 @@ const DataMigration: React.FC = () => {
           trueValue: ifThenTrueValue, 
           falseValue: ifThenFalseValue 
         };
+        
+        console.log('[IfThen Rule Save] Final parameters:', parameters);
         break;
       case RuleType.Case:
         if (!caseSourceField) {
@@ -2371,22 +2383,41 @@ const DataMigration: React.FC = () => {
         return params?.value || '';
       
       case RuleType.IfThen:
-        // Check sourceFields array first (primary source field), then fall back to sourceField
+        // Prioritize Primary Source Field over Additional Fields (matches migration logic)
         let sourceField = '';
         let sourceValue = '';
         
-        if (params?.sourceFields && params.sourceFields.length > 0) {
-          // Use first field from sourceFields array (matches actual migration logic)
-          sourceField = params.sourceFields[0];
-          sourceValue = sourceField ? String(sourceRow[sourceField] || '') : '';
-        } else if (params?.sourceField) {
+        // Priority 1: Use Primary Source Field if set
+        if (params?.sourceField && params.sourceField.trim()) {
           sourceField = params.sourceField;
-          sourceValue = String(sourceRow[sourceField] || '');
+          sourceValue = String(sourceRow[sourceField] !== undefined ? sourceRow[sourceField] : '');
         }
+        // Priority 2: Fall back to Additional Source Fields
+        else if (params?.sourceFields && params.sourceFields.length > 0) {
+          sourceField = params.sourceFields[0];
+          sourceValue = sourceField ? String(sourceRow[sourceField] !== undefined ? sourceRow[sourceField] : '') : '';
+        }
+        
+        console.log('[IfThen Preview] Row', rowIndex, '- Evaluating condition:', {
+          sourceField,
+          sourceValue,
+          condition: params?.condition,
+          availableFields: Object.keys(sourceRow),
+          sourceRowData: sourceRow
+        });
         
         const condition = params?.condition || '';
         const matches = evaluateCondition(sourceValue, condition);
-        return matches ? (params?.trueValue || '') : (params?.falseValue || '');
+        const result = matches ? (params?.trueValue || '') : (params?.falseValue || '');
+        
+        console.log('[IfThen Preview] Row', rowIndex, '- Result:', {
+          conditionMet: matches,
+          willReturn: result,
+          trueValue: params?.trueValue,
+          falseValue: params?.falseValue
+        });
+        
+        return result;
       
       case RuleType.Case:
         const caseSourceField = params?.sourceField;
@@ -2447,6 +2478,14 @@ const DataMigration: React.FC = () => {
   const evaluateCondition = (value: any, condition: string): boolean => {
     const strValue = String(value).toLowerCase();
     const conditionLower = condition.toLowerCase();
+
+    // Null/empty checks
+    if (conditionLower === 'isnull' || conditionLower === 'isempty') {
+      return value === null || value === undefined || String(value).trim() === '';
+    }
+    if (conditionLower === 'isnotnull' || conditionLower === 'isnotempty') {
+      return value !== null && value !== undefined && String(value).trim() !== '';
+    }
 
     if (conditionLower.startsWith('contains:')) {
       const searchTerm = conditionLower.substring(9).trim();
@@ -2989,33 +3028,53 @@ const DataMigration: React.FC = () => {
       case RuleType.IfThen:
         // Enhanced IfThen with multiple source fields support
         if (!sourceRecord) {
+          console.log('[IfThen] No source record, returning falseValue:', params?.falseValue);
           return params?.falseValue || '';
         }
         
-        // Support for multiple source fields
+        // Support for multiple source fields - PREFER sourceField (Primary) over sourceFields (Additional)
         let sourceValueForCondition = '';
-        if (params?.sourceFields && params.sourceFields.length > 0) {
+        let conditionFieldName = '';
+        
+        // Priority 1: Use Primary Source Field if set
+        if (params?.sourceField && params.sourceField.trim()) {
+          conditionFieldName = params.sourceField;
+          sourceValueForCondition = String(sourceRecord[params.sourceField] !== undefined ? sourceRecord[params.sourceField] : '');
+        }
+        // Priority 2: Fall back to Additional Source Fields if Primary is not set
+        else if (params?.sourceFields && params.sourceFields.length > 0) {
           // Use first non-empty field value for condition evaluation
           for (const field of params.sourceFields) {
             const val = sourceRecord[field];
             if (val !== undefined && val !== null && String(val).trim()) {
               sourceValueForCondition = String(val);
+              conditionFieldName = field;
               break;
             }
           }
-        } else if (params?.sourceField) {
-          sourceValueForCondition = String(sourceRecord[params.sourceField] || '');
         }
         
+        console.log('[IfThen] Evaluating condition:', {
+          conditionFieldName,
+          sourceValue: sourceValueForCondition,
+          condition: params?.condition,
+          availableFields: Object.keys(sourceRecord),
+          sourceFieldValue: conditionFieldName ? sourceRecord[conditionFieldName] : 'N/A'
+        });
+        
         if (!sourceValueForCondition) {
+          console.log('[IfThen] No source value, returning falseValue:', params?.falseValue);
           return params?.falseValue || '';
         }
         
         const conditionMet = evaluateCondition(sourceValueForCondition, params?.condition || '');
+        console.log('[IfThen] Condition met:', conditionMet, 'will return:', conditionMet ? params?.trueValue : params?.falseValue);
         
         // Process true/false values with field placeholders
         const resultValue = conditionMet ? (params?.trueValue || '') : (params?.falseValue || '');
-        return replaceFieldPlaceholders(resultValue, sourceRecord);
+        const finalValue = replaceFieldPlaceholders(resultValue, sourceRecord);
+        console.log('[IfThen] Final value after placeholder replacement:', finalValue);
+        return finalValue;
         
       case RuleType.Case:
         // Match source field value against cases
