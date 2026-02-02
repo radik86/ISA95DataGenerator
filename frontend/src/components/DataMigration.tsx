@@ -1506,6 +1506,39 @@ const DataMigration: React.FC = () => {
     }
   };
 
+  const handleGenerateBridgeMappingPreview = async (mappingIndex: number) => {
+    try {
+      const mapping = tableMappings[mappingIndex];
+      if (!mapping || !mapping.isBridge) return;
+
+      const sourceData = await loadSourceData(mapping.sourceTable);
+      const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
+      const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
+      
+      if (!entity1 || !entity2) return;
+
+      // Generate preview rows for bridge table
+      const previewRows = sourceData.slice(0, 5); // Preview first 5 rows
+
+      const previews = previewRows.map((row, idx) => ({
+        _sourceRow: idx + 1,
+        'Source Entity Type': entity1.name,
+        'Source Entity ID': row[mapping.bridgeEntity1Column] || '(empty)',
+        'Target Entity Type': entity2.name,
+        'Target Entity ID': row[mapping.bridgeEntity2Column] || '(empty)',
+        'Relationship Type': mapping.relationshipType || 'related',
+        'Bridge Table': mapping.targetEntity
+      }));
+
+      setPreviewData(previews);
+      setPreviewMappingIndex(mappingIndex);
+      setPreviewDialog(true);
+    } catch (error) {
+      console.error('Error generating bridge preview:', error);
+      showSnackbar('Failed to generate bridge preview', 'error');
+    }
+  };
+
   const handleRemoveMapping = (index: number) => {
     setTableMappings(tableMappings.filter((_, i) => i !== index));
   };
@@ -4314,15 +4347,7 @@ const DataMigration: React.FC = () => {
                           variant="outlined"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Set state for preview
-                            const mapping = tableMappings[originalIndex];
-                            setSelectedSourceTable(mapping.sourceTable);
-                            setBridgeEntity1(mapping.bridgeEntity1);
-                            setBridgeEntity1Column(mapping.bridgeEntity1Column);
-                            setBridgeEntity2(mapping.bridgeEntity2);
-                            setBridgeEntity2Column(mapping.bridgeEntity2Column);
-                            setRelationshipType(mapping.relationshipType || 'related');
-                            handleGenerateBridgePreview();
+                            handleGenerateBridgeMappingPreview(originalIndex);
                           }}
                           sx={{ mr: 1 }}
                         >
@@ -6041,19 +6066,29 @@ const DataMigration: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Mapping Preview
+          {previewMappingIndex !== null && tableMappings[previewMappingIndex] && tableMappings[previewMappingIndex].isBridge 
+            ? 'Bridge Table Preview' 
+            : 'Mapping Preview'
+          }
           {previewMappingIndex !== null && tableMappings[previewMappingIndex] && (
             <Typography variant="body2" color="text.secondary">
-              {tableMappings[previewMappingIndex].sourceTable} → {
-                isa95Entities.find(e => e.tableName === tableMappings[previewMappingIndex].targetEntity)?.name || 
-                tableMappings[previewMappingIndex].targetEntity
-              }
+              {tableMappings[previewMappingIndex].isBridge ? (
+                `${tableMappings[previewMappingIndex].targetEntity} (${tableMappings[previewMappingIndex].sourceTable})`
+              ) : (
+                `${tableMappings[previewMappingIndex].sourceTable} → ${
+                  isa95Entities.find(e => e.tableName === tableMappings[previewMappingIndex].targetEntity)?.name || 
+                  tableMappings[previewMappingIndex].targetEntity
+                }`
+              )}
             </Typography>
           )}
         </DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Preview of first 5 rows showing how source data will be transformed to ISA95 entities
+            {previewMappingIndex !== null && tableMappings[previewMappingIndex] && tableMappings[previewMappingIndex].isBridge
+              ? 'Preview of first 5 rows showing the bridge table relationships that will be created'
+              : 'Preview of first 5 rows showing how source data will be transformed to ISA95 entities'
+            }
           </Alert>
           {previewData.length > 0 ? (
             <TableContainer component={Paper} variant="outlined">
