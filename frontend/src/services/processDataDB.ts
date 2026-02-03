@@ -186,6 +186,8 @@ export interface EquipmentPropertyTrackingRecord extends BaseRecord {
   equipmentId: string;
   equipmentPropertyId: string;
   equipmentPropertyName: string;
+  equipmentClassId: string;
+  equipmentClassPropertyId: string;
   value: number | string;
   uom: string;
   createdTimestamp: string;

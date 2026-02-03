@@ -135,6 +135,8 @@ interface EquipmentPropertyTracking {
   equipmentId: string;
   equipmentPropertyId: string;
   equipmentPropertyName: string;
+  equipmentClassId: string;
+  equipmentClassPropertyId: string;
   value: number | string;
   uom: string;
   createdTimestamp: string;
@@ -210,6 +212,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [plants, setPlants] = useState<any[]>([]);
   const [equipmentProperties, setEquipmentProperties] = useState<any[]>([]);
   const [equipmentPropertyAssignments, setEquipmentPropertyAssignments] = useState<any[]>([]);
+  const [equipmentClassPropertyAssignments, setEquipmentClassPropertyAssignments] = useState<any[]>([]);
   const [operationEventDefinitions, setOperationEventDefinitions] = useState<any[]>([]);
   const [operationEventDefSegmentAssignments, setOperationEventDefSegmentAssignments] = useState<any[]>([]);
   const [operationEventDefinitionProperties, setOperationEventDefinitionProperties] = useState<any[]>([]);
@@ -341,7 +344,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca] = await Promise.all([
+      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
@@ -352,6 +355,7 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataDB.getAll('plants'),
         masterDataDB.getAll('equipmentProperties'),
         masterDataDB.getAll('equipmentPropertyAssignments'),
+        masterDataDB.getAll('equipmentClassPropertiesAssignments'),
         masterDataDB.getAll('operationEventDefinitions'),
         masterDataDB.getAll('operationEventDefSegmentAssignments'),
         masterDataDB.getAll('operationEventDefinitionProperties'),
@@ -373,6 +377,7 @@ const ProcessDataGenerator: React.FC = () => {
       setPlants(p);
       setEquipmentProperties(eprop);
       setEquipmentPropertyAssignments(epa);
+      setEquipmentClassPropertyAssignments(ecpa);
       setOperationEventDefinitions(oed);
       setOperationEventDefSegmentAssignments(oedsa);
       setOperationEventDefinitionProperties(oedp);
@@ -1277,12 +1282,24 @@ const ProcessDataGenerator: React.FC = () => {
 
             const trackingId = `PROP-TRACK-${eqActual.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`;
 
+            // Find equipment class from equipment
+            const eqItem = equipment.find(e => e.id === eqActual.equipmentId);
+            const equipmentClassId = eqItem?.classId || '';
+            
+            // Find equipment class property ID from assignment
+            const classPropertyAssignment = equipmentClassPropertyAssignments.find(
+              ecpa => ecpa.equipmentPropertyId === assignment.equipmentPropertyId
+            );
+            const equipmentClassPropertyId = classPropertyAssignment?.equipmentClassPropertyId || '';
+
             const tracking: EquipmentPropertyTracking = {
               id: trackingId,
               segmentResponseId: eqActual.segmentResponseId,
               equipmentId: eqActual.equipmentId,
               equipmentPropertyId: assignment.equipmentPropertyId,
               equipmentPropertyName: property.name,
+              equipmentClassId: equipmentClassId,
+              equipmentClassPropertyId: equipmentClassPropertyId,
               value: value,
               uom: property.unit || '',
               createdTimestamp: sampleTime.toISOString().slice(0, 19).replace('T', ' '),
@@ -1371,12 +1388,24 @@ const ProcessDataGenerator: React.FC = () => {
 
               const trackingId = `PROP-TRACK-${eqActual.id}-CHILD-${childEq.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`;
 
+              // Find equipment class from child equipment
+              const childEqItem = equipment.find(e => e.id === childEq.id);
+              const childEquipmentClassId = childEqItem?.classId || '';
+              
+              // Find equipment class property ID from assignment
+              const childClassPropertyAssignment = equipmentClassPropertyAssignments.find(
+                ecpa => ecpa.equipmentPropertyId === assignment.equipmentPropertyId
+              );
+              const childEquipmentClassPropertyId = childClassPropertyAssignment?.equipmentClassPropertyId || '';
+
               const tracking: EquipmentPropertyTracking = {
                 id: trackingId,
                 segmentResponseId: eqActual.segmentResponseId,
                 equipmentId: childEq.id,
                 equipmentPropertyId: assignment.equipmentPropertyId,
                 equipmentPropertyName: property.name,
+                equipmentClassId: childEquipmentClassId,
+                equipmentClassPropertyId: childEquipmentClassPropertyId,
                 value: value,
                 uom: property.unit || '',
                 createdTimestamp: sampleTime.toISOString().slice(0, 19).replace('T', ' '),
@@ -1938,9 +1967,9 @@ const ProcessDataGenerator: React.FC = () => {
     const eaCsv = `${eaHeaders}\n${eaRows}`;
 
     // Export Equipment Property Tracking
-    const eptHeaders = 'PropertyTrackingID,SegmentResponseID,EquipmentID,EquipmentPropertyID,Value,UoM,CreatedTimestamp';
+    const eptHeaders = 'PropertyTrackingID,SegmentResponseID,EquipmentID,EquipmentPropertyID,EquipmentClassID,EquipmentClassPropertyID,Value,UoM,CreatedTimestamp';
     const eptRows = equipmentPropertyTracking.map(ept => 
-      `${ept.id},${ept.segmentResponseId},${ept.equipmentId},${ept.equipmentPropertyId},${ept.value},${ept.uom},${ept.createdTimestamp}`
+      `${ept.id},${ept.segmentResponseId},${ept.equipmentId},${ept.equipmentPropertyId},${ept.equipmentClassId},${ept.equipmentClassPropertyId},${ept.value},${ept.uom},${ept.createdTimestamp}`
     ).join('\n');
     const eptCsv = `${eptHeaders}\n${eptRows}`;
 
@@ -3929,7 +3958,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableRow>
                           <TableCell>ID</TableCell>
                           <TableCell>Equipment</TableCell>
+                          <TableCell>Equipment Class</TableCell>
                           <TableCell>Property</TableCell>
+                          <TableCell>Class Property</TableCell>
                           <TableCell>Value</TableCell>
                           <TableCell>UoM</TableCell>
                           <TableCell>Timestamp</TableCell>
@@ -3943,7 +3974,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             <TableRow key={ept.id}>
                               <TableCell sx={{ fontSize: '0.75rem' }}>{ept.id}</TableCell>
                               <TableCell>{equipmentItem?.name || ept.equipmentId}</TableCell>
+                              <TableCell>{ept.equipmentClassId || '-'}</TableCell>
                               <TableCell>{property?.name || ept.equipmentPropertyId}</TableCell>
+                              <TableCell>{ept.equipmentClassPropertyId || '-'}</TableCell>
                               <TableCell>{ept.value}</TableCell>
                               <TableCell>{ept.uom}</TableCell>
                               <TableCell>{ept.createdTimestamp}</TableCell>
