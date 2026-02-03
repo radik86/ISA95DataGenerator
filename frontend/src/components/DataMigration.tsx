@@ -1273,16 +1273,41 @@ const DataMigration: React.FC = () => {
     // Auto-map columns with matching names
     const autoMappings: ColumnMapping[] = sourceTable.columns
       .map(col => {
+        // Try multiple matching strategies
         const matchingField = targetEntity.fields.find(
-          f => f.name.toLowerCase() === col.name.toLowerCase() ||
-               f.name.toLowerCase().replace(/([A-Z])/g, '_$1').toLowerCase() === col.name.toLowerCase()
+          f => {
+            const fieldLower = f.name.toLowerCase();
+            const colLower = col.name.toLowerCase();
+            
+            // Strategy 1: Direct match (case-insensitive)
+            if (fieldLower === colLower) return true;
+            
+            // Strategy 2: snake_case to camelCase conversion
+            const colCamelCase = colLower.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            if (fieldLower === colCamelCase) return true;
+            
+            // Strategy 3: camelCase to snake_case conversion
+            const fieldSnakeCase = fieldLower.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+            if (fieldSnakeCase === colLower) return true;
+            
+            return false;
+          }
         );
+        
+        if (matchingField) {
+          console.log(`[Auto-Mapping] Matched column "${col.name}" to field "${matchingField.name}"`);
+        } else {
+          console.log(`[Auto-Mapping] No match found for column "${col.name}"`);
+        }
+        
         return matchingField ? {
           sourceColumn: col.name,
           targetField: matchingField.name,
         } : null;
       })
       .filter(m => m !== null) as ColumnMapping[];
+    
+    console.log(`[Auto-Mapping] Created ${autoMappings.length} auto-mappings for ${selectedTargetEntity}`);
 
     // Initialize field mappings for all target fields
     const fieldMappings: FieldMapping[] = targetEntity.fields.map(field => {
@@ -1484,6 +1509,13 @@ const DataMigration: React.FC = () => {
   };
 
   const handleGenerateBridgePreview = async () => {
+    console.log('[Bridge Preview] Generating bridge table preview:', {
+      selectedSourceTable,
+      bridgeEntity1,
+      bridgeEntity2,
+      bridgeEntity1Column,
+      bridgeEntity2Column
+    });
     if (!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeEntity1Column || !bridgeEntity2Column) {
       return;
     }
@@ -1508,9 +1540,16 @@ const DataMigration: React.FC = () => {
       }));
 
       setBridgePreview(previewData);
+      console.log('[Bridge Preview] Bridge preview generated for dialog:', {
+        previewCount: previewData.length,
+        entity1: entity1?.name,
+        entity2: entity2?.name,
+        sampleSourcePK: previewData[0]?.bridgeMapping?.['Source PrimaryKey'],
+        sampleTargetPK: previewData[0]?.bridgeMapping?.['Target PrimaryKey']
+      });
       setShowBridgePreview(true);
     } catch (error) {
-      console.error('Error generating preview:', error);
+      console.error('[Bridge Preview] Error generating preview:', error);
       showSnackbar('Failed to generate preview', 'error');
     }
   };
@@ -1541,9 +1580,14 @@ const DataMigration: React.FC = () => {
 
       setPreviewData(previews);
       setPreviewMappingIndex(mappingIndex);
+      console.log('[Bridge Preview] Bridge preview generated:', {
+        previewCount: previews.length,
+        entity1: previews[0]?.['Source Entity Type'],
+        entity2: previews[0]?.['Target Entity Type']
+      });
       setPreviewDialog(true);
     } catch (error) {
-      console.error('Error generating bridge preview:', error);
+      console.error('[Bridge Preview] Error generating bridge preview:', error);
       showSnackbar('Failed to generate bridge preview', 'error');
     }
   };
@@ -1679,6 +1723,15 @@ const DataMigration: React.FC = () => {
   const handleOpenFieldRuleDialog = (mappingIndex: number, fieldName: string) => {
     const mapping = tableMappings[mappingIndex];
     const fieldMapping = mapping.fieldMappings.find(f => f.fieldName === fieldName);
+    
+    console.log('[Field Rule Dialog] Opening field rule dialog:', {
+      mappingIndex,
+      fieldName,
+      sourceTable: mapping?.sourceTable,
+      targetEntity: mapping?.targetEntity,
+      currentSourceColumn: fieldMapping?.sourceColumn,
+      hasExistingRule: !!fieldMapping?.fieldRule
+    });
     
     setSelectedFieldForRule({ mappingIndex, fieldName });
     
@@ -1984,6 +2037,14 @@ const DataMigration: React.FC = () => {
   };
 
   const handleAccordionToggle = (index: number, isBridge: boolean) => {
+    const mapping = tableMappings[index];
+    console.log('[Table Mapping] Accordion toggled:', {
+      index,
+      isBridge,
+      sourceTable: mapping?.sourceTable,
+      targetEntity: mapping?.targetEntity,
+      isExpanding: isBridge ? !expandedBridgeMappings.has(index) : !expandedMappings.has(index)
+    });
     if (isBridge) {
       const newExpanded = new Set(expandedBridgeMappings);
       if (newExpanded.has(index)) {
@@ -2236,6 +2297,13 @@ const DataMigration: React.FC = () => {
 
   const generatePreviewData = async (mappingIndex: number) => {
     const mapping = tableMappings[mappingIndex];
+    console.log('[Preview] Generating preview for table mapping:', {
+      mappingIndex,
+      sourceTable: mapping?.sourceTable,
+      targetEntity: mapping?.targetEntity,
+      fieldMappingsCount: mapping?.fieldMappings?.length,
+      isBridge: mapping?.isBridge
+    });
     if (!mapping) return;
 
     const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
@@ -2351,9 +2419,13 @@ const DataMigration: React.FC = () => {
 
       setPreviewData(previews);
       setPreviewMappingIndex(mappingIndex);
+      console.log('[Preview] Preview data generated successfully:', {
+        previewRecords: previews.length,
+        sampleRecord: previews[0]
+      });
       setPreviewDialog(true);
     } catch (error) {
-      console.error('Error generating preview:', error);
+      console.error('[Preview] Error generating preview:', error);
       showSnackbar('Error generating preview', 'error');
     }
   };
@@ -2535,6 +2607,11 @@ const DataMigration: React.FC = () => {
   };
 
   const generateFieldRulePreview = async () => {
+    console.log('[Field Rule Preview] Generating field rule preview:', {
+      selectedFieldForRule,
+      ruleType: fieldRuleType,
+      hasPreviewRows: previewRows?.length > 0
+    });
     if (!selectedFieldForRule) {
       return;
     }
@@ -2706,9 +2783,13 @@ const DataMigration: React.FC = () => {
       });
 
       setFieldRulePreviewData(preview);
+      console.log('[Field Rule Preview] Field rule preview generated:', {
+        previewCount: preview.length,
+        sampleTransformation: preview[0]
+      });
       setShowFieldRulePreview(true);
     } catch (error) {
-      console.error('Error generating field rule preview:', error);
+      console.error('[Field Rule Preview] Error generating field rule preview:', error);
     }
   };
 

@@ -389,6 +389,13 @@ const ProcessDataGenerator: React.FC = () => {
       setShiftCrewAssignments(sca);
       
       console.log('[Master Data] Loaded:', {
+        materials: mat.length,
+        equipment: eq.length,
+        processSegments: ps.length,
+        equipmentProperties: eprop.length,
+        equipmentPropertyAssignments: epa.length,
+        equipmentClassPropertyAssignments: ecpa.length,
+        sampleEquipmentClassPropertyAssignments: ecpa.slice(0, 3),
         operationEventDefinitions: oed.length,
         operationEventDefSegmentAssignments: oedsa.length,
         operationEventDefinitionProperties: oedp.length,
@@ -1222,7 +1229,8 @@ const ProcessDataGenerator: React.FC = () => {
       const generatedPropertyTracking: EquipmentPropertyTracking[] = [];
       const SAMPLING_INTERVAL_SECONDS = 30;
 
-      for (const eqActual of generatedEqActuals) {
+      for (let eqActualIndex = 0; eqActualIndex < generatedEqActuals.length; eqActualIndex++) {
+        const eqActual = generatedEqActuals[eqActualIndex];
         // Find property assignments for this equipment and process segment
         const segResp = generatedSegResponses.find(sr => sr.id === eqActual.segmentResponseId);
         if (!segResp) continue;
@@ -1291,6 +1299,17 @@ const ProcessDataGenerator: React.FC = () => {
               ecpa => ecpa.equipmentPropertyId === assignment.equipmentPropertyId
             );
             const equipmentClassPropertyId = classPropertyAssignment?.equipmentClassPropertyId || '';
+            
+            // Debug logging for first iteration to check data
+            if (i === 0 && eqActualIndex === 0) {
+              console.log('[Equipment Property Tracking Debug]', {
+                equipmentPropertyId: assignment.equipmentPropertyId,
+                equipmentClassPropertyAssignmentsCount: equipmentClassPropertyAssignments.length,
+                sampleAssignments: equipmentClassPropertyAssignments.slice(0, 3),
+                foundAssignment: classPropertyAssignment,
+                equipmentClassPropertyId: equipmentClassPropertyId
+              });
+            }
 
             const tracking: EquipmentPropertyTracking = {
               id: trackingId,

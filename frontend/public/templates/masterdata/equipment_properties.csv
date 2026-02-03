@@ -16,3 +16,7 @@ EP-PACK-CTRL,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
 EP-PACK-STATE,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
 EP-OVEN-ZONE-HEAT,Oven Zone Heat,Oven Zone Heat,DECIMAL,Celsius,0,250
 EP-MIX-MOTORSPEED,MixerMotorSpeed,Mixer Motor Speed,DECIMAL,RPM,40,80
+EP-SIZE,SizeOfTheObject,Size of the object,INTEGER,m2,1,10000
+EP-AREATHROUGHPUT,AreaThroughput,Area Throughput,INTEGER,EA/h,100,1000
+EP-HUMIDITY,Humidity,Humidity,INTEGER,%,50,70
+EP-REGION,Region,Region of the Enterprise,STRING,NA,EUROPE,EUROPE

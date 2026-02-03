@@ -16,3 +16,7 @@ ECP-PACK-CTRL,PACK,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
 ECP-PACK-STATE,PACK,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
 ECP-OVEN-ZONE-HEAT,UTILOVEN,Oven Zone Heat,Oven Zone Heat,DECIMAL,Celsius,0,250
 ECP-MIX-MOTORSPEED,UTILMIXER,MixerMotorSpeed,Mixer Motor Speed,DECIMAL,RPM,40,80
+ECP-SIZE,GENERAL,SizeOfTheObject,Size of the object,INTEGER,m2,1,10000
+ECP-AREATHROUGHPUT,GENERAL,AreaThroughput,Area Throughput,INTEGER,EA/h,100,1000
+ECP-HUMIDITY,GENERAL,Humidity,Humidity,INTEGER,%,50,70
+ECP-REGION,GENERAL,Region,Region,STRING,NA,EUROPE,EUROPE
