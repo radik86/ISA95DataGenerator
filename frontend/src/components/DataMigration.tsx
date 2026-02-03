@@ -3018,9 +3018,13 @@ const DataMigration: React.FC = () => {
             const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
             
             if (entity1 && entity2) {
-              // Bridge table structure: lookup values from source, actual PKs come from generated entity files
+              // Bridge table structure: initialize columns in strict order
+              // Required order: Source type, Source PrimaryKey, Target Type, Target PrimaryKey, Relationship Type
               transformed['Source type'] = entity1.name;
+              transformed['Source PrimaryKey'] = ''; // Placeholder, will be set below
               transformed['Target Type'] = entity2.name;
+              transformed['Target PrimaryKey'] = ''; // Placeholder, will be set below
+              transformed['Relationship Type'] = mapping.relationshipType || 'related';
               
               // Handle Entity 1 PrimaryKey - either from source column or using PK rule from entity mapping
               if (mapping.bridgeEntity1UsePKRule) {
@@ -3159,8 +3163,6 @@ const DataMigration: React.FC = () => {
                 transformed['Target PrimaryKey'] = record[mapping.bridgeEntity2Column || ''] || '';
                 console.log('[Bridge Mapping] Entity 2 PK from column:', mapping.bridgeEntity2Column, '=', transformed['Target PrimaryKey']);
               }
-              
-              transformed['Relationship Type'] = mapping.relationshipType || 'related';
               
               // Generate PrimaryKey for bridge table if PK rule is configured
               if (mapping.primaryKeyRule) {
@@ -3771,14 +3773,15 @@ const DataMigration: React.FC = () => {
       const csvRows: string[] = [];
       
       if (type === 'entity-to-entity' || (type === 'all' && bridgeMappings.length > 0)) {
-        // Bridge table format
-        csvRows.push('Bridge Table Name,Source Table,First Entity,First Entity Column,Second Entity,Second Entity Column,Relationship Type,Enabled');
+        // Entity-to-entity relationship format (strict column order)
+        csvRows.push('Source type,Source PrimaryKey,Target Type,Target PrimaryKey,Relationship Type');
         
         bridgeMappings.forEach(mapping => {
           const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
           const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
+          // Note: This exports the configuration template. Actual PrimaryKey values will be populated during data generation
           csvRows.push(
-            `"${mapping.targetEntity}","${mapping.sourceTable}","${entity1?.name || mapping.bridgeEntity1}","${mapping.bridgeEntity1Column || ''}","${entity2?.name || mapping.bridgeEntity2}","${mapping.bridgeEntity2Column || ''}","${mapping.relationshipType || ''}","${mapping.enabled}"`
+            `"${entity1?.name || mapping.bridgeEntity1}","[Generated]","${entity2?.name || mapping.bridgeEntity2}","[Generated]","${mapping.relationshipType || ''}"`
           );
         });
       }

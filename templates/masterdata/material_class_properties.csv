@@ -1,0 +1,4 @@
+MaterialClassPropertyId,MaterialClassId,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue
+DefaultUnitOfMeasure,,DefaultUnitOfMeasure,g,,g,g,
+MaterialCode,,MaterialCode,NA,,NA,MC1,
+DefaultUnitOfMeasureEA,,DefaultUnitOfMeasure,EA,,EA,EA,EA

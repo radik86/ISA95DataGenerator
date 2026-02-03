@@ -135,7 +135,7 @@ public class DataGenerationController : ControllerBase
                     using var mappingWriter = new StreamWriter(mappingStream);
                     
                     // Write mapping CSV header
-                    await mappingWriter.WriteLineAsync("\"Source type\",\"Source PrimaryKey\",\"Target type\",\"Target PrimaryKey\",\"Relationship Type\"");
+                    await mappingWriter.WriteLineAsync("\"Source type\",\"Source PrimaryKey\",\"Target Type\",\"Target PrimaryKey\",\"Relationship Type\"");
                     
                     // Write mapping rows for this relationship
                     foreach (var mapping in group)
