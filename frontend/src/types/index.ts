@@ -78,7 +78,8 @@ export enum RuleType {
   IfThen = 'IfThen',
   Case = 'Case',
   Coalesce = 'Coalesce',
-  Concat = 'Concat'
+  Concat = 'Concat',
+  CompositeConcat = 'CompositeConcat'
 }
 
 export type RuleParameters = 
@@ -92,7 +93,8 @@ export type RuleParameters =
   | IfThenParameters
   | CaseParameters
   | CoalesceParameters
-  | ConcatParameters;
+  | ConcatParameters
+  | CompositeConcatParameters;
 
 export interface RangeParameters {
   min: number;
@@ -155,6 +157,17 @@ export interface ConcatParameters {
   separator?: string; // Optional separator between values (default: '')
   prefix?: string; // Optional prefix for the result
   suffix?: string; // Optional suffix for the result
+}
+
+export interface CompositeConcatParameters {
+  fields: Array<{
+    fieldName: string; // Source field name
+    prefix?: string; // Optional prefix for this field's value
+    suffix?: string; // Optional suffix for this field's value
+  }>; // Array of fields with individual concat parameters
+  separator?: string; // Separator between concatenated field values
+  globalPrefix?: string; // Optional prefix for entire composite key
+  globalSuffix?: string; // Optional suffix for entire composite key
 }
 
 export interface DataGenerationRequest {

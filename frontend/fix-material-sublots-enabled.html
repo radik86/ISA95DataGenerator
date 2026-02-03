@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix Material Sublots Enabled Status</title>
+</head>
+<body>
+    <h1>Fix Material Sublots Mapping</h1>
+    <button onclick="fixMapping()">Enable Material Sublots Mapping</button>
+    <div id="output" style="margin-top: 20px; font-family: monospace; white-space: pre-wrap;"></div>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('output');
+            output.textContent += message + '\n';
+        }
+
+        async function fixMapping() {
+            try {
+                log('Opening migrationConfigDB...');
+                const request = indexedDB.open('migrationConfigDB', 1);
+                
+                request.onerror = () => {
+                    log('ERROR: Failed to open database');
+                };
+                
+                request.onsuccess = async (event) => {
+                    const db = event.target.result;
+                    log('Database opened successfully');
+                    
+                    // Read all table mappings
+                    const transaction = db.transaction(['tableMappings'], 'readwrite');
+                    const store = transaction.objectStore('tableMappings');
+                    const getAllRequest = store.getAll();
+                    
+                    getAllRequest.onsuccess = () => {
+                        const mappings = getAllRequest.result;
+                        log(`Found ${mappings.length} total mappings`);
+                        
+                        // Find material_sublots mapping
+                        const materialSublotsMapping = mappings.find(m => 
+                            m.sourceTable === 'material_sublots' || 
+                            m.targetEntity === 'materialSublots'
+                        );
+                        
+                        if (!materialSublotsMapping) {
+                            log('ERROR: Material Sublots mapping not found!');
+                            return;
+                        }
+                        
+                        log(`Found Material Sublots mapping:`);
+                        log(`  Source: ${materialSublotsMapping.sourceTable}`);
+                        log(`  Target: ${materialSublotsMapping.targetEntity}`);
+                        log(`  Current enabled status: ${materialSublotsMapping.enabled}`);
+                        
+                        if (materialSublotsMapping.enabled === true) {
+                            log('✓ Mapping is already enabled!');
+                            return;
+                        }
+                        
+                        // Update to enabled
+                        materialSublotsMapping.enabled = true;
+                        
+                        const putRequest = store.put(materialSublotsMapping);
+                        putRequest.onsuccess = () => {
+                            log('✓ SUCCESS: Material Sublots mapping enabled!');
+                            log('');
+                            log('Please refresh the Data Migration page and try the migration again.');
+                        };
+                        
+                        putRequest.onerror = () => {
+                            log('ERROR: Failed to update mapping');
+                        };
+                    };
+                    
+                    getAllRequest.onerror = () => {
+                        log('ERROR: Failed to read mappings');
+                    };
+                };
+            } catch (error) {
+                log('ERROR: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

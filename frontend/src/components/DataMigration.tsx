@@ -39,6 +39,7 @@ import {
   Tooltip,
   Stack,
   Autocomplete,
+  Switch,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -119,8 +120,10 @@ interface TableMapping {
   isBridge?: boolean;
   bridgeEntity1?: string;
   bridgeEntity1Column?: string;
+  bridgeEntity1UsePKRule?: boolean; // If true, use the PK rule from bridgeEntity1's mapping
   bridgeEntity2?: string;
   bridgeEntity2Column?: string;
+  bridgeEntity2UsePKRule?: boolean; // If true, use the PK rule from bridgeEntity2's mapping
   relationshipType?: string; // For bridge tables
   filters?: TableFilter[]; // Add filters for source table
 }
@@ -176,8 +179,10 @@ const DataMigration: React.FC = () => {
   const [isBridgeMode, setIsBridgeMode] = useState(false);
   const [bridgeEntity1, setBridgeEntity1] = useState('');
   const [bridgeEntity1Column, setBridgeEntity1Column] = useState('');
+  const [bridgeEntity1UsePKRule, setBridgeEntity1UsePKRule] = useState(false);
   const [bridgeEntity2, setBridgeEntity2] = useState('');
   const [bridgeEntity2Column, setBridgeEntity2Column] = useState('');
+  const [bridgeEntity2UsePKRule, setBridgeEntity2UsePKRule] = useState(false);
   const [bridgeName, setBridgeName] = useState('');
   const [relationshipType, setRelationshipType] = useState('related');
   const [bridgePreview, setBridgePreview] = useState<any[]>([]);
@@ -270,6 +275,10 @@ const DataMigration: React.FC = () => {
   const [pkSeqPadding, setPkSeqPadding] = useState(3);
   const [pkCompositeFields, setPkCompositeFields] = useState<string[]>([]);
   const [pkCompositeSeparator, setPkCompositeSeparator] = useState('-');
+  const [pkCompositeConcatFields, setPkCompositeConcatFields] = useState<Array<{fieldName: string; prefix?: string; suffix?: string}>>([]);
+  const [pkCompositeConcatSeparator, setPkCompositeConcatSeparator] = useState('-');
+  const [pkCompositeConcatGlobalPrefix, setPkCompositeConcatGlobalPrefix] = useState('');
+  const [pkCompositeConcatGlobalSuffix, setPkCompositeConcatGlobalSuffix] = useState('');
 
   // Load ISA95 entities from backend on mount
   useEffect(() => {
@@ -456,6 +465,11 @@ const DataMigration: React.FC = () => {
       const materials = masterDataResults['materials'];
       const materialLots = masterDataResults['materialLots'];
       const materialSublots = masterDataResults['materialSublots'];
+      console.log('[DataMigration] Material Sublots loaded:', {
+        count: materialSublots?.length || 0,
+        sample: materialSublots?.[0],
+        allIds: materialSublots?.map(s => s.id)
+      });
       const materialDefinitionProperties = masterDataResults['materialDefinitionProperties'];
       const materialDefinitionPropertyAssignments = masterDataResults['materialDefinitionPropertyAssignments'];
       const equipmentClasses = masterDataResults['equipmentClasses'];
@@ -1349,8 +1363,19 @@ const DataMigration: React.FC = () => {
   };
 
   const handleAddBridgeMapping = () => {
-    if (!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeEntity1Column || !bridgeEntity2Column || !bridgeName) {
-      showSnackbar('Please fill all bridge table fields', 'error');
+    // Validate that at least one source is provided for each entity (column or PK rule)
+    if (!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeName) {
+      showSnackbar('Please fill all required bridge table fields', 'error');
+      return;
+    }
+    
+    if (!bridgeEntity1Column && !bridgeEntity1UsePKRule) {
+      showSnackbar('Please select either a source column or use PK rule for Entity 1', 'error');
+      return;
+    }
+    
+    if (!bridgeEntity2Column && !bridgeEntity2UsePKRule) {
+      showSnackbar('Please select either a source column or use PK rule for Entity 2', 'error');
       return;
     }
 
@@ -1414,8 +1439,10 @@ const DataMigration: React.FC = () => {
       isBridge: true,
       bridgeEntity1: bridgeEntity1,
       bridgeEntity1Column: bridgeEntity1Column,
+      bridgeEntity1UsePKRule: bridgeEntity1UsePKRule,
       bridgeEntity2: bridgeEntity2,
       bridgeEntity2Column: bridgeEntity2Column,
+      bridgeEntity2UsePKRule: bridgeEntity2UsePKRule,
       relationshipType: relationshipType || 'related',
     };
 
@@ -1435,12 +1462,13 @@ const DataMigration: React.FC = () => {
     setSelectedSourceTable('');
     setBridgeEntity1('');
     setBridgeEntity1Column('');
+    setBridgeEntity1UsePKRule(false);
     setBridgeEntity2('');
     setBridgeEntity2Column('');
+    setBridgeEntity2UsePKRule(false);
     setBridgeName('');
     setRelationshipType('related');
-    setBridgeEntity2Column('');
-    setBridgeName('');
+    setEditingBridgeIndex(null);
     setIsBridgeMode(false);
     setEditingBridgeIndex(null);
   };
@@ -1514,9 +1542,21 @@ const DataMigration: React.FC = () => {
       bridgeEntity1,
       bridgeEntity2,
       bridgeEntity1Column,
-      bridgeEntity2Column
+      bridgeEntity2Column,
+      bridgeEntity1UsePKRule,
+      bridgeEntity2UsePKRule
     });
-    if (!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeEntity1Column || !bridgeEntity2Column) {
+    if (!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2) {
+      return;
+    }
+    
+    // Validate that either column or PK rule is selected for each entity
+    if (!bridgeEntity1Column && !bridgeEntity1UsePKRule) {
+      showSnackbar('Please select a source column or use PK rule for Entity 1', 'error');
+      return;
+    }
+    if (!bridgeEntity2Column && !bridgeEntity2UsePKRule) {
+      showSnackbar('Please select a source column or use PK rule for Entity 2', 'error');
       return;
     }
 
@@ -1528,16 +1568,35 @@ const DataMigration: React.FC = () => {
       if (!entity1 || !entity2) return;
 
       // Get first 5 records for preview
-      const previewData = sourceData.slice(0, 5).map((record: any) => ({
-        sourceRecord: record,
-        bridgeMapping: {
-          'Source type': entity1.name,
-          'Source PrimaryKey': record[bridgeEntity1Column] || '(empty)',
-          'Target Type': entity2.name,
-          'Target PrimaryKey': record[bridgeEntity2Column] || '(empty)',
-          'Relationship Type': relationshipType || 'related'
+      const previewData = sourceData.slice(0, 5).map((record: any) => {
+        let sourcePK: string;
+        let targetPK: string;
+        
+        // Determine Source PrimaryKey
+        if (bridgeEntity1UsePKRule) {
+          sourcePK = '(Generated via PK Rule)';
+        } else {
+          sourcePK = record[bridgeEntity1Column] || '(empty)';
         }
-      }));
+        
+        // Determine Target PrimaryKey
+        if (bridgeEntity2UsePKRule) {
+          targetPK = '(Generated via PK Rule)';
+        } else {
+          targetPK = record[bridgeEntity2Column] || '(empty)';
+        }
+        
+        return {
+          sourceRecord: record,
+          bridgeMapping: {
+            'Source type': entity1.name,
+            'Source PrimaryKey': sourcePK,
+            'Target Type': entity2.name,
+            'Target PrimaryKey': targetPK,
+            'Relationship Type': relationshipType || 'related'
+          }
+        };
+      });
 
       setBridgePreview(previewData);
       console.log('[Bridge Preview] Bridge preview generated for dialog:', {
@@ -1568,22 +1627,43 @@ const DataMigration: React.FC = () => {
       // Generate preview rows for bridge table
       const previewRows = sourceData.slice(0, 5); // Preview first 5 rows
 
-      const previews = previewRows.map((row, idx) => ({
-        _sourceRow: idx + 1,
-        'Source Entity Type': entity1.name,
-        'Source Entity ID': row[mapping.bridgeEntity1Column] || '(empty)',
-        'Target Entity Type': entity2.name,
-        'Target Entity ID': row[mapping.bridgeEntity2Column] || '(empty)',
-        'Relationship Type': mapping.relationshipType || 'related',
-        'Bridge Table': mapping.targetEntity
-      }));
+      const previews = previewRows.map((row, idx) => {
+        let sourceEntityId: string;
+        let targetEntityId: string;
+        
+        // Determine Source Entity ID
+        if (mapping.bridgeEntity1UsePKRule) {
+          sourceEntityId = '(Generated via PK Rule)';
+        } else {
+          sourceEntityId = row[mapping.bridgeEntity1Column] || '(empty)';
+        }
+        
+        // Determine Target Entity ID
+        if (mapping.bridgeEntity2UsePKRule) {
+          targetEntityId = '(Generated via PK Rule)';
+        } else {
+          targetEntityId = row[mapping.bridgeEntity2Column] || '(empty)';
+        }
+        
+        return {
+          _sourceRow: idx + 1,
+          'Source Entity Type': entity1.name,
+          'Source Entity ID': sourceEntityId,
+          'Target Entity Type': entity2.name,
+          'Target Entity ID': targetEntityId,
+          'Relationship Type': mapping.relationshipType || 'related',
+          'Bridge Table': mapping.targetEntity
+        };
+      });
 
       setPreviewData(previews);
       setPreviewMappingIndex(mappingIndex);
       console.log('[Bridge Preview] Bridge preview generated:', {
         previewCount: previews.length,
         entity1: previews[0]?.['Source Entity Type'],
-        entity2: previews[0]?.['Target Entity Type']
+        entity2: previews[0]?.['Target Entity Type'],
+        entity1UsesPKRule: mapping.bridgeEntity1UsePKRule,
+        entity2UsesPKRule: mapping.bridgeEntity2UsePKRule
       });
       setPreviewDialog(true);
     } catch (error) {
@@ -2105,6 +2185,12 @@ const DataMigration: React.FC = () => {
           setPkCompositeFields(params?.fields || []);
           setPkCompositeSeparator(params?.separator || '-');
           break;
+        case RuleType.CompositeConcat:
+          setPkCompositeConcatFields(params?.fields || []);
+          setPkCompositeConcatSeparator(params?.separator || '-');
+          setPkCompositeConcatGlobalPrefix(params?.globalPrefix || '');
+          setPkCompositeConcatGlobalSuffix(params?.globalSuffix || '');
+          break;
       }
     } else {
       setPkRuleType(RuleType.Sequence);
@@ -2129,6 +2215,10 @@ const DataMigration: React.FC = () => {
     setPkSeqPadding(3);
     setPkCompositeFields([]);
     setPkCompositeSeparator('-');
+    setPkCompositeConcatFields([]);
+    setPkCompositeConcatSeparator('-');
+    setPkCompositeConcatGlobalPrefix('');
+    setPkCompositeConcatGlobalSuffix('');
   };
 
   const handleSavePKRule = () => {
@@ -2178,6 +2268,18 @@ const DataMigration: React.FC = () => {
           return;
         }
         parameters = { fields: pkCompositeFields, separator: pkCompositeSeparator };
+        break;
+      case RuleType.CompositeConcat:
+        if (pkCompositeConcatFields.length === 0) {
+          showSnackbar('Please add at least one field for composite key with concat', 'error');
+          return;
+        }
+        parameters = { 
+          fields: pkCompositeConcatFields, 
+          separator: pkCompositeConcatSeparator,
+          globalPrefix: pkCompositeConcatGlobalPrefix,
+          globalSuffix: pkCompositeConcatGlobalSuffix
+        };
         break;
       default:
         showSnackbar('Invalid rule type', 'error');
@@ -2241,6 +2343,9 @@ const DataMigration: React.FC = () => {
         return `Concat(${params?.sourceFields?.slice(0, 3).join(', ')}${params?.sourceFields?.length > 3 ? '...' : ''} with ${sep})`;
       case 'Composite':
         return `Composite(${params?.fields?.join(params?.separator || '-')})`;
+      case RuleType.CompositeConcat:
+        const fieldNames = params?.fields?.map((f: any) => f.fieldName).join(', ') || '';
+        return `CompositeConcat(${fieldNames})`;
       default:
         return ruleType as string;
     }
@@ -2827,17 +2932,51 @@ const DataMigration: React.FC = () => {
 
         try {
           log(`Processing: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
+          console.log(`[Migration] Processing mapping:`, {
+            sourceTable: mapping.sourceTable,
+            targetEntity: mapping.targetEntity,
+            isBridge: mapping.isBridge,
+            fieldMappingsCount: mapping.fieldMappings?.length || 0
+          });
+          
+          // Special logging for material_sublots
+          if (mapping.sourceTable === 'material_sublots') {
+            console.log('🔍 [Material Sublots] Starting migration for material_sublots:', {
+              targetEntity: mapping.targetEntity,
+              enabled: mapping.enabled,
+              fieldMappings: mapping.fieldMappings,
+              primaryKeyRule: mapping.primaryKeyRule
+            });
+          }
 
           // Get source data
           const sourceTable = dataSource?.tables.find(t => t.name === mapping.sourceTable);
           if (!sourceTable) {
             log(`❌ Error: Source table ${mapping.sourceTable} not found`);
+            console.error(`[Migration] Source table not found in dataSource.tables:`, {
+              lookingFor: mapping.sourceTable,
+              availableTables: dataSource?.tables.map(t => t.name)
+            });
             continue;
           }
 
           // Load actual data from IndexedDB or imported source
           const sourceData = await loadSourceData(mapping.sourceTable);
           log(`Loaded ${sourceData.length} records from ${mapping.sourceTable}`);
+          console.log(`[Migration] Source data loaded:`, {
+            sourceTable: mapping.sourceTable,
+            recordCount: sourceData.length,
+            sampleRecord: sourceData[0]
+          });
+          
+          // Special logging for material_sublots data
+          if (mapping.sourceTable === 'material_sublots') {
+            console.log('🔍 [Material Sublots] Loaded source data:', {
+              count: sourceData.length,
+              allRecords: sourceData,
+              sampleFields: sourceData[0] ? Object.keys(sourceData[0]) : []
+            });
+          }
 
           // Apply filters if configured
           let filteredData = sourceData;
@@ -2874,27 +3013,153 @@ const DataMigration: React.FC = () => {
           const transformed: any = {};
           
           // Special handling for bridge tables
-          if (mapping.isBridge && mapping.bridgeEntity1 && mapping.bridgeEntity2 && 
-              mapping.bridgeEntity1Column && mapping.bridgeEntity2Column) {
+          if (mapping.isBridge && mapping.bridgeEntity1 && mapping.bridgeEntity2) {
             const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
             const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
             
             if (entity1 && entity2) {
               // Bridge table structure: lookup values from source, actual PKs come from generated entity files
               transformed['Source type'] = entity1.name;
-              transformed['Source PrimaryKey'] = record[mapping.bridgeEntity1Column] || '';
               transformed['Target Type'] = entity2.name;
               
-              // Debug logging for Target PrimaryKey
-              console.log('[Bridge Mapping Debug] Target PrimaryKey lookup:', {
-                bridgeEntity2Column: mapping.bridgeEntity2Column,
-                recordKeys: Object.keys(record),
-                targetPKValue: record[mapping.bridgeEntity2Column],
-                sourceTable: mapping.sourceTable,
-                recordSample: record
-              });
+              // Handle Entity 1 PrimaryKey - either from source column or using PK rule from entity mapping
+              if (mapping.bridgeEntity1UsePKRule) {
+                // Find the entity mapping for bridgeEntity1
+                const entity1Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity1);
+                console.log('[Bridge Mapping] Using PK rule for Entity 1:', {
+                  bridgeEntity1: mapping.bridgeEntity1,
+                  foundMapping: !!entity1Mapping,
+                  hasPKRule: !!entity1Mapping?.primaryKeyRule
+                });
+                
+                if (entity1Mapping && entity1Mapping.primaryKeyRule) {
+                  const pkParams = entity1Mapping.primaryKeyRule.parameters as any;
+                  let pkValue: any;
+
+                  switch (entity1Mapping.primaryKeyRule.ruleType) {
+                    case RuleType.Static:
+                      pkValue = pkParams?.value || '';
+                      break;
+                    case RuleType.Range:
+                      const min = pkParams?.min || 0;
+                      const max = pkParams?.max || 100;
+                      pkValue = Math.random() * (max - min) + min;
+                      break;
+                    case RuleType.Examples:
+                      const values = pkParams?.values || [];
+                      pkValue = values[Math.floor(Math.random() * values.length)];
+                      break;
+                    case RuleType.Pattern:
+                      pkValue = pkParams?.regex || '';
+                      break;
+                    case RuleType.Sequence:
+                      pkValue = pkSequenceCounter;
+                      pkSequenceCounter += pkParams?.increment || 1;
+                      break;
+                    case RuleType.PrefixSequence:
+                      const padding = pkParams?.padding || 0;
+                      const numStr = padding > 0 ? String(pkSequenceCounter).padStart(padding, '0') : String(pkSequenceCounter);
+                      pkValue = `${pkParams?.prefix || ''}${numStr}${pkParams?.suffix || ''}`;
+                      pkSequenceCounter += 1;
+                      break;
+                    case 'Composite':
+                      const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
+                        return record[fieldName] || '';
+                      });
+                      pkValue = fieldValues.join(pkParams?.separator || '_');
+                      break;
+                    case RuleType.CompositeConcat:
+                      const concatParts = (pkParams?.fields || []).map((field: any) => {
+                        const fieldValue = record[field.fieldName] || '';
+                        return `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
+                      });
+                      pkValue = `${pkParams?.globalPrefix || ''}${concatParts.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
+                      break;
+                    default:
+                      pkValue = '';
+                  }
+                  
+                  transformed['Source PrimaryKey'] = pkValue;
+                  console.log('[Bridge Mapping] Generated Entity 1 PK:', pkValue);
+                } else {
+                  console.warn('[Bridge Mapping] No PK rule found for Entity 1');
+                  transformed['Source PrimaryKey'] = '';
+                }
+              } else {
+                // Use source column
+                transformed['Source PrimaryKey'] = record[mapping.bridgeEntity1Column || ''] || '';
+                console.log('[Bridge Mapping] Entity 1 PK from column:', mapping.bridgeEntity1Column, '=', transformed['Source PrimaryKey']);
+              }
               
-              transformed['Target PrimaryKey'] = record[mapping.bridgeEntity2Column] || '';
+              // Handle Entity 2 PrimaryKey - either from source column or using PK rule from entity mapping
+              if (mapping.bridgeEntity2UsePKRule) {
+                // Find the entity mapping for bridgeEntity2
+                const entity2Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity2);
+                console.log('[Bridge Mapping] Using PK rule for Entity 2:', {
+                  bridgeEntity2: mapping.bridgeEntity2,
+                  foundMapping: !!entity2Mapping,
+                  hasPKRule: !!entity2Mapping?.primaryKeyRule
+                });
+                
+                if (entity2Mapping && entity2Mapping.primaryKeyRule) {
+                  const pkParams = entity2Mapping.primaryKeyRule.parameters as any;
+                  let pkValue: any;
+
+                  switch (entity2Mapping.primaryKeyRule.ruleType) {
+                    case RuleType.Static:
+                      pkValue = pkParams?.value || '';
+                      break;
+                    case RuleType.Range:
+                      const min = pkParams?.min || 0;
+                      const max = pkParams?.max || 100;
+                      pkValue = Math.random() * (max - min) + min;
+                      break;
+                    case RuleType.Examples:
+                      const values = pkParams?.values || [];
+                      pkValue = values[Math.floor(Math.random() * values.length)];
+                      break;
+                    case RuleType.Pattern:
+                      pkValue = pkParams?.regex || '';
+                      break;
+                    case RuleType.Sequence:
+                      pkValue = pkSequenceCounter;
+                      pkSequenceCounter += pkParams?.increment || 1;
+                      break;
+                    case RuleType.PrefixSequence:
+                      const padding = pkParams?.padding || 0;
+                      const numStr = padding > 0 ? String(pkSequenceCounter).padStart(padding, '0') : String(pkSequenceCounter);
+                      pkValue = `${pkParams?.prefix || ''}${numStr}${pkParams?.suffix || ''}`;
+                      pkSequenceCounter += 1;
+                      break;
+                    case 'Composite':
+                      const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
+                        return record[fieldName] || '';
+                      });
+                      pkValue = fieldValues.join(pkParams?.separator || '_');
+                      break;
+                    case RuleType.CompositeConcat:
+                      const concatParts2 = (pkParams?.fields || []).map((field: any) => {
+                        const fieldValue = record[field.fieldName] || '';
+                        return `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
+                      });
+                      pkValue = `${pkParams?.globalPrefix || ''}${concatParts2.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
+                      break;
+                    default:
+                      pkValue = '';
+                  }
+                  
+                  transformed['Target PrimaryKey'] = pkValue;
+                  console.log('[Bridge Mapping] Generated Entity 2 PK:', pkValue);
+                } else {
+                  console.warn('[Bridge Mapping] No PK rule found for Entity 2');
+                  transformed['Target PrimaryKey'] = '';
+                }
+              } else {
+                // Use source column
+                transformed['Target PrimaryKey'] = record[mapping.bridgeEntity2Column || ''] || '';
+                console.log('[Bridge Mapping] Entity 2 PK from column:', mapping.bridgeEntity2Column, '=', transformed['Target PrimaryKey']);
+              }
+              
               transformed['Relationship Type'] = mapping.relationshipType || 'related';
               
               // Generate PrimaryKey for bridge table if PK rule is configured
@@ -2939,6 +3204,13 @@ const DataMigration: React.FC = () => {
                       return record[fieldName] || '';
                     });
                     pkValue = fieldValues.join(pkParams?.separator || '-');
+                    break;
+                  case RuleType.CompositeConcat:
+                    const concatParts = (pkParams?.fields || []).map((field: any) => {
+                      const fieldValue = record[field.fieldName] || '';
+                      return `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
+                    });
+                    pkValue = `${pkParams?.globalPrefix || ''}${concatParts.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
                     break;
                   default:
                     pkValue = recordIndex + 1;
@@ -3036,6 +3308,18 @@ const DataMigration: React.FC = () => {
                   pkValue = fieldValues.join(pkParams?.separator || '-');
                   console.log(`[${mapping.targetEntity}] Composite result:`, pkValue);
                   break;
+                case RuleType.CompositeConcat:
+                  // Composite + Concat: concatenate field values with individual prefix/suffix patterns
+                  console.log(`[${mapping.targetEntity}] Using CompositeConcat rule, fields:`, pkParams?.fields);
+                  const concatParts = (pkParams?.fields || []).map((field: any) => {
+                    const fieldValue = record[field.fieldName] || '';
+                    const result = `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
+                    console.log(`[${mapping.targetEntity}] CompositeConcat field '${field.fieldName}': ${fieldValue} → ${result}`);
+                    return result;
+                  });
+                  pkValue = `${pkParams?.globalPrefix || ''}${concatParts.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
+                  console.log(`[${mapping.targetEntity}] CompositeConcat result:`, pkValue);
+                  break;
                 default:
                   console.log(`[${mapping.targetEntity}] Using default rule (recordIndex + 1), rule type was:`, mapping.primaryKeyRule.ruleType);
                   pkValue = recordIndex + 1;
@@ -3055,11 +3339,32 @@ const DataMigration: React.FC = () => {
         // Get entity display name for file naming (targetEntity already defined above)
         const entityDisplayName = targetEntity?.name || mapping.targetEntity;
 
+        // Special logging for material_sublots before CSV save
+        if (mapping.sourceTable === 'material_sublots') {
+          console.log('🔍 [Material Sublots] About to save CSV:', {
+            entityDisplayName,
+            transformedRecordCount: transformedData.length,
+            transformedData: transformedData,
+            isBridge: mapping.isBridge
+          });
+        }
+        
         // Save to ISA95 format as CSV
         log(`Exporting to CSV: ${entityDisplayName}...`);
+        console.log(`[Migration] Saving CSV for ${entityDisplayName}:`, {
+          recordCount: transformedData.length,
+          isBridge: mapping.isBridge,
+          sampleRecord: transformedData[0],
+          columns: transformedData[0] ? Object.keys(transformedData[0]) : []
+        });
         await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge);
         
         log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
+        
+        // Special logging for material_sublots after CSV save
+        if (mapping.sourceTable === 'material_sublots') {
+          console.log('✅ [Material Sublots] CSV save completed for material_sublots');
+        }
 
         setMigrationProgress(((i + 1) / tableMappings.length) * 100);
         } catch (mappingError) {
@@ -3945,6 +4250,17 @@ const DataMigration: React.FC = () => {
                   >
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
+                        <Switch
+                          checked={mapping.enabled !== false}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            const newMappings = [...tableMappings];
+                            newMappings[originalIndex].enabled = e.target.checked;
+                            setTableMappings(newMappings);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          size="small"
+                        />
                         <Chip label={mapping.sourceTable} color="primary" size="small" />
                         <ArrowForwardIcon fontSize="small" />
                         <Chip label={targetEntity?.name || mapping.targetEntity} color="secondary" size="small" />
@@ -4472,13 +4788,24 @@ const DataMigration: React.FC = () => {
                   const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
 
                   return (
-                  <Accordion 
-                    key={originalIndex}
-                    expanded={expandedBridgeMappings.has(originalIndex)}
-                    onChange={() => handleAccordionToggle(originalIndex, true)}
-                  >
+                    <Accordion 
+                      key={originalIndex}
+                      expanded={expandedBridgeMappings.has(originalIndex)}
+                      onChange={() => handleAccordionToggle(originalIndex, true)}
+                    >
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
+                        <Switch
+                          checked={mapping.enabled !== false}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            const newMappings = [...tableMappings];
+                            newMappings[originalIndex].enabled = e.target.checked;
+                            setTableMappings(newMappings);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          size="small"
+                        />
                         <Chip label={mapping.sourceTable} color="primary" size="small" />
                         <ArrowForwardIcon fontSize="small" />
                         <Chip label={entity1?.name || mapping.bridgeEntity1} color="secondary" size="small" />
@@ -5611,6 +5938,7 @@ const DataMigration: React.FC = () => {
                 <MenuItem value={RuleType.Sequence}>Sequence</MenuItem>
                 <MenuItem value={RuleType.PrefixSequence}>Prefix + Sequence</MenuItem>
                 <MenuItem value={'Composite' as any}>Composite (Multiple Fields)</MenuItem>
+                <MenuItem value={RuleType.CompositeConcat}>Composite + Concat (Fields with Patterns)</MenuItem>
               </Select>
             </FormControl>
 
@@ -5811,6 +6139,134 @@ const DataMigration: React.FC = () => {
                 )}
               </Box>
             )}
+
+            {/* CompositeConcat Parameters */}
+            {pkRuleType === RuleType.CompositeConcat && selectedMappingForPK !== null && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Build a composite primary key by combining multiple fields, each with optional prefix/suffix patterns.
+                </Alert>
+                
+                {/* Global Prefix/Suffix */}
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Global Prefix (Optional)"
+                    value={pkCompositeConcatGlobalPrefix}
+                    onChange={(e) => setPkCompositeConcatGlobalPrefix(e.target.value)}
+                    placeholder="e.g., PK-"
+                    helperText="Prefix for entire composite key"
+                  />
+                  <TextField
+                    fullWidth
+                    label="Global Suffix (Optional)"
+                    value={pkCompositeConcatGlobalSuffix}
+                    onChange={(e) => setPkCompositeConcatGlobalSuffix(e.target.value)}
+                    placeholder="e.g., -2024"
+                    helperText="Suffix for entire composite key"
+                  />
+                </Box>
+
+                <TextField
+                  fullWidth
+                  label="Field Separator"
+                  value={pkCompositeConcatSeparator}
+                  onChange={(e) => setPkCompositeConcatSeparator(e.target.value)}
+                  placeholder="-"
+                  helperText="Character(s) to separate field values"
+                />
+
+                {/* Fields with individual concat parameters */}
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Fields with Patterns
+                  </Typography>
+                  {pkCompositeConcatFields.map((field, index) => (
+                    <Paper key={index} sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Field</InputLabel>
+                            <Select
+                              value={field.fieldName}
+                              onChange={(e) => {
+                                const updated = [...pkCompositeConcatFields];
+                                updated[index].fieldName = e.target.value;
+                                setPkCompositeConcatFields(updated);
+                              }}
+                              label="Field"
+                            >
+                              {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns.map((col) => (
+                                <MenuItem key={col.name} value={col.name}>
+                                  {col.name} ({col.type})
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <IconButton
+                            color="error"
+                            onClick={() => {
+                              const updated = pkCompositeConcatFields.filter((_, i) => i !== index);
+                              setPkCompositeConcatFields(updated);
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                          <TextField
+                            fullWidth
+                            label="Field Prefix (Optional)"
+                            value={field.prefix || ''}
+                            onChange={(e) => {
+                              const updated = [...pkCompositeConcatFields];
+                              updated[index].prefix = e.target.value;
+                              setPkCompositeConcatFields(updated);
+                            }}
+                            placeholder="e.g., LOT_"
+                          />
+                          <TextField
+                            fullWidth
+                            label="Field Suffix (Optional)"
+                            value={field.suffix || ''}
+                            onChange={(e) => {
+                              const updated = [...pkCompositeConcatFields];
+                              updated[index].suffix = e.target.value;
+                              setPkCompositeConcatFields(updated);
+                            }}
+                            placeholder="e.g., _END"
+                          />
+                        </Box>
+                      </Box>
+                    </Paper>
+                  ))}
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => {
+                      setPkCompositeConcatFields([...pkCompositeConcatFields, { fieldName: '' }]);
+                    }}
+                    fullWidth
+                  >
+                    Add Field
+                  </Button>
+                </Box>
+
+                {/* Example output */}
+                {pkCompositeConcatFields.length > 0 && pkCompositeConcatFields.every(f => f.fieldName) && (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    <Typography variant="body2" gutterBottom><strong>Example:</strong></Typography>
+                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                      {pkCompositeConcatGlobalPrefix}
+                      {pkCompositeConcatFields.map((f, i) => 
+                        `${f.prefix || ''}{${f.fieldName}}${f.suffix || ''}`
+                      ).join(pkCompositeConcatSeparator || '-')}
+                      {pkCompositeConcatGlobalSuffix}
+                    </Typography>
+                  </Alert>
+                )}
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -5993,9 +6449,15 @@ const DataMigration: React.FC = () => {
                 <InputLabel>Source Column for Entity 1</InputLabel>
                 <Select
                   value={bridgeEntity1Column}
-                  onChange={(e) => setBridgeEntity1Column(e.target.value)}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setBridgeEntity1Column(newValue);
+                    if (newValue) {
+                      setBridgeEntity1UsePKRule(false);
+                    }
+                  }}
                   label="Source Column for Entity 1"
-                  disabled={!selectedSourceTable}
+                  disabled={!selectedSourceTable || bridgeEntity1UsePKRule}
                 >
                   {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
                     <MenuItem key={col.name} value={col.name}>
@@ -6003,6 +6465,24 @@ const DataMigration: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+              </FormControl>
+              
+              <FormControl fullWidth>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={bridgeEntity1UsePKRule}
+                      onChange={(e) => {
+                        setBridgeEntity1UsePKRule(e.target.checked);
+                        if (e.target.checked) {
+                          setBridgeEntity1Column('');
+                        }
+                      }}
+                      disabled={!bridgeEntity1}
+                    />
+                  }
+                  label={`Use PK Rule from ${isa95Entities.find(e => e.tableName === bridgeEntity1)?.name || 'Entity 1'} mapping`}
+                />
               </FormControl>
             </Box>
 
@@ -6016,6 +6496,7 @@ const DataMigration: React.FC = () => {
                     const capitalizedEntity2 = entity2Name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                     setBridgeEntity2(e.target.value);
                     setBridgeEntity2Column('');
+                    setBridgeEntity2UsePKRule(false);
                     // Auto-generate bridge name if both entities are selected
                     if (bridgeEntity1) {
                       const entity1Name = isa95Entities.find(ent => ent.tableName === bridgeEntity1)?.name || '';
@@ -6039,9 +6520,14 @@ const DataMigration: React.FC = () => {
                 <InputLabel>Source Column for Entity 2</InputLabel>
                 <Select
                   value={bridgeEntity2Column}
-                  onChange={(e) => setBridgeEntity2Column(e.target.value)}
+                  onChange={(e) => {
+                    setBridgeEntity2Column(e.target.value);
+                    if (e.target.value) {
+                      setBridgeEntity2UsePKRule(false);
+                    }
+                  }}
                   label="Source Column for Entity 2"
-                  disabled={!selectedSourceTable}
+                  disabled={!selectedSourceTable || bridgeEntity2UsePKRule}
                 >
                   {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
                     <MenuItem key={col.name} value={col.name}>
@@ -6049,6 +6535,24 @@ const DataMigration: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+              </FormControl>
+              
+              <FormControl fullWidth>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={bridgeEntity2UsePKRule}
+                      onChange={(e) => {
+                        setBridgeEntity2UsePKRule(e.target.checked);
+                        if (e.target.checked) {
+                          setBridgeEntity2Column('');
+                        }
+                      }}
+                      disabled={!bridgeEntity2}
+                    />
+                  }
+                  label={`Use PK Rule from ${isa95Entities.find(e => e.tableName === bridgeEntity2)?.name || 'Entity 2'} mapping`}
+                />
               </FormControl>
             </Box>
 
@@ -6071,14 +6575,14 @@ const DataMigration: React.FC = () => {
               )}
             />
 
-            {bridgeEntity1 && bridgeEntity2 && bridgeEntity1Column && bridgeEntity2Column && bridgeName && (
+            {bridgeEntity1 && bridgeEntity2 && (bridgeEntity1Column || bridgeEntity1UsePKRule) && (bridgeEntity2Column || bridgeEntity2UsePKRule) && bridgeName && (
               <>
                 <Alert severity="success">
                   Will create: <strong>{bridgeName}</strong> with structure:
                   <br />• Source type: {isa95Entities.find(e => e.tableName === bridgeEntity1)?.name}
-                  <br />• Source PrimaryKey (lookup from {bridgeEntity1Column})
+                  <br />• Source PrimaryKey {bridgeEntity1UsePKRule ? '(via PK Rule)' : `(lookup from ${bridgeEntity1Column})`}
                   <br />• Target Type: {isa95Entities.find(e => e.tableName === bridgeEntity2)?.name}
-                  <br />• Target PrimaryKey (lookup from {bridgeEntity2Column})
+                  <br />• Target PrimaryKey {bridgeEntity2UsePKRule ? '(via PK Rule)' : `(lookup from ${bridgeEntity2Column})`}
                   <br />• Relationship Type: {relationshipType || 'related'}
                 </Alert>
                 
@@ -6103,18 +6607,38 @@ const DataMigration: React.FC = () => {
                           Source Record #{idx + 1}:
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-                          <Chip 
-                            label={`${bridgeEntity1Column}: ${preview.sourceRecord[bridgeEntity1Column]}`}
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                          />
-                          <Chip 
-                            label={`${bridgeEntity2Column}: ${preview.sourceRecord[bridgeEntity2Column]}`}
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                          />
+                          {!bridgeEntity1UsePKRule && bridgeEntity1Column && (
+                            <Chip 
+                              label={`${bridgeEntity1Column}: ${preview.sourceRecord[bridgeEntity1Column]}`}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          )}
+                          {bridgeEntity1UsePKRule && (
+                            <Chip 
+                              label="Entity 1: Using PK Rule"
+                              size="small"
+                              color="secondary"
+                              variant="outlined"
+                            />
+                          )}
+                          {!bridgeEntity2UsePKRule && bridgeEntity2Column && (
+                            <Chip 
+                              label={`${bridgeEntity2Column}: ${preview.sourceRecord[bridgeEntity2Column]}`}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          )}
+                          {bridgeEntity2UsePKRule && (
+                            <Chip 
+                              label="Entity 2: Using PK Rule"
+                              size="small"
+                              color="secondary"
+                              variant="outlined"
+                            />
+                          )}
                         </Box>
                         <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
                           Bridge Table Output:
@@ -6154,7 +6678,14 @@ const DataMigration: React.FC = () => {
           <Button
             onClick={handleAddBridgeMapping}
             variant="contained"
-            disabled={!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeEntity1Column || !bridgeEntity2Column || !bridgeName}
+            disabled={
+              !selectedSourceTable || 
+              !bridgeEntity1 || 
+              !bridgeEntity2 || 
+              (!bridgeEntity1Column && !bridgeEntity1UsePKRule) || 
+              (!bridgeEntity2Column && !bridgeEntity2UsePKRule) || 
+              !bridgeName
+            }
           >
             {editingBridgeIndex !== null ? 'Update Bridge Mapping' : 'Create Bridge Mapping'}
           </Button>
