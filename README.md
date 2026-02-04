@@ -232,7 +232,40 @@ Set environment variable:
 ASPNETCORE_ENVIRONMENT=Development
 ```
 
-## 📝 License
+## � TODO: Data Source Schema Configuration System
+
+The following features are planned to allow UI-based configuration of data source tables and structures:
+
+### Phase 1: Schema Storage & Service
+- [ ] Create `dataSourceSchemas` store in IndexedDB
+- [ ] Implement `SchemaService` with CRUD operations for table schemas
+- [ ] Define schema format: `{ tableName, displayName, sourceType, columns[], dataStoreKey }`
+
+### Phase 2: UI Components
+- [ ] **Schema List Panel** - Display all data source tables with edit/delete options
+- [ ] **Column Editor** - Add/remove/reorder columns for each table
+- [ ] **Data Type Selector** - Dropdown for column types (string, number, datetime, boolean)
+- [ ] **Field Mapping** - Link UI column to actual data field name
+
+### Phase 3: Import/Export Features
+- [ ] **Import Table Schema from CSV** - Parse CSV headers to create table schema
+- [ ] **Import Table Schema from JSON** - Load complete schema definition from JSON file
+- [ ] **Export Schemas to JSON** - Save current schema configuration for backup/sharing
+- [ ] **Export Schemas to CSV** - Export schema as CSV template
+
+### Phase 4: Auto-Detection & Sync
+- [ ] **"Sync from Data" Button** - Auto-detect columns from actual IndexedDB data
+- [ ] **Detect New Fields** - Highlight fields in data not yet in schema
+- [ ] **Suggest Schema Updates** - Propose adding missing fields with auto-detected types
+- [ ] **Validation** - Ensure mapped fields exist in actual data
+
+### Phase 5: Migration
+- [ ] Modify `DataMigration.tsx` to read table definitions from schema store
+- [ ] Replace hardcoded table definitions with dynamic schema loading
+- [ ] Add default schemas that ship with the application
+- [ ] Support schema versioning and change tracking
+
+## �📝 License
 
 Internal Avanade project.
 

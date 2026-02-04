@@ -809,6 +809,8 @@ const DataMigration: React.FC = () => {
             { name: 'effectiveTimestamp', type: 'datetime', sample: operationsEvents?.[0]?.effectiveTimestamp },
             { name: 'notes', type: 'string', sample: operationsEvents?.[0]?.notes },
             { name: 'eventType', type: 'string', sample: operationsEvents?.[0]?.eventType },
+            { name: 'equipmentId', type: 'string', sample: operationsEvents?.[0]?.equipmentId },
+            { name: 'hierarchyScope', type: 'string', sample: operationsEvents?.[0]?.hierarchyScope },
           ],
         },
         {
@@ -996,6 +998,9 @@ const DataMigration: React.FC = () => {
             { name: 'operationsEventDefinitionId', type: 'string', sample: operationsEvents[0]?.operationsEventDefinitionId },
             { name: 'effectiveTimestamp', type: 'datetime', sample: operationsEvents[0]?.effectiveTimestamp },
             { name: 'notes', type: 'string', sample: operationsEvents[0]?.notes },
+            { name: 'eventType', type: 'string', sample: operationsEvents[0]?.eventType },
+            { name: 'equipmentId', type: 'string', sample: operationsEvents[0]?.equipmentId },
+            { name: 'hierarchyScope', type: 'string', sample: operationsEvents[0]?.hierarchyScope },
           ],
         });
       }
