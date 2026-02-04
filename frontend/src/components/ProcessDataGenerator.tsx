@@ -149,6 +149,8 @@ interface OperationsEvent {
   effectiveTimestamp: string;
   notes: string;
   eventType: string;
+  equipmentId: string;
+  hierarchyScope: string;
 }
 
 interface OperationsEventRecord {
@@ -222,6 +224,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [shifts, setShifts] = useState<any[]>([]);
   const [crews, setCrews] = useState<any[]>([]);
   const [shiftCrewAssignments, setShiftCrewAssignments] = useState<any[]>([]);
+  const [hierarchyScopes, setHierarchyScopes] = useState<any[]>([]);
 
   // Form data for operations request
   const [formData, setFormData] = useState<OperationsRequest>({
@@ -344,7 +347,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca] = await Promise.all([
+      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs] = await Promise.all([
         masterDataDB.getAll('materials'),
         masterDataDB.getAll('equipment'),
         masterDataDB.getAll('processSegments'),
@@ -365,6 +368,7 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataDB.getAll('shifts'),
         masterDataDB.getAll('crews'),
         masterDataDB.getAll('shiftCrewAssignments'),
+        masterDataDB.getAll('hierarchyScopes'),
       ]);
 
       setMaterials(mat);
@@ -387,6 +391,7 @@ const ProcessDataGenerator: React.FC = () => {
       setShifts(shft);
       setCrews(crw);
       setShiftCrewAssignments(sca);
+      setHierarchyScopes(hs);
       
       console.log('[Master Data] Loaded:', {
         materials: mat.length,
@@ -870,6 +875,18 @@ const ProcessDataGenerator: React.FC = () => {
             const endTime = new Date(segResp.actualEndDateTime.replace(' ', 'T') + 'Z');
             const durationMs = endTime.getTime() - startTime.getTime();
             
+            // Find equipment actual for this segment response to get equipmentId
+            const eqActualForSegment = generatedEqActuals.find(ea => ea.segmentResponseId === segResp.id);
+            const equipmentIdValue = eqActualForSegment?.equipmentId || '';
+            
+            // Lookup HierarchyScope ID by equipment ID
+            console.log(`[HierarchyScope Debug] Equipment ID from actual: "${equipmentIdValue}"`);
+            console.log(`[HierarchyScope Debug] Total hierarchyScopes: ${hierarchyScopes.length}`);
+            console.log(`[HierarchyScope Debug] Sample hierarchyScopes:`, hierarchyScopes.slice(0, 3).map(hs => ({ id: hs.id, equipmentID: hs.equipmentID })));
+            const hierarchyScopeRecord = hierarchyScopes.find(hs => hs.equipmentID === equipmentIdValue);
+            console.log(`[HierarchyScope Debug] Found record:`, hierarchyScopeRecord);
+            const hierarchyScopeValue = hierarchyScopeRecord?.id || '';
+            
             for (const assignment of selectedAssignments) {
               const eventDef = operationEventDefinitions.find(
                 oed => oed.id === assignment.operationsEventDefinitionId
@@ -896,6 +913,8 @@ const ProcessDataGenerator: React.FC = () => {
                 effectiveTimestamp: eventTime.toISOString().slice(0, 19).replace('T', ' '),
                 notes: `${eventDef?.description || 'Event'} (${startOrEnd === 'end' ? 'End' : 'Start'}) - ${assignment.notes}`,
                 eventType: eventDef?.eventType || 'Alarm',
+                equipmentId: equipmentIdValue,
+                hierarchyScope: hierarchyScopeValue,
               };
               generatedOperationsEvents.push(operationsEvent);
               console.log(`[Operations Events] Created ${assignment.isMandatory ? 'MANDATORY' : 'conditional'} event: ${operationsEvent.id} (${eventDef?.eventCode}) at ${startOrEnd}`);
@@ -1955,7 +1974,7 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
-  const exportActualToCSV = (type: 'all' | 'response' | 'segments' | 'materials' | 'equipment' | 'propertytracking' | 'lots' | 'testresults') => {
+  const exportActualToCSV = (type: 'all' | 'response' | 'segments' | 'materials' | 'equipment' | 'propertytracking' | 'lots' | 'testresults' | 'events') => {
     if (!generatedOperationsResponse || segmentResponses.length === 0) {
       showSnackbar('No actual data to export', 'error');
       return;
@@ -1992,6 +2011,13 @@ const ProcessDataGenerator: React.FC = () => {
     ).join('\n');
     const eptCsv = `${eptHeaders}\n${eptRows}`;
 
+    // Export Operations Events
+    const oeHeaders = 'OperationsEventID,SegmentResponseID,OperationsEventDefinitionID,EffectiveTimestamp,EventType,EquipmentId,HierarchyScope,Notes';
+    const oeRows = operationsEvents.map(oe => 
+      `${oe.id},${oe.segmentResponseId},${oe.operationsEventDefinitionId},${oe.effectiveTimestamp},${oe.eventType},${oe.equipmentId},${oe.hierarchyScope},"${(oe.notes || '').replace(/"/g, '""')}"`
+    ).join('\n');
+    const oeCsv = `${oeHeaders}\n${oeRows}`;
+
     // Export Material Lots
     const lotHeaders = 'MaterialLotID,MaterialID,LotQuantity,LotUoM,ProducedDateTime,ProducedByProcessSegmentID,SupplierOrProducerID,SupplierOrProducerName,Status';
     const lotRows = generatedMaterialLotsForDisplay.map(lot => 
@@ -2014,6 +2040,9 @@ const ProcessDataGenerator: React.FC = () => {
       downloadCSV(eaCsv, 'segment_equipment_actuals.csv');
       if (equipmentPropertyTracking.length > 0) {
         downloadCSV(eptCsv, 'equipment_property_tracking.csv');
+      }
+      if (operationsEvents.length > 0) {
+        downloadCSV(oeCsv, 'operations_events.csv');
       }
       if (generatedMaterialLotsForDisplay.length > 0) {
         downloadCSV(lotCsv, 'material_lots.csv');
@@ -2040,6 +2069,13 @@ const ProcessDataGenerator: React.FC = () => {
         showSnackbar('Equipment property tracking exported successfully', 'success');
       } else {
         showSnackbar('No equipment property tracking data to export', 'error');
+      }
+    } else if (type === 'events') {
+      if (operationsEvents.length > 0) {
+        downloadCSV(oeCsv, 'operations_events.csv');
+        showSnackbar('Operations events exported successfully', 'success');
+      } else {
+        showSnackbar('No operations events to export', 'error');
       }
     } else if (type === 'lots') {
       if (generatedMaterialLotsForDisplay.length > 0) {
@@ -4027,6 +4063,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableRow>
                           <TableCell>Event ID</TableCell>
                           <TableCell>Segment Response</TableCell>
+                          <TableCell>Equipment ID</TableCell>
+                          <TableCell>Hierarchy Scope</TableCell>
                           <TableCell>Event Definition</TableCell>
                           <TableCell>Event Code</TableCell>
                           <TableCell>Event Category</TableCell>
@@ -4042,6 +4080,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             <TableRow key={event.id}>
                               <TableCell>{event.id}</TableCell>
                               <TableCell>{event.segmentResponseId}</TableCell>
+                              <TableCell>{event.equipmentId}</TableCell>
+                              <TableCell>{event.hierarchyScope}</TableCell>
                               <TableCell>{eventDef?.description || event.operationsEventDefinitionId}</TableCell>
                               <TableCell>
                                 <Chip label={eventDef?.eventCode || 'N/A'} size="small" />
