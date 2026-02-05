@@ -311,7 +311,8 @@ interface MaterialDefinitionProperty {
 }
 
 interface MaterialDefinitionPropertyAssignment {
-  id: string;
+  pk: string; // Unique primary key
+  id: string; // Property identifier (can be duplicated)
   materialDefinitionPropertyId: string;
   materialDefinitionId: string;
   value: string;
@@ -561,6 +562,8 @@ const MasterDataManager: React.FC = () => {
       setOperationsEventEntries(oee);
       
       console.log('Loaded data counts:', {
+        materialDefinitionProperties: mdp.length,
+        materialDefinitionPropertyAssignments: mdpa.length,
         equipmentProperties: ep.length,
         equipmentPropertyAssignments: epa.length,
         equipment: e.length,
@@ -895,7 +898,7 @@ const MasterDataManager: React.FC = () => {
     try {
       if (editingMaterialDefinitionPropertyAssignment) {
         await masterDataDB.update('materialDefinitionPropertyAssignments', data);
-        setMaterialDefinitionPropertyAssignments(prev => prev.map(mdpa => mdpa.id === data.id ? data : mdpa));
+        setMaterialDefinitionPropertyAssignments(prev => prev.map(mdpa => mdpa.pk === data.pk ? data : mdpa));
         showSnackbar('Material definition property assignment updated', 'success');
       } else {
         await masterDataDB.add('materialDefinitionPropertyAssignments', data);
@@ -910,11 +913,11 @@ const MasterDataManager: React.FC = () => {
     }
   };
 
-  const handleDeleteMaterialDefinitionPropertyAssignment = async (id: string) => {
+  const handleDeleteMaterialDefinitionPropertyAssignment = async (pk: string) => {
     if (!confirm('Delete this material definition property assignment?')) return;
     try {
-      await masterDataDB.delete('materialDefinitionPropertyAssignments', id);
-      setMaterialDefinitionPropertyAssignments(prev => prev.filter(mdpa => mdpa.id !== id));
+      await masterDataDB.delete('materialDefinitionPropertyAssignments', pk);
+      setMaterialDefinitionPropertyAssignments(prev => prev.filter(mdpa => mdpa.pk !== pk));
       showSnackbar('Material definition property assignment deleted', 'success');
     } catch (error) {
       console.error('Failed to delete material definition property assignment:', error);
@@ -1574,8 +1577,8 @@ const MasterDataManager: React.FC = () => {
         await mdpWritable.close();
 
         // Export Material Definition Property Assignments
-        const mdpaHeaders = 'id,MaterialDefinitionPropertyId,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
-        const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.id},${mdpa.materialDefinitionPropertyId},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
+        const mdpaHeaders = 'PK,Id,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
+        const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.pk},${mdpa.id},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
         const mdpaCsv = `${mdpaHeaders}\n${mdpaRows}`;
         const mdpaFileHandle = await dirHandle.getFileHandle('material_definition_property_assignment_template.csv', { create: true });
         const mdpaWritable = await mdpaFileHandle.createWritable();
@@ -1730,8 +1733,8 @@ const MasterDataManager: React.FC = () => {
       downloadCSV(`${mdpHeaders}\n${mdpRows}`, 'material_definition_property_template.csv');
 
       // Export Material Definition Property Assignments
-      const mdpaHeaders = 'id,MaterialDefinitionPropertyId,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
-      const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.id},${mdpa.materialDefinitionPropertyId},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
+      const mdpaHeaders = 'PK,Id,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
+      const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.pk},${mdpa.id},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
       downloadCSV(`${mdpaHeaders}\n${mdpaRows}`, 'material_definition_property_assignment_template.csv');
 
       // Export Equipment Classes
@@ -2015,8 +2018,8 @@ const MasterDataManager: React.FC = () => {
                   <Table>
                     <TableHead>
                       <TableRow>
+                        <TableCell>PK</TableCell>
                         <TableCell>ID</TableCell>
-                        <TableCell>Property ID</TableCell>
                         <TableCell>Material Definition ID</TableCell>
                         <TableCell>Value</TableCell>
                         <TableCell>Description</TableCell>
@@ -2025,10 +2028,12 @@ const MasterDataManager: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
+                      {console.log('[RENDER] materialDefinitionPropertyAssignments.length:', materialDefinitionPropertyAssignments.length)}
+                      {console.log('[RENDER] materialDefinitionPropertyAssignments:', materialDefinitionPropertyAssignments)}
                       {materialDefinitionPropertyAssignments.map((item) => (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.pk}>
+                          <TableCell>{item.pk}</TableCell>
                           <TableCell>{item.id}</TableCell>
-                          <TableCell>{item.materialDefinitionPropertyId}</TableCell>
                           <TableCell>{item.materialDefinitionId}</TableCell>
                           <TableCell>{item.value}</TableCell>
                           <TableCell>{item.description}</TableCell>
@@ -2045,7 +2050,7 @@ const MasterDataManager: React.FC = () => {
                             </IconButton>
                             <IconButton
                               size="small"
-                              onClick={() => handleDeleteMaterialDefinitionPropertyAssignment(item.id)}
+                              onClick={() => handleDeleteMaterialDefinitionPropertyAssignment(item.pk)}
                             >
                               <DeleteIcon />
                             </IconButton>
@@ -4799,14 +4804,14 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
   open, data, materials, materialDefinitionProperties, onClose, onSave 
 }) => {
   const [formData, setFormData] = useState<MaterialDefinitionPropertyAssignment>(
-    data || { id: '', materialDefinitionPropertyId: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' }
+    data || { pk: '', id: '', materialDefinitionPropertyId: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' }
   );
 
   React.useEffect(() => {
     if (data) {
       setFormData(data);
     } else {
-      setFormData({ id: '', materialDefinitionPropertyId: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' });
+      setFormData({ pk: '', id: '', materialDefinitionPropertyId: '', materialDefinitionId: '', value: '', description: '', valueUnitOfMeasure: '' });
     }
   }, [data, open]);
 
@@ -4816,6 +4821,7 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
       setFormData({ 
         ...formData, 
         materialDefinitionPropertyId: propertyId,
+        id: propertyId, // Use property id as the assignment id
         value: selectedProp.value,
         description: selectedProp.description,
         valueUnitOfMeasure: selectedProp.valueUnitOfMeasure
@@ -4828,9 +4834,13 @@ const MaterialDefinitionPropertyAssignmentDialog: React.FC<MaterialDefinitionPro
       alert('Property and Material Definition are required');
       return;
     }
-    // Generate id if not present (for new records)
+    // Generate pk if not present (for new records)
+    if (!formData.pk) {
+      formData.pk = `${Date.now()}`;
+    }
+    // Generate id if not present
     if (!formData.id) {
-      formData.id = `${Date.now()}`;
+      formData.id = formData.materialDefinitionPropertyId;
     }
     onSave(formData);
   };

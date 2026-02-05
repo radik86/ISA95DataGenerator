@@ -79,6 +79,7 @@ export class TemplateDataLoader {
             break;
           case 'materialDefinitionPropertyAssignments':
             parsed = csvParser.parseMaterialDefinitionPropertyAssignments(csvText);
+            console.log(`[TemplateLoader] Parsed ${parsed.length} material definition property assignments:`, parsed);
             result.materialDefinitionPropertyAssignments = parsed;
             break;
           case 'equipmentClasses':

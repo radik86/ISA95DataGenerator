@@ -2842,8 +2842,7 @@ const DataMigration: React.FC = () => {
   const generateFieldRulePreview = async () => {
     console.log('[Field Rule Preview] Generating field rule preview:', {
       selectedFieldForRule,
-      ruleType: fieldRuleType,
-      hasPreviewRows: previewRows?.length > 0
+      ruleType: fieldRuleType
     });
     if (!selectedFieldForRule) {
       return;
@@ -3565,15 +3564,9 @@ const DataMigration: React.FC = () => {
         }
         // Priority 2: Fall back to Additional Source Fields if Primary is not set
         else if (params?.sourceFields && params.sourceFields.length > 0) {
-          // Use first non-empty field value for condition evaluation
-          for (const field of params.sourceFields) {
-            const val = sourceRecord[field];
-            if (val !== undefined && val !== null && String(val).trim()) {
-              sourceValueForCondition = String(val);
-              conditionFieldName = field;
-              break;
-            }
-          }
+          // Use first field from the array (matches preview logic)
+          conditionFieldName = params.sourceFields[0];
+          sourceValueForCondition = conditionFieldName ? String(sourceRecord[conditionFieldName] !== undefined ? sourceRecord[conditionFieldName] : '') : '';
         }
         
         console.log('[IfThen] Evaluating condition:', {
@@ -3584,10 +3577,8 @@ const DataMigration: React.FC = () => {
           sourceFieldValue: conditionFieldName ? sourceRecord[conditionFieldName] : 'N/A'
         });
         
-        if (!sourceValueForCondition) {
-          console.log('[IfThen] No source value, returning falseValue:', params?.falseValue);
-          return params?.falseValue || '';
-        }
+        // Don't return early for empty strings - they should be evaluated by the condition
+        // (e.g., "isnull" or "isempty" conditions need to check empty strings)
         
         const conditionMet = evaluateCondition(sourceValueForCondition, params?.condition || '');
         console.log('[IfThen] Condition met:', conditionMet, 'will return:', conditionMet ? params?.trueValue : params?.falseValue);

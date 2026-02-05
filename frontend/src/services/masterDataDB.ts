@@ -233,7 +233,8 @@ export interface MaterialDefinitionPropertyRecord extends BaseRecord {
 }
 
 export interface MaterialDefinitionPropertyAssignmentRecord extends BaseRecord {
-  id: string;
+  pk: string; // Unique primary key for the assignment record
+  id: string; // Property Id (e.g., "DefaultUnitOfMeasure")
   materialDefinitionPropertyId: string;
   materialDefinitionId: string;
   value: string;
@@ -435,8 +436,13 @@ class MasterDataDatabase {
   }
 
   private async initDB(): Promise<IDBPDatabase<MasterDataDB>> {
-    return openDB<MasterDataDB>('master-data-db', 13, {
+    return openDB<MasterDataDB>('master-data-db', 14, {
       upgrade(db, oldVersion) {
+        // Migration: Delete and recreate materialDefinitionPropertyAssignments with new keyPath
+        if (oldVersion < 14 && db.objectStoreNames.contains('materialDefinitionPropertyAssignments')) {
+          db.deleteObjectStore('materialDefinitionPropertyAssignments');
+        }
+        
         // Material Classes
         if (!db.objectStoreNames.contains('materialClasses')) {
           const materialClassStore = db.createObjectStore('materialClasses', { keyPath: 'id' });
@@ -472,7 +478,7 @@ class MasterDataDatabase {
 
         // Material Definition Property Assignments (version 12)
         if (!db.objectStoreNames.contains('materialDefinitionPropertyAssignments')) {
-          const mdpaStore = db.createObjectStore('materialDefinitionPropertyAssignments', { keyPath: 'id' });
+          const mdpaStore = db.createObjectStore('materialDefinitionPropertyAssignments', { keyPath: 'pk' });
           mdpaStore.createIndex('by-material', 'materialDefinitionId');
           mdpaStore.createIndex('by-property', 'id');
           mdpaStore.createIndex('by-updated', 'updatedAt');
@@ -665,7 +671,12 @@ class MasterDataDatabase {
   // Generic CRUD operations
   async getAll<T extends keyof MasterDataDB>(storeName: T): Promise<MasterDataDB[T]['value'][]> {
     const db = await this.dbPromise;
-    return db.getAll(storeName);
+    const results = await db.getAll(storeName);
+    console.log(`[getAll] Store: ${storeName}, Records retrieved: ${results.length}`);
+    if (storeName === 'materialDefinitionPropertyAssignments') {
+      console.log('[getAll] materialDefinitionPropertyAssignments records:', results);
+    }
+    return results;
   }
 
   async get<T extends keyof MasterDataDB>(
@@ -696,10 +707,21 @@ class MasterDataDatabase {
     data: Omit<MasterDataDB[T]['value'], 'createdAt' | 'updatedAt' | 'version'>
   ): Promise<void> {
     const db = await this.dbPromise;
-    const existing = await db.get(storeName, (data as any).id);
+    
+    // Determine the key field based on store name
+    let key: string;
+    if (storeName === 'materialDefinitionPropertyAssignments') {
+      key = (data as any).pk;
+    } else if (storeName === 'operationsEventClasses') {
+      key = (data as any).OperationsEventClassID;
+    } else {
+      key = (data as any).id;
+    }
+    
+    const existing = await db.get(storeName, key);
     
     if (!existing) {
-      throw new Error(`Record not found: ${(data as any).id}`);
+      throw new Error(`Record not found: ${key}`);
     }
 
     const record = {
@@ -728,10 +750,12 @@ class MasterDataDatabase {
     // Define keyPath mapping for each store
     const keyPathMap: { [key: string]: string } = {
       'operationsEventClasses': 'OperationsEventClassID',
+      'materialDefinitionPropertyAssignments': 'pk', // Uses pk as unique key
       // All other stores use 'id' as keyPath
     };
 
     const keyPath = keyPathMap[storeName as string] || 'id';
+    console.log(`[bulkAdd] Store: ${storeName}, Records: ${records.length}, KeyPath: ${keyPath}`);
 
     for (const data of records) {
       const record = {

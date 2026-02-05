@@ -166,22 +166,26 @@ class CSVParser {
     const records = this.parseCSV(csvText);
     console.log('Parsing material definition property assignments, raw records:', records.length);
     
-    // Filter out empty rows (where id field is empty or whitespace-only)
+    // Filter out empty rows (where PK field is empty or whitespace-only)
     const validRecords = records.filter(r => {
-      const id = r.id || r.Id || r.ID || r.PK || r.pk || '';
-      return id.toString().trim().length > 0;
+      const pk = r.PK || r.pk || r.id || r.Id || r.ID || '';
+      return pk.toString().trim().length > 0;
     });
     console.log('Valid records after filtering empty rows:', validRecords.length);
     
     const parsed = validRecords.map((r, index) => {
-      const id = r.id || r.Id || r.ID || r.PK || r.pk;
-      const propertyId = r.MaterialDefinitionPropertyId || r.materialDefinitionPropertyId || r.Id;
+      // PK is the unique primary key for the record
+      const pk = r.PK || r.pk || `${index + 1}`;
+      // Id is the property identifier (can be duplicated across different material definitions)
+      const id = r.Id || r.id || r.ID || pk;
+      const propertyId = r.MaterialDefinitionPropertyId || r.materialDefinitionPropertyId || id;
       const materialDefinitionId = r.MaterialDefinitionId || r.materialDefinitionId;
       const value = r.Value || r.value;
       const description = r.Description || r.description || '';
       const valueUnitOfMeasure = r.ValueUnitOfMeasure || r.valueUnitOfMeasure || '';
       
       return {
+        pk: pk.toString(),
         id: id.toString(),
         materialDefinitionPropertyId: propertyId,
         materialDefinitionId,
