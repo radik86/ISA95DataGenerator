@@ -264,7 +264,97 @@ The following features are planned to allow UI-based configuration of data sourc
 - [ ] Replace hardcoded table definitions with dynamic schema loading
 - [ ] Add default schemas that ship with the application
 - [ ] Support schema versioning and change tracking
+## 📋 TODO: Lookup Field Rule
 
+Add a new field rule type `Lookup` that retrieves values from other source tables based on configurable join conditions.
+
+### Lookup Rule Features
+- [ ] **Single Field Join** - Lookup based on one field matching (e.g., `equipmentId -> HierarchyScope.equipmentID`)
+- [ ] **Composite Field Join** - Lookup based on multiple fields (e.g., `plantId + lineId -> ProductionLine`)
+- [ ] **Field Concatenation Join** - Lookup with concatenated key (e.g., `CONCAT(prefix, '-', id) -> TargetTable.compositeKey`)
+- [ ] **Return Field Selection** - Specify which field(s) to return from the lookup table
+- [ ] **Default Value** - Fallback value when lookup finds no match
+- [ ] **Multiple Match Handling** - Options: first, last, random, or error on multiple matches
+
+### Lookup Parameters Schema
+```typescript
+interface LookupParameters {
+  sourceTable: string;           // Table to lookup from
+  joinConditions: JoinCondition[]; // Array of join conditions
+  returnField: string;           // Field to return from source table
+  defaultValue?: any;            // Value if no match found
+  multipleMatchBehavior?: 'first' | 'last' | 'random' | 'error';
+}
+
+interface JoinCondition {
+  type: 'field' | 'composite' | 'concatenation';
+  // For 'field' type:
+  localField?: string;           // Field in current record
+  sourceField?: string;          // Field in source table
+  // For 'composite' type:
+  localFields?: string[];        // Multiple fields in current record
+  sourceFields?: string[];       // Multiple fields in source table
+  // For 'concatenation' type:
+  localExpression?: string;      // Expression like "{field1}-{field2}"
+  sourceExpression?: string;     // Expression for source table
+}
+```
+
+### Implementation Tasks
+- [x] Add `Lookup` to `FieldRuleType` enum in `FieldRule.cs`
+- [x] Create `LookupParameters` class in Domain layer
+- [x] Implement lookup logic in `FieldRuleService.cs`
+- [x] Add UI editor for Lookup rule in `FieldRuleEditor.tsx`
+- [ ] Support lookup in bridge table generation
+- [ ] Support lookup in primary key generation
+- [ ] Add caching for frequently looked up tables
+- [ ] Add validation for lookup configuration
+
+### Example Use Cases
+```json
+// Example 1: Simple field lookup (Equipment ID -> Hierarchy Scope ID)
+{
+  "entityName": "OperationsEvent",
+  "fieldName": "hierarchyScope",
+  "ruleType": "Lookup",
+  "parameters": {
+    "sourceTable": "hierarchyScopes",
+    "joinConditions": [
+      { "type": "field", "localField": "equipmentId", "sourceField": "equipmentID" }
+    ],
+    "returnField": "id",
+    "defaultValue": ""
+  }
+}
+
+// Example 2: Composite key lookup
+{
+  "entityName": "SegmentResponse",
+  "fieldName": "productionLineId",
+  "ruleType": "Lookup",
+  "parameters": {
+    "sourceTable": "productionLines",
+    "joinConditions": [
+      { "type": "composite", "localFields": ["plantId", "areaId"], "sourceFields": ["plantId", "areaId"] }
+    ],
+    "returnField": "id"
+  }
+}
+
+// Example 3: Concatenation lookup
+{
+  "entityName": "MaterialLot",
+  "fieldName": "materialDefinitionId",
+  "ruleType": "Lookup",
+  "parameters": {
+    "sourceTable": "materials",
+    "joinConditions": [
+      { "type": "concatenation", "localExpression": "{category}-{code}", "sourceField": "compositeKey" }
+    ],
+    "returnField": "id"
+  }
+}
+```
 ## �📝 License
 
 Internal Avanade project.

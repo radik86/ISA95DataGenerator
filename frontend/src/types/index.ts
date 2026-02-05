@@ -79,7 +79,8 @@ export enum RuleType {
   Case = 'Case',
   Coalesce = 'Coalesce',
   Concat = 'Concat',
-  CompositeConcat = 'CompositeConcat'
+  CompositeConcat = 'CompositeConcat',
+  Lookup = 'Lookup'
 }
 
 export type RuleParameters = 
@@ -94,7 +95,8 @@ export type RuleParameters =
   | CaseParameters
   | CoalesceParameters
   | ConcatParameters
-  | CompositeConcatParameters;
+  | CompositeConcatParameters
+  | LookupParameters;
 
 export interface RangeParameters {
   min: number;
@@ -168,6 +170,27 @@ export interface CompositeConcatParameters {
   separator?: string; // Separator between concatenated field values
   globalPrefix?: string; // Optional prefix for entire composite key
   globalSuffix?: string; // Optional suffix for entire composite key
+}
+
+export interface LookupParameters {
+  sourceTable: string; // Table to lookup from
+  joinConditions: JoinCondition[]; // Array of join conditions
+  returnField: string; // Field to return from source table
+  defaultValue?: any; // Value if no match found
+  multipleMatchBehavior?: 'first' | 'last' | 'random' | 'error';
+}
+
+export interface JoinCondition {
+  type: 'field' | 'composite' | 'concatenation';
+  // For 'field' type:
+  localField?: string; // Field in current record
+  sourceField?: string; // Field in source table
+  // For 'composite' type:
+  localFields?: string[]; // Multiple fields in current record
+  sourceFields?: string[]; // Multiple fields in source table
+  // For 'concatenation' type:
+  localExpression?: string; // Expression like "{field1}-{field2}"
+  sourceExpression?: string; // Expression for source table
 }
 
 export interface DataGenerationRequest {

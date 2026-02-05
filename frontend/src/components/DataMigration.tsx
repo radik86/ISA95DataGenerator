@@ -64,7 +64,7 @@ import { masterDataDB } from '../services/masterDataDB';
 import { processDataDB } from '../services/processDataDB';
 import { migrationConfigDB } from '../services/migrationConfigDB';
 import { entitiesApi } from '../api/client';
-import { EntityDefinition, AttributeDefinition, RuleType, FieldRule } from '../types';
+import { EntityDefinition, AttributeDefinition, RuleType, FieldRule, JoinCondition } from '../types';
 
 // ISA95 Entity Definitions for migration
 interface ISA95Entity {
@@ -239,6 +239,19 @@ const DataMigration: React.FC = () => {
   const [concatSeparator, setConcatSeparator] = useState('');
   const [concatPrefix, setConcatPrefix] = useState('');
   const [concatSuffix, setConcatSuffix] = useState('');
+  
+  // Lookup rule parameters
+  const [lookupSourceTable, setLookupSourceTable] = useState('');
+  const [lookupJoinType, setLookupJoinType] = useState<'field' | 'composite' | 'concatenation'>('field');
+  const [lookupLocalField, setLookupLocalField] = useState('');
+  const [lookupSourceField, setLookupSourceField] = useState('');
+  const [lookupLocalFields, setLookupLocalFields] = useState<string[]>(['']);
+  const [lookupSourceFields, setLookupSourceFields] = useState<string[]>(['']);
+  const [lookupLocalExpression, setLookupLocalExpression] = useState('');
+  const [lookupSourceExpression, setLookupSourceExpression] = useState('');
+  const [lookupReturnField, setLookupReturnField] = useState('');
+  const [lookupDefaultValue, setLookupDefaultValue] = useState('');
+  const [lookupMultipleMatchBehavior, setLookupMultipleMatchBehavior] = useState<'first' | 'last' | 'random' | 'error'>('first');
   
   // Preview state
   const [previewDialog, setPreviewDialog] = useState(false);
@@ -2057,6 +2070,58 @@ const DataMigration: React.FC = () => {
           suffix: concatSuffix || undefined
         };
         break;
+      case RuleType.Lookup:
+        if (!lookupSourceTable.trim()) {
+          showSnackbar('Please specify a source table', 'error');
+          return;
+        }
+        if (!lookupReturnField.trim()) {
+          showSnackbar('Please specify a return field', 'error');
+          return;
+        }
+        const joinConditions = [];
+        if (lookupJoinType === 'field') {
+          if (!lookupLocalField.trim() || !lookupSourceField.trim()) {
+            showSnackbar('Please specify both local and source fields for join', 'error');
+            return;
+          }
+          joinConditions.push({
+            type: 'field',
+            localField: lookupLocalField,
+            sourceField: lookupSourceField,
+          });
+        } else if (lookupJoinType === 'composite') {
+          const validLocalFields = lookupLocalFields.filter(f => f.trim());
+          const validSourceFields = lookupSourceFields.filter(f => f.trim());
+          if (validLocalFields.length === 0 || validSourceFields.length === 0) {
+            showSnackbar('Please specify at least one field pair for composite join', 'error');
+            return;
+          }
+          joinConditions.push({
+            type: 'composite',
+            localFields: validLocalFields,
+            sourceFields: validSourceFields,
+          });
+        } else if (lookupJoinType === 'concatenation') {
+          if (!lookupLocalExpression.trim()) {
+            showSnackbar('Please specify a local expression', 'error');
+            return;
+          }
+          joinConditions.push({
+            type: 'concatenation',
+            localExpression: lookupLocalExpression,
+            sourceExpression: lookupSourceExpression || undefined,
+            sourceField: lookupSourceField || undefined,
+          });
+        }
+        parameters = {
+          sourceTable: lookupSourceTable,
+          joinConditions,
+          returnField: lookupReturnField,
+          defaultValue: lookupDefaultValue || undefined,
+          multipleMatchBehavior: lookupMultipleMatchBehavior,
+        };
+        break;
       default:
         showSnackbar('Invalid rule type', 'error');
         return;
@@ -2286,6 +2351,60 @@ const DataMigration: React.FC = () => {
           globalSuffix: pkCompositeConcatGlobalSuffix
         };
         break;
+      case RuleType.Lookup:
+        // Validate lookup parameters
+        if (!lookupSourceTable) {
+          showSnackbar('Please select a source table for lookup', 'error');
+          return;
+        }
+        if (!lookupReturnField) {
+          showSnackbar('Please select a return field for lookup', 'error');
+          return;
+        }
+        // Validate join condition based on type
+        if (lookupJoinType === 'field' && (!lookupLocalField || !lookupSourceField)) {
+          showSnackbar('Please configure both local and source fields for the join', 'error');
+          return;
+        }
+        if (lookupJoinType === 'composite' && (lookupLocalFields.filter(f => f).length === 0 || lookupSourceFields.filter(f => f).length === 0)) {
+          showSnackbar('Please configure at least one field pair for composite join', 'error');
+          return;
+        }
+        if (lookupJoinType === 'concatenation' && (!lookupLocalExpression || !lookupSourceExpression)) {
+          showSnackbar('Please configure both local and source expressions for concatenation join', 'error');
+          return;
+        }
+
+        // Build join conditions array
+        const pkLookupJoinConditions: JoinCondition[] = [];
+        if (lookupJoinType === 'field') {
+          pkLookupJoinConditions.push({
+            type: 'field',
+            localField: lookupLocalField,
+            sourceField: lookupSourceField,
+          });
+        } else if (lookupJoinType === 'composite') {
+          pkLookupJoinConditions.push({
+            type: 'composite',
+            localFields: lookupLocalFields.filter(f => f),
+            sourceFields: lookupSourceFields.filter(f => f),
+          });
+        } else if (lookupJoinType === 'concatenation') {
+          pkLookupJoinConditions.push({
+            type: 'concatenation',
+            localExpression: lookupLocalExpression,
+            sourceExpression: lookupSourceExpression,
+          });
+        }
+
+        parameters = {
+          sourceTable: lookupSourceTable,
+          joinConditions: pkLookupJoinConditions,
+          returnField: lookupReturnField,
+          defaultValue: lookupDefaultValue || undefined,
+          multipleMatchBehavior: lookupMultipleMatchBehavior,
+        };
+        break;
       default:
         showSnackbar('Invalid rule type', 'error');
         return;
@@ -2351,6 +2470,8 @@ const DataMigration: React.FC = () => {
       case RuleType.CompositeConcat:
         const fieldNames = params?.fields?.map((f: any) => f.fieldName).join(', ') || '';
         return `CompositeConcat(${fieldNames})`;
+      case RuleType.Lookup:
+        return `Lookup(${params?.sourceTable}.${params?.returnField})`;
       default:
         return ruleType as string;
     }
@@ -2400,6 +2521,8 @@ const DataMigration: React.FC = () => {
         const concatFields = params?.sourceFields?.slice(0, 3).join(', ') || '';
         const sep = params?.separator ? ` with '${params.separator}'` : '';
         return `Concat: ${concatFields}${params?.sourceFields?.length > 3 ? '...' : ''}${sep}`;
+      case RuleType.Lookup:
+        return `Lookup: ${params?.sourceTable}.${params?.returnField}`;
       default:
         return fieldRule.ruleType;
     }
@@ -5168,6 +5291,7 @@ const DataMigration: React.FC = () => {
                 <MenuItem value={RuleType.Case}>Case (Switch/Case)</MenuItem>
                 <MenuItem value={RuleType.Coalesce}>Coalesce (First Non-Empty)</MenuItem>
                 <MenuItem value={RuleType.Concat}>Concatenate Fields</MenuItem>
+                <MenuItem value={RuleType.Lookup}>Lookup (From Table)</MenuItem>
               </Select>
             </FormControl>
 
@@ -5810,6 +5934,229 @@ const DataMigration: React.FC = () => {
                 </Box>
               );
             })()}
+
+            {/* Lookup Rule Configuration */}
+            {fieldRuleType === RuleType.Lookup && selectedFieldForRule && (() => {
+              const mappingIndex = selectedFieldForRule.mappingIndex;
+              const currentSourceTable = dataSource?.tables.find(t => t.name === tableMappings[mappingIndex]?.sourceTable);
+              
+              return (
+                <Box sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Lookup Configuration
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Look up a value from another source table based on join conditions.
+                  </Typography>
+                  
+                  {/* Source Table Selection */}
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Source Table</InputLabel>
+                    <Select
+                      value={lookupSourceTable}
+                      onChange={(e) => setLookupSourceTable(e.target.value)}
+                      label="Source Table"
+                    >
+                      {dataSource?.tables.map((table) => (
+                        <MenuItem key={table.name} value={table.name}>
+                          {table.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {/* Join Type Selection */}
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Join Type</InputLabel>
+                    <Select
+                      value={lookupJoinType}
+                      onChange={(e) => setLookupJoinType(e.target.value as 'field' | 'composite' | 'concatenation')}
+                      label="Join Type"
+                    >
+                      <MenuItem value="field">Single Field</MenuItem>
+                      <MenuItem value="composite">Composite (Multiple Fields)</MenuItem>
+                      <MenuItem value="concatenation">Concatenation (Expression)</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  {/* Single Field Join */}
+                  {lookupJoinType === 'field' && (
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                      <FormControl fullWidth>
+                        <InputLabel>Local Field</InputLabel>
+                        <Select
+                          value={lookupLocalField}
+                          onChange={(e) => setLookupLocalField(e.target.value)}
+                          label="Local Field"
+                        >
+                          {currentSourceTable?.columns
+                            .map((col) => (
+                              <MenuItem key={col.name} value={col.name}>
+                                {col.name}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                      <FormControl fullWidth>
+                        <InputLabel>Source Field</InputLabel>
+                        <Select
+                          value={lookupSourceField}
+                          onChange={(e) => setLookupSourceField(e.target.value)}
+                          label="Source Field"
+                        >
+                          {lookupSourceTable && dataSource?.tables
+                            .find(t => t.name === lookupSourceTable)?.columns
+                            .map((col) => (
+                              <MenuItem key={col.name} value={col.name}>
+                                {col.name}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  )}
+
+                  {/* Composite Join */}
+                  {lookupJoinType === 'composite' && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Configure multiple field pairs for the join condition:
+                      </Typography>
+                      {lookupLocalFields.map((localField, index) => (
+                        <Box key={index} sx={{ display: 'flex', gap: 2, mb: 1 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Local Field {index + 1}</InputLabel>
+                            <Select
+                              value={localField}
+                              onChange={(e) => {
+                                const newLocalFields = [...lookupLocalFields];
+                                newLocalFields[index] = e.target.value;
+                                setLookupLocalFields(newLocalFields);
+                              }}
+                              label={`Local Field ${index + 1}`}
+                            >
+                              {currentSourceTable?.columns
+                                .map((col) => (
+                                  <MenuItem key={col.name} value={col.name}>
+                                    {col.name}
+                                  </MenuItem>
+                                ))}
+                            </Select>
+                          </FormControl>
+                          <FormControl fullWidth>
+                            <InputLabel>Source Field {index + 1}</InputLabel>
+                            <Select
+                              value={lookupSourceFields[index] || ''}
+                              onChange={(e) => {
+                                const newSourceFields = [...lookupSourceFields];
+                                newSourceFields[index] = e.target.value;
+                                setLookupSourceFields(newSourceFields);
+                              }}
+                              label={`Source Field ${index + 1}`}
+                            >
+                              {lookupSourceTable && dataSource?.tables
+                                .find(t => t.name === lookupSourceTable)?.columns
+                                .map((col) => (
+                                  <MenuItem key={col.name} value={col.name}>
+                                    {col.name}
+                                  </MenuItem>
+                                ))}
+                            </Select>
+                          </FormControl>
+                          <IconButton 
+                            onClick={() => {
+                              const newLocalFields = lookupLocalFields.filter((_, i) => i !== index);
+                              const newSourceFields = lookupSourceFields.filter((_, i) => i !== index);
+                              setLookupLocalFields(newLocalFields.length > 0 ? newLocalFields : ['']);
+                              setLookupSourceFields(newSourceFields.length > 0 ? newSourceFields : ['']);
+                            }}
+                            disabled={lookupLocalFields.length === 1}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                      ))}
+                      <Button 
+                        startIcon={<AddIcon />} 
+                        onClick={() => {
+                          setLookupLocalFields([...lookupLocalFields, '']);
+                          setLookupSourceFields([...lookupSourceFields, '']);
+                        }}
+                        size="small"
+                      >
+                        Add Field Pair
+                      </Button>
+                    </Box>
+                  )}
+
+                  {/* Concatenation Join */}
+                  {lookupJoinType === 'concatenation' && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Use expressions with field placeholders (e.g., {'{field1}'}-{'{field2}'}):
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        label="Local Expression"
+                        value={lookupLocalExpression}
+                        onChange={(e) => setLookupLocalExpression(e.target.value)}
+                        placeholder="{equipmentId}-{timestamp}"
+                        sx={{ mb: 1 }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Source Expression"
+                        value={lookupSourceExpression}
+                        onChange={(e) => setLookupSourceExpression(e.target.value)}
+                        placeholder="{id}-{date}"
+                      />
+                    </Box>
+                  )}
+
+                  {/* Return Field */}
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Return Field</InputLabel>
+                    <Select
+                      value={lookupReturnField}
+                      onChange={(e) => setLookupReturnField(e.target.value)}
+                      label="Return Field"
+                    >
+                      {lookupSourceTable && dataSource?.tables
+                        .find(t => t.name === lookupSourceTable)?.columns
+                        .map((col) => (
+                          <MenuItem key={col.name} value={col.name}>
+                            {col.name}
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+
+                  {/* Default Value */}
+                  <TextField
+                    fullWidth
+                    label="Default Value (if no match found)"
+                    value={lookupDefaultValue}
+                    onChange={(e) => setLookupDefaultValue(e.target.value)}
+                    placeholder="N/A"
+                    sx={{ mb: 2 }}
+                  />
+
+                  {/* Multiple Match Behavior */}
+                  <FormControl fullWidth>
+                    <InputLabel>If Multiple Matches</InputLabel>
+                    <Select
+                      value={lookupMultipleMatchBehavior}
+                      onChange={(e) => setLookupMultipleMatchBehavior(e.target.value as 'first' | 'last' | 'error')}
+                      label="If Multiple Matches"
+                    >
+                      <MenuItem value="first">Use First Match</MenuItem>
+                      <MenuItem value="last">Use Last Match</MenuItem>
+                      <MenuItem value="error">Throw Error</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              );
+            })()}
           </Box>
 
           {/* Field Rule Preview Section */}
@@ -5947,6 +6294,7 @@ const DataMigration: React.FC = () => {
                 <MenuItem value={RuleType.PrefixSequence}>Prefix + Sequence</MenuItem>
                 <MenuItem value={'Composite' as any}>Composite (Multiple Fields)</MenuItem>
                 <MenuItem value={RuleType.CompositeConcat}>Composite + Concat (Fields with Patterns)</MenuItem>
+                <MenuItem value={RuleType.Lookup}>Lookup (From Table)</MenuItem>
               </Select>
             </FormControl>
 
@@ -6270,6 +6618,235 @@ const DataMigration: React.FC = () => {
                         `${f.prefix || ''}{${f.fieldName}}${f.suffix || ''}`
                       ).join(pkCompositeConcatSeparator || '-')}
                       {pkCompositeConcatGlobalSuffix}
+                    </Typography>
+                  </Alert>
+                )}
+              </Box>
+            )}
+
+            {/* Lookup Parameters for PK Rule */}
+            {pkRuleType === RuleType.Lookup && selectedMappingForPK !== null && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Look up the primary key value from another source table based on join conditions.
+                </Alert>
+                
+                {/* Source Table Selection */}
+                <FormControl fullWidth>
+                  <InputLabel>Source Table (Lookup From)</InputLabel>
+                  <Select
+                    value={lookupSourceTable}
+                    onChange={(e) => setLookupSourceTable(e.target.value)}
+                    label="Source Table (Lookup From)"
+                  >
+                    {dataSource?.tables.map((table) => (
+                      <MenuItem key={table.name} value={table.name}>
+                        {table.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {/* Join Type Selection */}
+                <FormControl fullWidth>
+                  <InputLabel>Join Type</InputLabel>
+                  <Select
+                    value={lookupJoinType}
+                    onChange={(e) => setLookupJoinType(e.target.value as 'field' | 'composite' | 'concatenation')}
+                    label="Join Type"
+                  >
+                    <MenuItem value="field">Single Field</MenuItem>
+                    <MenuItem value="composite">Composite (Multiple Fields)</MenuItem>
+                    <MenuItem value="concatenation">Concatenation (Expression)</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {/* Single Field Join */}
+                {lookupJoinType === 'field' && (
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Local Field</InputLabel>
+                      <Select
+                        value={lookupLocalField}
+                        onChange={(e) => setLookupLocalField(e.target.value)}
+                        label="Local Field"
+                      >
+                        {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns
+                          .map((col) => (
+                            <MenuItem key={col.name} value={col.name}>
+                              {col.name}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
+                      <InputLabel>Source Field</InputLabel>
+                      <Select
+                        value={lookupSourceField}
+                        onChange={(e) => setLookupSourceField(e.target.value)}
+                        label="Source Field"
+                      >
+                        {lookupSourceTable && dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns
+                          .map((col) => (
+                            <MenuItem key={col.name} value={col.name}>
+                              {col.name}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+
+                {/* Composite Join */}
+                {lookupJoinType === 'composite' && (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Configure multiple field pairs for the join condition:
+                    </Typography>
+                    {lookupLocalFields.map((localField, index) => (
+                      <Box key={index} sx={{ display: 'flex', gap: 2, mb: 1 }}>
+                        <FormControl fullWidth>
+                          <InputLabel>Local Field {index + 1}</InputLabel>
+                          <Select
+                            value={localField}
+                            onChange={(e) => {
+                              const newLocalFields = [...lookupLocalFields];
+                              newLocalFields[index] = e.target.value;
+                              setLookupLocalFields(newLocalFields);
+                            }}
+                            label={`Local Field ${index + 1}`}
+                          >
+                            {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns
+                              .map((col) => (
+                                <MenuItem key={col.name} value={col.name}>
+                                  {col.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </FormControl>
+                        <FormControl fullWidth>
+                          <InputLabel>Source Field {index + 1}</InputLabel>
+                          <Select
+                            value={lookupSourceFields[index] || ''}
+                            onChange={(e) => {
+                              const newSourceFields = [...lookupSourceFields];
+                              newSourceFields[index] = e.target.value;
+                              setLookupSourceFields(newSourceFields);
+                            }}
+                            label={`Source Field ${index + 1}`}
+                          >
+                            {lookupSourceTable && dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns
+                              .map((col) => (
+                                <MenuItem key={col.name} value={col.name}>
+                                  {col.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </FormControl>
+                        <IconButton 
+                          onClick={() => {
+                            const newLocalFields = lookupLocalFields.filter((_, i) => i !== index);
+                            const newSourceFields = lookupSourceFields.filter((_, i) => i !== index);
+                            setLookupLocalFields(newLocalFields.length > 0 ? newLocalFields : ['']);
+                            setLookupSourceFields(newSourceFields.length > 0 ? newSourceFields : ['']);
+                          }}
+                          disabled={lookupLocalFields.length === 1}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+                    ))}
+                    <Button 
+                      startIcon={<AddIcon />} 
+                      onClick={() => {
+                        setLookupLocalFields([...lookupLocalFields, '']);
+                        setLookupSourceFields([...lookupSourceFields, '']);
+                      }}
+                      size="small"
+                    >
+                      Add Field Pair
+                    </Button>
+                  </Box>
+                )}
+
+                {/* Concatenation Join */}
+                {lookupJoinType === 'concatenation' && (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Use expressions with field placeholders (e.g., {'{field1}'}-{'{field2}'}):
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Local Expression"
+                      value={lookupLocalExpression}
+                      onChange={(e) => setLookupLocalExpression(e.target.value)}
+                      placeholder="{equipmentId}-{timestamp}"
+                      sx={{ mb: 1 }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Source Expression"
+                      value={lookupSourceExpression}
+                      onChange={(e) => setLookupSourceExpression(e.target.value)}
+                      placeholder="{id}-{date}"
+                    />
+                  </Box>
+                )}
+
+                {/* Return Field */}
+                <FormControl fullWidth>
+                  <InputLabel>Return Field (Value to Use as PK)</InputLabel>
+                  <Select
+                    value={lookupReturnField}
+                    onChange={(e) => setLookupReturnField(e.target.value)}
+                    label="Return Field (Value to Use as PK)"
+                  >
+                    {lookupSourceTable && dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns
+                      .map((col) => (
+                        <MenuItem key={col.name} value={col.name}>
+                          {col.name}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+
+                {/* Default Value */}
+                <TextField
+                  fullWidth
+                  label="Default Value (if no match found)"
+                  value={lookupDefaultValue}
+                  onChange={(e) => setLookupDefaultValue(e.target.value)}
+                  placeholder="N/A"
+                />
+
+                {/* Multiple Match Behavior */}
+                <FormControl fullWidth>
+                  <InputLabel>If Multiple Matches</InputLabel>
+                  <Select
+                    value={lookupMultipleMatchBehavior}
+                    onChange={(e) => setLookupMultipleMatchBehavior(e.target.value as 'first' | 'last' | 'error')}
+                    label="If Multiple Matches"
+                  >
+                    <MenuItem value="first">Use First Match</MenuItem>
+                    <MenuItem value="last">Use Last Match</MenuItem>
+                    <MenuItem value="error">Throw Error</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {/* Summary */}
+                {lookupSourceTable && lookupReturnField && (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    <Typography variant="body2">
+                      <strong>Summary:</strong> Look up "{lookupReturnField}" from "{lookupSourceTable}"
+                      {lookupJoinType === 'field' && lookupLocalField && lookupSourceField && (
+                        <> where local.{lookupLocalField} = source.{lookupSourceField}</>
+                      )}
+                      {lookupJoinType === 'composite' && (
+                        <> using composite join on {lookupLocalFields.filter(f => f).length} field(s)</>
+                      )}
+                      {lookupJoinType === 'concatenation' && (
+                        <> using expression join</>
+                      )}
                     </Typography>
                   </Alert>
                 )}

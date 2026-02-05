@@ -11,6 +11,7 @@ public class FieldRuleService : IFieldRuleService
 {
     private readonly Dictionary<string, Dictionary<string, FieldRule>> _rules = new();
     private readonly Dictionary<string, int> _sequenceCounters = new();
+    private readonly Dictionary<string, List<Dictionary<string, object>>> _lookupData = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
     private readonly string _rulesFilePath;
     private readonly ILogger<FieldRuleService> _logger;
@@ -195,8 +196,9 @@ public class FieldRuleService : IFieldRuleService
 
             case FieldRuleType.IfThen:
             case FieldRuleType.Case:
+            case FieldRuleType.Lookup:
                 // These rules require source data - return default if called without source data
-                _logger.LogWarning("IfThen/Case rule called without source data for {EntityName}.{FieldName}", 
+                _logger.LogWarning("IfThen/Case/Lookup rule called without source data for {EntityName}.{FieldName}", 
                     rule.EntityName, rule.FieldName);
                 return GetDefaultValue(attribute.Schema);
 
@@ -222,6 +224,23 @@ public class FieldRuleService : IFieldRuleService
         {
             _lock.Release();
         }
+    }
+
+    public void RegisterLookupData(string tableName, List<Dictionary<string, object>> data)
+    {
+        _lookupData[tableName] = data;
+        _logger.LogInformation("Registered lookup data for table '{TableName}' with {Count} records", tableName, data.Count);
+    }
+
+    public void ClearLookupData()
+    {
+        _lookupData.Clear();
+        _logger.LogInformation("Cleared all lookup data");
+    }
+
+    public IEnumerable<string> GetRegisteredLookupTables()
+    {
+        return _lookupData.Keys;
     }
 
     private object GenerateRangeValue(FieldRule rule, AttributeDefinition attribute, Random random)
@@ -354,6 +373,11 @@ public class FieldRuleService : IFieldRuleService
             return GenerateCaseValue(rule, attribute, sourceData);
         }
         
+        if (rule.RuleType == FieldRuleType.Lookup)
+        {
+            return GenerateLookupValue(rule, attribute, sourceData, random);
+        }
+        
         // For non-conditional rules, use the standard method
         return GenerateFieldValue(rule, attribute, random);
     }
@@ -427,6 +451,157 @@ public class FieldRuleService : IFieldRuleService
         _logger.LogDebug("Case rule for {EntityName}.{FieldName}: no match for '{SourceValue}', using default",
             rule.EntityName, rule.FieldName, sourceValueStr);
         return caseParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+    }
+
+    private object GenerateLookupValue(FieldRule rule, AttributeDefinition attribute, Dictionary<string, object>? sourceData, Random random)
+    {
+        var lookupParams = DeserializeParameters<LookupParameters>(rule.Parameters);
+        
+        if (lookupParams == null)
+        {
+            _logger.LogWarning("Lookup parameters missing for {EntityName}.{FieldName}", rule.EntityName, rule.FieldName);
+            return GetDefaultValue(attribute.Schema);
+        }
+
+        // Get lookup table data
+        if (!_lookupData.TryGetValue(lookupParams.SourceTable, out var lookupTable))
+        {
+            _logger.LogWarning("Lookup table '{SourceTable}' not found for {EntityName}.{FieldName}", 
+                lookupParams.SourceTable, rule.EntityName, rule.FieldName);
+            return lookupParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+        }
+
+        // Find matching records
+        var matches = new List<Dictionary<string, object>>();
+        foreach (var record in lookupTable)
+        {
+            if (MatchesJoinConditions(record, sourceData, lookupParams.JoinConditions))
+            {
+                matches.Add(record);
+            }
+        }
+
+        if (matches.Count == 0)
+        {
+            _logger.LogDebug("Lookup for {EntityName}.{FieldName}: no matches found in '{SourceTable}'",
+                rule.EntityName, rule.FieldName, lookupParams.SourceTable);
+            return lookupParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+        }
+
+        // Select record based on MultipleMatchBehavior
+        Dictionary<string, object> selectedRecord;
+        switch (lookupParams.MultipleMatchBehavior?.ToLower() ?? "first")
+        {
+            case "last":
+                selectedRecord = matches[^1];
+                break;
+            case "random":
+                selectedRecord = matches[random.Next(matches.Count)];
+                break;
+            case "error":
+                if (matches.Count > 1)
+                {
+                    _logger.LogError("Lookup for {EntityName}.{FieldName}: multiple matches found ({Count}) but behavior is 'error'",
+                        rule.EntityName, rule.FieldName, matches.Count);
+                    return lookupParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+                }
+                selectedRecord = matches[0];
+                break;
+            default: // "first"
+                selectedRecord = matches[0];
+                break;
+        }
+
+        // Return the specified field from the matched record
+        var returnValue = GetSourceFieldValue(lookupParams.ReturnField, selectedRecord);
+        if (returnValue == null)
+        {
+            _logger.LogWarning("Lookup for {EntityName}.{FieldName}: return field '{ReturnField}' not found in matched record",
+                rule.EntityName, rule.FieldName, lookupParams.ReturnField);
+            return lookupParams.DefaultValue ?? GetDefaultValue(attribute.Schema);
+        }
+
+        _logger.LogDebug("Lookup for {EntityName}.{FieldName}: found '{Value}' from '{SourceTable}'",
+            rule.EntityName, rule.FieldName, returnValue, lookupParams.SourceTable);
+        return returnValue;
+    }
+
+    private bool MatchesJoinConditions(Dictionary<string, object> lookupRecord, Dictionary<string, object>? sourceData, List<JoinCondition> conditions)
+    {
+        if (sourceData == null || conditions == null || conditions.Count == 0)
+            return false;
+
+        foreach (var condition in conditions)
+        {
+            bool conditionMet = false;
+
+            switch (condition.Type?.ToLower() ?? "field")
+            {
+                case "field":
+                    // Simple single field match
+                    var localValue = GetSourceFieldValue(condition.LocalField, sourceData);
+                    var lookupValue = GetSourceFieldValue(condition.SourceField, lookupRecord);
+                    conditionMet = localValue != null && lookupValue != null &&
+                                   string.Equals(localValue.ToString(), lookupValue.ToString(), StringComparison.OrdinalIgnoreCase);
+                    break;
+
+                case "composite":
+                    // Multiple fields must all match
+                    if (condition.LocalFields != null && condition.SourceFields != null &&
+                        condition.LocalFields.Count == condition.SourceFields.Count)
+                    {
+                        conditionMet = true;
+                        for (int i = 0; i < condition.LocalFields.Count; i++)
+                        {
+                            var lv = GetSourceFieldValue(condition.LocalFields[i], sourceData);
+                            var sv = GetSourceFieldValue(condition.SourceFields[i], lookupRecord);
+                            if (lv == null || sv == null ||
+                                !string.Equals(lv.ToString(), sv.ToString(), StringComparison.OrdinalIgnoreCase))
+                            {
+                                conditionMet = false;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+
+                case "concatenation":
+                    // Expression-based match
+                    var localExprResult = EvaluateExpression(condition.LocalExpression, sourceData);
+                    var sourceExprResult = condition.SourceExpression != null 
+                        ? EvaluateExpression(condition.SourceExpression, lookupRecord)
+                        : GetSourceFieldValue(condition.SourceField, lookupRecord)?.ToString();
+                    conditionMet = !string.IsNullOrEmpty(localExprResult) && 
+                                   !string.IsNullOrEmpty(sourceExprResult) &&
+                                   string.Equals(localExprResult, sourceExprResult, StringComparison.OrdinalIgnoreCase);
+                    break;
+            }
+
+            // All conditions must be met (AND logic)
+            if (!conditionMet)
+                return false;
+        }
+
+        return true;
+    }
+
+    private string? EvaluateExpression(string? expression, Dictionary<string, object>? data)
+    {
+        if (string.IsNullOrEmpty(expression) || data == null)
+            return null;
+
+        var result = expression;
+        
+        // Replace {fieldName} placeholders with actual values
+        var regex = new Regex(@"\{([^}]+)\}");
+        result = regex.Replace(result, match =>
+        {
+            var fieldName = match.Groups[1].Value;
+            var value = GetSourceFieldValue(fieldName, data);
+            return value?.ToString() ?? "";
+        });
+
+        return result;
     }
 
     private object? GetSourceFieldValue(string? fieldName, Dictionary<string, object>? sourceData)

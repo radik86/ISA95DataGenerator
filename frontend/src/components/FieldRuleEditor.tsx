@@ -73,6 +73,19 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
   // Case rule parameters
   const [caseCases, setCaseCases] = useState<Array<{ case: string; value: string }>>([{ case: '', value: '' }]);
   const [caseDefaultValue, setCaseDefaultValue] = useState('');
+  
+  // Lookup rule parameters
+  const [lookupSourceTable, setLookupSourceTable] = useState('');
+  const [lookupJoinType, setLookupJoinType] = useState<'field' | 'composite' | 'concatenation'>('field');
+  const [lookupLocalField, setLookupLocalField] = useState('');
+  const [lookupSourceField, setLookupSourceField] = useState('');
+  const [lookupLocalFields, setLookupLocalFields] = useState<string[]>(['']);
+  const [lookupSourceFields, setLookupSourceFields] = useState<string[]>(['']);
+  const [lookupLocalExpression, setLookupLocalExpression] = useState('');
+  const [lookupSourceExpression, setLookupSourceExpression] = useState('');
+  const [lookupReturnField, setLookupReturnField] = useState('');
+  const [lookupDefaultValue, setLookupDefaultValue] = useState('');
+  const [lookupMultipleMatchBehavior, setLookupMultipleMatchBehavior] = useState<'first' | 'last' | 'random' | 'error'>('first');
 
   const { data: entityStructure } = useEntityStructure(selectedEntity);
 
@@ -135,6 +148,36 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
         parameters = { 
           cases: caseCases.filter(c => c.case.trim() && c.value.trim()),
           defaultValue: caseDefaultValue || undefined
+        };
+        break;
+      case RuleType.Lookup:
+        const joinConditions = [];
+        if (lookupJoinType === 'field') {
+          joinConditions.push({
+            type: 'field',
+            localField: lookupLocalField,
+            sourceField: lookupSourceField,
+          });
+        } else if (lookupJoinType === 'composite') {
+          joinConditions.push({
+            type: 'composite',
+            localFields: lookupLocalFields.filter(f => f.trim()),
+            sourceFields: lookupSourceFields.filter(f => f.trim()),
+          });
+        } else if (lookupJoinType === 'concatenation') {
+          joinConditions.push({
+            type: 'concatenation',
+            localExpression: lookupLocalExpression,
+            sourceExpression: lookupSourceExpression || undefined,
+            sourceField: lookupSourceField || undefined,
+          });
+        }
+        parameters = {
+          sourceTable: lookupSourceTable,
+          joinConditions,
+          returnField: lookupReturnField,
+          defaultValue: lookupDefaultValue || undefined,
+          multipleMatchBehavior: lookupMultipleMatchBehavior,
         };
         break;
     }
@@ -216,6 +259,23 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
         setCaseCases(params?.cases || [{ case: '', value: '' }]);
         setCaseDefaultValue(params?.defaultValue || '');
         break;
+      case RuleType.Lookup:
+        setLookupSourceTable(params?.sourceTable || '');
+        setLookupReturnField(params?.returnField || '');
+        setLookupDefaultValue(params?.defaultValue || '');
+        setLookupMultipleMatchBehavior(params?.multipleMatchBehavior || 'first');
+        // Load join conditions
+        const joinCond = params?.joinConditions?.[0];
+        if (joinCond) {
+          setLookupJoinType(joinCond.type || 'field');
+          setLookupLocalField(joinCond.localField || '');
+          setLookupSourceField(joinCond.sourceField || '');
+          setLookupLocalFields(joinCond.localFields || ['']);
+          setLookupSourceFields(joinCond.sourceFields || ['']);
+          setLookupLocalExpression(joinCond.localExpression || '');
+          setLookupSourceExpression(joinCond.sourceExpression || '');
+        }
+        break;
     }
   };
 
@@ -234,6 +294,18 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
     setIfThenFalseValue('');
     setCaseCases([{ case: '', value: '' }]);
     setCaseDefaultValue('');
+    // Reset lookup parameters
+    setLookupSourceTable('');
+    setLookupJoinType('field');
+    setLookupLocalField('');
+    setLookupSourceField('');
+    setLookupLocalFields(['']);
+    setLookupSourceFields(['']);
+    setLookupLocalExpression('');
+    setLookupSourceExpression('');
+    setLookupReturnField('');
+    setLookupDefaultValue('');
+    setLookupMultipleMatchBehavior('first');
   };
 
   const renderRuleParameters = () => {
@@ -563,6 +635,181 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
           </Box>
         );
 
+      case RuleType.Lookup:
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Lookup Configuration
+            </Typography>
+            
+            <TextField
+              fullWidth
+              label="Source Table"
+              value={lookupSourceTable}
+              onChange={(e) => setLookupSourceTable(e.target.value)}
+              placeholder="e.g., hierarchyScopes, materials, equipment"
+              helperText="Name of the table to lookup values from"
+            />
+            
+            <FormControl fullWidth>
+              <InputLabel>Join Type</InputLabel>
+              <Select
+                value={lookupJoinType}
+                onChange={(e) => setLookupJoinType(e.target.value as 'field' | 'composite' | 'concatenation')}
+                label="Join Type"
+              >
+                <MenuItem value="field">Single Field</MenuItem>
+                <MenuItem value="composite">Composite (Multiple Fields)</MenuItem>
+                <MenuItem value="concatenation">Concatenation (Expression)</MenuItem>
+              </Select>
+            </FormControl>
+
+            {lookupJoinType === 'field' && (
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Local Field"
+                  value={lookupLocalField}
+                  onChange={(e) => setLookupLocalField(e.target.value)}
+                  placeholder="Field in current record"
+                  helperText="Field in the current entity to match"
+                />
+                <TextField
+                  fullWidth
+                  label="Source Field"
+                  value={lookupSourceField}
+                  onChange={(e) => setLookupSourceField(e.target.value)}
+                  placeholder="Field in source table"
+                  helperText="Field in the lookup table to match against"
+                />
+              </Box>
+            )}
+
+            {lookupJoinType === 'composite' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Match multiple fields (all must match)
+                </Typography>
+                {lookupLocalFields.map((_, index) => (
+                  <Box key={index} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <TextField
+                      fullWidth
+                      label={`Local Field ${index + 1}`}
+                      value={lookupLocalFields[index] || ''}
+                      onChange={(e) => {
+                        const newFields = [...lookupLocalFields];
+                        newFields[index] = e.target.value;
+                        setLookupLocalFields(newFields);
+                      }}
+                      placeholder="Field in current record"
+                    />
+                    <TextField
+                      fullWidth
+                      label={`Source Field ${index + 1}`}
+                      value={lookupSourceFields[index] || ''}
+                      onChange={(e) => {
+                        const newFields = [...lookupSourceFields];
+                        newFields[index] = e.target.value;
+                        setLookupSourceFields(newFields);
+                      }}
+                      placeholder="Field in source table"
+                    />
+                    <IconButton
+                      color="error"
+                      onClick={() => {
+                        if (lookupLocalFields.length > 1) {
+                          setLookupLocalFields(lookupLocalFields.filter((_, i) => i !== index));
+                          setLookupSourceFields(lookupSourceFields.filter((_, i) => i !== index));
+                        }
+                      }}
+                      disabled={lookupLocalFields.length === 1}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setLookupLocalFields([...lookupLocalFields, '']);
+                    setLookupSourceFields([...lookupSourceFields, '']);
+                  }}
+                  size="small"
+                >
+                  Add Field Pair
+                </Button>
+              </Box>
+            )}
+
+            {lookupJoinType === 'concatenation' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Local Expression"
+                  value={lookupLocalExpression}
+                  onChange={(e) => setLookupLocalExpression(e.target.value)}
+                  placeholder="{field1}-{field2}"
+                  helperText="Expression using {fieldName} placeholders from current record"
+                />
+                <TextField
+                  fullWidth
+                  label="Source Expression (or Source Field)"
+                  value={lookupSourceExpression || lookupSourceField}
+                  onChange={(e) => {
+                    if (e.target.value.includes('{')) {
+                      setLookupSourceExpression(e.target.value);
+                      setLookupSourceField('');
+                    } else {
+                      setLookupSourceField(e.target.value);
+                      setLookupSourceExpression('');
+                    }
+                  }}
+                  placeholder="{field1}-{field2} or fieldName"
+                  helperText="Expression or field name to match against in source table"
+                />
+              </Box>
+            )}
+
+            <TextField
+              fullWidth
+              label="Return Field"
+              value={lookupReturnField}
+              onChange={(e) => setLookupReturnField(e.target.value)}
+              placeholder="Field to return from matched record"
+              helperText="The field value to return from the matched lookup record"
+            />
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Default Value (Optional)"
+                value={lookupDefaultValue}
+                onChange={(e) => setLookupDefaultValue(e.target.value)}
+                placeholder="Value if no match found"
+                helperText="Value to use if no matching record is found"
+              />
+              <FormControl fullWidth>
+                <InputLabel>Multiple Match Behavior</InputLabel>
+                <Select
+                  value={lookupMultipleMatchBehavior}
+                  onChange={(e) => setLookupMultipleMatchBehavior(e.target.value as 'first' | 'last' | 'random' | 'error')}
+                  label="Multiple Match Behavior"
+                >
+                  <MenuItem value="first">First Match</MenuItem>
+                  <MenuItem value="last">Last Match</MenuItem>
+                  <MenuItem value="random">Random Match</MenuItem>
+                  <MenuItem value="error">Error on Multiple</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              Example: Lookup hierarchyScope ID from hierarchyScopes table where equipmentId matches equipmentID field.
+            </Typography>
+          </Box>
+        );
+
       default:
         return null;
     }
@@ -592,6 +839,14 @@ const FieldRuleEditor: React.FC<FieldRuleEditorProps> = ({ entityName, fieldName
                ifThenFalseValue.trim().length > 0;
       case RuleType.Case:
         return caseCases.some(c => c.case.trim().length > 0 && c.value.trim().length > 0);
+      case RuleType.Lookup:
+        const hasValidJoinCondition = 
+          (lookupJoinType === 'field' && lookupLocalField.trim() && lookupSourceField.trim()) ||
+          (lookupJoinType === 'composite' && lookupLocalFields.some(f => f.trim()) && lookupSourceFields.some(f => f.trim())) ||
+          (lookupJoinType === 'concatenation' && lookupLocalExpression.trim() && (lookupSourceExpression.trim() || lookupSourceField.trim()));
+        return lookupSourceTable.trim().length > 0 && 
+               lookupReturnField.trim().length > 0 &&
+               hasValidJoinCondition;
       default:
         return false;
     }
