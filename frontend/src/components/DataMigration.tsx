@@ -1626,14 +1626,32 @@ const DataMigration: React.FC = () => {
           'equipment_class_properties': 'equipmentClassProperties',
           'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
           'plants': 'plants', 'production_lines': 'productionLines', 'process_segments': 'processSegments',
+          'line_equipment': 'lineEquipment', 'segment_boms': 'segmentBOMs', 'equipment_usages': 'equipmentUsages',
+          'operation_event_definitions': 'operationEventDefinitions',
+          'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+          'operation_event_definition_properties': 'operationEventDefinitionProperties',
+          'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
+          'hierarchy_scopes': 'hierarchyScopes',
+          'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
+          'shifts': 'shifts', 'crews': 'crews', 'shift_crew_assignments': 'shiftCrewAssignments',
+          'operations_event_classes': 'operationsEventClasses',
         };
         const processStoreMap: { [key: string]: string } = {
-          'work_orders': 'workOrders', 'work_order_assignments': 'workOrderAssignments',
-          'job_orders': 'jobOrders', 'job_order_parameters': 'jobOrderParameters',
-          'job_responses': 'jobResponses', 'job_response_data': 'jobResponseData',
-          'equipment_actuals': 'equipmentActuals', 'material_actuals': 'materialActuals',
-          'personnel_actuals': 'personnelActuals', 'operations_events': 'operationsEvents',
-          'equipment_allocations': 'equipmentAllocations', 'operator_events': 'operatorEvents',
+          'operations_requests': 'operationsRequests',
+          'segment_requirements': 'segmentRequirements',
+          'segment_material_requirements': 'segmentMaterialRequirements',
+          'segment_equipment_requirements': 'segmentEquipmentRequirements',
+          'operations_responses': 'operationsResponses',
+          'segment_responses': 'segmentResponses',
+          'segment_material_actuals': 'segmentMaterialActuals',
+          'segment_equipment_actuals': 'segmentEquipmentActuals',
+          'equipment_property_tracking': 'equipmentPropertyTracking',
+          'test_results': 'testResults',
+          'operations_events': 'operationsEvents',
+          'operations_event_records': 'operationsEventRecords',
+          'operations_event_entries': 'operationsEventEntries',
+          'operations_event_properties': 'operationsEventProperties',
+          'segment_data': 'segmentData',
         };
         const masterStoreName = masterStoreMap[tableName];
         if (masterStoreName) {
@@ -1666,75 +1684,102 @@ const DataMigration: React.FC = () => {
 
       // Load Entity 1 TRANSFORMED data (with field rules, PK rules, and filters applied)
       if (bridgeEntity1) {
-        const entity1Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity1);
+        // Find ALL mappings for this entity (there can be multiple source tables for the same target entity)
+        const entity1Mappings = tableMappings.filter(m => !m.isBridge && m.targetEntity === bridgeEntity1);
         console.log('[Bridge Preview] Entity 1 mapping lookup:', { 
           bridgeEntity1, 
-          entity1Mapping: entity1Mapping ? { target: entity1Mapping.targetEntity, source: entity1Mapping.sourceTable } : null,
-          allMappings: tableMappings.map(m => ({ target: m.targetEntity, source: m.sourceTable, isBridge: m.isBridge }))
+          entity1MappingsCount: entity1Mappings.length,
+          entity1Mappings: entity1Mappings.map(m => ({ target: m.targetEntity, source: m.sourceTable })),
+          allNonBridgeMappings: tableMappings.filter(m => !m.isBridge).map(m => ({ target: m.targetEntity, source: m.sourceTable }))
         });
-        if (entity1Mapping) {
-          const entity1SourceData = await getTableData(entity1Mapping.sourceTable);
-          console.log('[Bridge Preview] Entity 1 source data:', entity1SourceData.length, 'rows from', entity1Mapping.sourceTable);
+        
+        if (entity1Mappings.length > 0) {
+          // Combine data from all mappings for this entity
+          const allEntity1Transformed: any[] = [];
           
-          // Transform entity data with field rules, PK rules, and filters
-          const entity1Transformed = entity1SourceData.map((srcRecord: any) => {
-            const transformed: any = {};
-            entity1Mapping.fieldMappings?.forEach((fm) => {
-              if (fm.generate) {
-                if (fm.fieldRule) {
-                  transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord);
-                } else if (fm.sourceColumn) {
-                  transformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+          for (const entity1Mapping of entity1Mappings) {
+            const entity1SourceData = await getTableData(entity1Mapping.sourceTable);
+            console.log(`[Bridge Preview] Entity 1 loading from source: ${entity1Mapping.sourceTable}, rows: ${entity1SourceData.length}`);
+            
+            if (entity1SourceData.length > 0) {
+              // Transform entity data with field rules, PK rules, and filters
+              const entity1Transformed = entity1SourceData.map((srcRecord: any) => {
+                const transformed: any = {};
+                entity1Mapping.fieldMappings?.forEach((fm) => {
+                  if (fm.generate) {
+                    if (fm.fieldRule) {
+                      transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord, 0, transformed);
+                    } else if (fm.sourceColumn) {
+                      transformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+                    }
+                  }
+                });
+                if (entity1Mapping.primaryKeyRule) {
+                  transformed['PrimaryKey'] = generateValueFromRule(entity1Mapping.primaryKeyRule, srcRecord, 0, transformed);
                 }
-              }
-            });
-            if (entity1Mapping.primaryKeyRule) {
-              transformed['PrimaryKey'] = generateValueFromRule(entity1Mapping.primaryKeyRule, srcRecord, 0, transformed);
+                return transformed;
+              });
+              
+              allEntity1Transformed.push(...entity1Transformed);
+              console.log(`[Bridge Preview] Entity 1 from ${entity1Mapping.sourceTable}: added ${entity1Transformed.length} transformed rows`);
             }
-            return transformed;
-          });
+          }
           
-          console.log('[Bridge Preview] Entity 1 transformed sample:', entity1Transformed[0]);
-          setEntity1SourcePreview(entity1Transformed.slice(0, 10));
+          console.log('[Bridge Preview] Entity 1 total transformed rows:', allEntity1Transformed.length, 'sample:', allEntity1Transformed[0]);
+          setEntity1SourcePreview(allEntity1Transformed.slice(0, 10));
         } else {
-          console.warn('[Bridge Preview] No mapping found for Entity 1:', bridgeEntity1);
+          console.warn('[Bridge Preview] No non-bridge mapping found for Entity 1:', bridgeEntity1, 'Available entities:', tableMappings.filter(m => !m.isBridge).map(m => m.targetEntity));
           setEntity1SourcePreview([]);
         }
       }
 
       // Load Entity 2 TRANSFORMED data (with field rules, PK rules, and filters applied)
       if (bridgeEntity2) {
-        const entity2Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity2);
+        // Find ALL mappings for this entity (there can be multiple source tables for the same target entity)
+        const entity2Mappings = tableMappings.filter(m => !m.isBridge && m.targetEntity === bridgeEntity2);
         console.log('[Bridge Preview] Entity 2 mapping lookup:', { 
           bridgeEntity2, 
-          entity2Mapping: entity2Mapping ? { target: entity2Mapping.targetEntity, source: entity2Mapping.sourceTable } : null 
+          entity2MappingsCount: entity2Mappings.length,
+          entity2Mappings: entity2Mappings.map(m => ({ target: m.targetEntity, source: m.sourceTable })),
+          allNonBridgeMappings: tableMappings.filter(m => !m.isBridge).map(m => ({ target: m.targetEntity, source: m.sourceTable }))
         });
-        if (entity2Mapping) {
-          const entity2SourceData = await getTableData(entity2Mapping.sourceTable);
-          console.log('[Bridge Preview] Entity 2 source data:', entity2SourceData.length, 'rows from', entity2Mapping.sourceTable);
+        
+        if (entity2Mappings.length > 0) {
+          // Combine data from all mappings for this entity
+          const allEntity2Transformed: any[] = [];
           
-          // Transform entity data with field rules, PK rules, and filters
-          const entity2Transformed = entity2SourceData.map((srcRecord: any) => {
-            const transformed: any = {};
-            entity2Mapping.fieldMappings?.forEach((fm) => {
-              if (fm.generate) {
-                if (fm.fieldRule) {
-                  transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord);
-                } else if (fm.sourceColumn) {
-                  transformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+          for (const entity2Mapping of entity2Mappings) {
+            const entity2SourceData = await getTableData(entity2Mapping.sourceTable);
+            console.log(`[Bridge Preview] Entity 2 loading from source: ${entity2Mapping.sourceTable}, rows: ${entity2SourceData.length}`);
+            
+            if (entity2SourceData.length > 0) {
+              // Transform entity data with field rules, PK rules, and filters
+              const entity2Transformed = entity2SourceData.map((srcRecord: any) => {
+                const transformed: any = {};
+                entity2Mapping.fieldMappings?.forEach((fm) => {
+                  if (fm.generate) {
+                    if (fm.fieldRule) {
+                      transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord, 0, transformed);
+                    } else if (fm.sourceColumn) {
+                      transformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+                    }
+                  }
+                });
+                if (entity2Mapping.primaryKeyRule) {
+                  transformed['PrimaryKey'] = generateValueFromRule(entity2Mapping.primaryKeyRule, srcRecord, 0, transformed);
                 }
-              }
-            });
-            if (entity2Mapping.primaryKeyRule) {
-              transformed['PrimaryKey'] = generateValueFromRule(entity2Mapping.primaryKeyRule, srcRecord, 0, transformed);
+                return transformed;
+              });
+              
+              allEntity2Transformed.push(...entity2Transformed);
+              console.log(`[Bridge Preview] Entity 2 from ${entity2Mapping.sourceTable}: added ${entity2Transformed.length} transformed rows`);
             }
-            return transformed;
-          });
+          }
           
-          console.log('[Bridge Preview] Entity 2 transformed sample:', entity2Transformed[0]);
-          setEntity2SourcePreview(entity2Transformed.slice(0, 10));
+          console.log('[Bridge Preview] Entity 2 total transformed rows:', allEntity2Transformed.length, 'sample:', allEntity2Transformed[0]);
+          setEntity2SourcePreview(allEntity2Transformed.slice(0, 10));
         } else {
-          console.warn('[Bridge Preview] No mapping found for Entity 2:', bridgeEntity2);
+          console.warn('[Bridge Preview] No non-bridge mapping found for Entity 2:', bridgeEntity2, 'Available entities:', tableMappings.filter(m => !m.isBridge).map(m => m.targetEntity));
           setEntity2SourcePreview([]);
         }
       }
@@ -1926,55 +1971,78 @@ const DataMigration: React.FC = () => {
       
       if (!entity1 || !entity2) return;
 
-      // Find entity mappings for join-based lookups
-      const entity1Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity1);
-      const entity2Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity2);
+      // Find ALL entity mappings for join-based lookups (there can be multiple source tables for same target entity)
+      const entity1Mappings = tableMappings.filter(m => !m.isBridge && m.targetEntity === mapping.bridgeEntity1);
+      const entity2Mappings = tableMappings.filter(m => !m.isBridge && m.targetEntity === mapping.bridgeEntity2);
       
-      // Load and transform entity data for lookups
+      console.log('[Bridge Mapping Preview] Entity mappings found:', {
+        entity1: mapping.bridgeEntity1,
+        entity1MappingsCount: entity1Mappings.length,
+        entity1Sources: entity1Mappings.map(m => m.sourceTable),
+        entity2: mapping.bridgeEntity2,
+        entity2MappingsCount: entity2Mappings.length,
+        entity2Sources: entity2Mappings.map(m => m.sourceTable)
+      });
+      
+      // Load and transform entity data for lookups - combine data from ALL mappings
       let entity1TransformedData: any[] = [];
       let entity2TransformedData: any[] = [];
       
       const validJoinFields1 = mapping.bridgeEntity1JoinFields?.filter(f => f.bridgeField && f.entityField) || [];
       const validJoinFields2 = mapping.bridgeEntity2JoinFields?.filter(f => f.bridgeField && f.entityField) || [];
       
-      if (entity1Mapping && validJoinFields1.length > 0) {
-        const entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
-        entity1TransformedData = entity1SourceData.map((srcRecord: any) => {
-          const entityTransformed: any = {};
-          entity1Mapping.fieldMappings?.forEach((fm) => {
-            if (fm.generate) {
-              if (fm.fieldRule) {
-                entityTransformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord);
-              } else if (fm.sourceColumn) {
-                entityTransformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+      if (entity1Mappings.length > 0 && validJoinFields1.length > 0) {
+        for (const entity1Mapping of entity1Mappings) {
+          const entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
+          console.log(`[Bridge Mapping Preview] Loading Entity 1 from: ${entity1Mapping.sourceTable}, rows: ${entity1SourceData.length}`);
+          
+          const transformed = entity1SourceData.map((srcRecord: any) => {
+            const entityTransformed: any = {};
+            entity1Mapping.fieldMappings?.forEach((fm) => {
+              if (fm.generate) {
+                if (fm.fieldRule) {
+                  entityTransformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord, 0, entityTransformed);
+                } else if (fm.sourceColumn) {
+                  entityTransformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+                }
               }
+            });
+            if (entity1Mapping.primaryKeyRule) {
+              entityTransformed['PrimaryKey'] = generateValueFromRule(entity1Mapping.primaryKeyRule, srcRecord, 0, entityTransformed);
             }
+            return entityTransformed;
           });
-          if (entity1Mapping.primaryKeyRule) {
-            entityTransformed['PrimaryKey'] = generateValueFromRule(entity1Mapping.primaryKeyRule, srcRecord);
-          }
-          return entityTransformed;
-        });
+          
+          entity1TransformedData.push(...transformed);
+        }
+        console.log(`[Bridge Mapping Preview] Entity 1 total transformed: ${entity1TransformedData.length} rows`);
       }
       
-      if (entity2Mapping && validJoinFields2.length > 0) {
-        const entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
-        entity2TransformedData = entity2SourceData.map((srcRecord: any) => {
-          const entityTransformed: any = {};
-          entity2Mapping.fieldMappings?.forEach((fm) => {
-            if (fm.generate) {
-              if (fm.fieldRule) {
-                entityTransformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord);
-              } else if (fm.sourceColumn) {
-                entityTransformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+      if (entity2Mappings.length > 0 && validJoinFields2.length > 0) {
+        for (const entity2Mapping of entity2Mappings) {
+          const entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
+          console.log(`[Bridge Mapping Preview] Loading Entity 2 from: ${entity2Mapping.sourceTable}, rows: ${entity2SourceData.length}`);
+          
+          const transformed = entity2SourceData.map((srcRecord: any) => {
+            const entityTransformed: any = {};
+            entity2Mapping.fieldMappings?.forEach((fm) => {
+              if (fm.generate) {
+                if (fm.fieldRule) {
+                  entityTransformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, srcRecord, 0, entityTransformed);
+                } else if (fm.sourceColumn) {
+                  entityTransformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+                }
               }
+            });
+            if (entity2Mapping.primaryKeyRule) {
+              entityTransformed['PrimaryKey'] = generateValueFromRule(entity2Mapping.primaryKeyRule, srcRecord, 0, entityTransformed);
             }
+            return entityTransformed;
           });
-          if (entity2Mapping.primaryKeyRule) {
-            entityTransformed['PrimaryKey'] = generateValueFromRule(entity2Mapping.primaryKeyRule, srcRecord);
-          }
-          return entityTransformed;
-        });
+          
+          entity2TransformedData.push(...transformed);
+        }
+        console.log(`[Bridge Mapping Preview] Entity 2 total transformed: ${entity2TransformedData.length} rows`);
       }
 
       // Generate preview rows for bridge table with join lookups
@@ -2021,16 +2089,17 @@ const DataMigration: React.FC = () => {
 
       setPreviewData(previews);
       setPreviewMappingIndex(mappingIndex);
-      console.log('[Bridge Preview] Bridge preview generated:', {
+      console.log('[Bridge Mapping Preview] Bridge preview generated:', {
         previewCount: previews.length,
         entity1: previews[0]?.['Source Entity Type'],
         entity2: previews[0]?.['Target Entity Type'],
         joinFields1: validJoinFields1,
-        joinFields2: validJoinFields2
+        joinFields2: validJoinFields2,
+        samplePreview: previews[0]
       });
       setPreviewDialog(true);
     } catch (error) {
-      console.error('[Bridge Preview] Error generating bridge preview:', error);
+      console.error('[Bridge Mapping Preview] Error generating bridge preview:', error);
       showSnackbar('Failed to generate bridge preview', 'error');
     }
   };
