@@ -2263,7 +2263,24 @@ const DataMigration: React.FC = () => {
           break;
       }
     } else {
-      setPkRuleType(RuleType.Sequence);
+      // Default to Composite with mandatory fields pre-selected
+      setPkRuleType('Composite' as any);
+      
+      // Auto-populate with mandatory fields from target entity
+      const targetEntity = isa95Entities.find(e => e.tableName === mapping?.targetEntity);
+      if (targetEntity) {
+        const mandatoryFields = targetEntity.fields
+          .filter(f => f.required === true)
+          .map(f => f.name);
+        
+        console.log('[PK Rule Dialog] Auto-populating mandatory fields:', {
+          targetEntity: targetEntity.name,
+          mandatoryFields
+        });
+        
+        setPkCompositeFields(mandatoryFields);
+        setPkCompositeSeparator('-');
+      }
     }
     
     setPkRuleDialog(true);
@@ -2466,7 +2483,12 @@ const DataMigration: React.FC = () => {
         const sep = params?.separator ? `'${params.separator}'` : "''";
         return `Concat(${params?.sourceFields?.slice(0, 3).join(', ')}${params?.sourceFields?.length > 3 ? '...' : ''} with ${sep})`;
       case 'Composite':
-        return `Composite(${params?.fields?.join(params?.separator || '-')})`;
+        const compositeFields = params?.fields || [];
+        if (compositeFields.length === 0) return 'Composite(no fields)';
+        if (compositeFields.length <= 3) {
+          return `Composite: ${compositeFields.join(', ')}`;
+        }
+        return `Composite: ${compositeFields.slice(0, 3).join(', ')} +${compositeFields.length - 3} more`;
       case RuleType.CompositeConcat:
         const fieldNames = params?.fields?.map((f: any) => f.fieldName).join(', ') || '';
         return `CompositeConcat(${fieldNames})`;
@@ -2627,12 +2649,7 @@ const DataMigration: React.FC = () => {
       const previews = previewRows.map((row, idx) => {
         const previewRow: any = { _sourceRow: idx + 1 };
         
-        // Apply primary key rule if configured
-        if (mapping.primaryKeyRule) {
-          previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx);
-        }
-
-        // Apply each field mapping
+        // First, apply all field mappings to build the transformed row
         mapping.fieldMappings.forEach(fieldMapping => {
           if (!fieldMapping.generate) return;
 
@@ -2646,6 +2663,11 @@ const DataMigration: React.FC = () => {
             previewRow[fieldMapping.fieldName] = '';
           }
         });
+        
+        // Then apply primary key rule using the transformed row
+        if (mapping.primaryKeyRule) {
+          previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx, previewRow);
+        }
 
         return previewRow;
       });
@@ -2663,7 +2685,7 @@ const DataMigration: React.FC = () => {
     }
   };
 
-  const applyFieldRuleForPreview = (fieldRule: FieldRuleConfig, sourceRow: any, rowIndex: number): any => {
+  const applyFieldRuleForPreview = (fieldRule: FieldRuleConfig, sourceRow: any, rowIndex: number, transformedRow?: any): any => {
     const params = fieldRule.parameters as any;
     
     switch (fieldRule.ruleType) {
@@ -2692,6 +2714,24 @@ const DataMigration: React.FC = () => {
       
       case RuleType.Enumeration:
         return params?.value || '';
+      
+      case 'Composite':
+        // For Composite, use the transformed row (ISA-95 entity fields)
+        if (!transformedRow) return '';
+        const compositeFields = params?.fields || [];
+        const compositeValues = compositeFields.map((fieldName: string) => {
+          return transformedRow[fieldName] !== undefined ? transformedRow[fieldName] : '';
+        });
+        return compositeValues.join(params?.separator || '-');
+      
+      case RuleType.CompositeConcat:
+        // For CompositeConcat, use the transformed row (ISA-95 entity fields)
+        if (!transformedRow) return '';
+        const concatParts = (params?.fields || []).map((field: any) => {
+          const fieldValue = transformedRow[field.fieldName] !== undefined ? transformedRow[field.fieldName] : '';
+          return `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
+        });
+        return `${params?.globalPrefix || ''}${concatParts.join(params?.separator || '-')}${params?.globalSuffix || ''}`;
       
       case RuleType.IfThen:
         // Prioritize Primary Source Field over Additional Fields (matches migration logic)
@@ -3427,11 +3467,13 @@ const DataMigration: React.FC = () => {
                   pkSequenceCounter += 1;
                   break;
                 case 'Composite':
-                  // Composite key: concatenate values from specified fields
-                  console.log(`[${mapping.targetEntity}] Using Composite rule, fields:`, pkParams?.fields, 'separator:', pkParams?.separator, 'source record keys:', Object.keys(record));
+                  // Composite key: concatenate values from ISA-95 entity fields
+                  // These fields should already be in the transformed object
+                  console.log(`[${mapping.targetEntity}] Using Composite rule, fields:`, pkParams?.fields, 'separator:', pkParams?.separator, 'transformed fields:', Object.keys(transformed));
                   const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
-                    const value = record[fieldName] || '';
-                    console.log(`[${mapping.targetEntity}] Composite field '${fieldName}' value:`, value);
+                    // Get value from the transformed object (which has ISA-95 entity field names)
+                    const value = transformed[fieldName] !== undefined ? transformed[fieldName] : '';
+                    console.log(`[${mapping.targetEntity}] Composite field '${fieldName}' value from transformed:`, value);
                     return value;
                   });
                   pkValue = fieldValues.join(pkParams?.separator || '-');
@@ -3439,11 +3481,12 @@ const DataMigration: React.FC = () => {
                   break;
                 case RuleType.CompositeConcat:
                   // Composite + Concat: concatenate field values with individual prefix/suffix patterns
-                  console.log(`[${mapping.targetEntity}] Using CompositeConcat rule, fields:`, pkParams?.fields);
+                  console.log(`[${mapping.targetEntity}] Using CompositeConcat rule, fields:`, pkParams?.fields, 'transformed fields:', Object.keys(transformed));
                   const concatParts = (pkParams?.fields || []).map((field: any) => {
-                    const fieldValue = record[field.fieldName] || '';
+                    // Get value from transformed object (ISA-95 entity field names)
+                    const fieldValue = transformed[field.fieldName] !== undefined ? transformed[field.fieldName] : '';
                     const result = `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
-                    console.log(`[${mapping.targetEntity}] CompositeConcat field '${field.fieldName}': ${fieldValue} → ${result}`);
+                    console.log(`[${mapping.targetEntity}] CompositeConcat field '${field.fieldName}' from transformed: ${fieldValue} → ${result}`);
                     return result;
                   });
                   pkValue = `${pkParams?.globalPrefix || ''}${concatParts.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
@@ -6458,17 +6501,49 @@ const DataMigration: React.FC = () => {
                     label="Select Fields"
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
+                        {selected.map((value) => {
+                          const field = isa95Entities.find(e => e.tableName === tableMappings[selectedMappingForPK]?.targetEntity)?.fields.find(f => f.name === value);
+                          return (
+                            <Chip 
+                              key={value} 
+                              label={value} 
+                              size="small"
+                              color={field?.required ? "primary" : "default"}
+                            />
+                          );
+                        })}
                       </Box>
                     )}
                   >
-                    {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns.map((col) => (
-                      <MenuItem key={col.name} value={col.name}>
-                        {col.name} ({col.type})
-                      </MenuItem>
-                    ))}
+                    {(() => {
+                      const targetEntity = isa95Entities.find(e => e.tableName === tableMappings[selectedMappingForPK]?.targetEntity);
+                      const sourceTable = dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable);
+                      
+                      // Show target entity fields if available, otherwise fall back to source table columns
+                      const fieldsToShow = targetEntity?.fields || sourceTable?.columns.map(col => ({
+                        name: col.name,
+                        type: col.type,
+                        isPrimaryKey: false,
+                        required: false,
+                        description: ''
+                      })) || [];
+                      
+                      return fieldsToShow.map((field) => (
+                        <MenuItem key={field.name} value={field.name}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                            <span>{field.name} ({field.type})</span>
+                            {field.required && (
+                              <Chip 
+                                label="Required" 
+                                size="small" 
+                                color="primary" 
+                                sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                              />
+                            )}
+                          </Box>
+                        </MenuItem>
+                      ));
+                    })()}
                   </Select>
                 </FormControl>
                 <TextField
@@ -6543,11 +6618,34 @@ const DataMigration: React.FC = () => {
                               }}
                               label="Field"
                             >
-                              {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns.map((col) => (
-                                <MenuItem key={col.name} value={col.name}>
-                                  {col.name} ({col.type})
-                                </MenuItem>
-                              ))}
+                              {(() => {
+                                const targetEntity = isa95Entities.find(e => e.tableName === tableMappings[selectedMappingForPK]?.targetEntity);
+                                const sourceTable = dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable);
+                                
+                                // Show target entity fields if available, otherwise fall back to source table columns
+                                const fieldsToShow = targetEntity?.fields || sourceTable?.columns.map(col => ({
+                                  name: col.name,
+                                  type: col.type,
+                                  required: false,
+                                  description: ''
+                                })) || [];
+                                
+                                return fieldsToShow.map((field) => (
+                                  <MenuItem key={field.name} value={field.name}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                                      <span>{field.name} ({field.type})</span>
+                                      {field.required && (
+                                        <Chip 
+                                          label="Required" 
+                                          size="small" 
+                                          color="primary" 
+                                          sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                                        />
+                                      )}
+                                    </Box>
+                                  </MenuItem>
+                                ));
+                              })()}
                             </Select>
                           </FormControl>
                           <IconButton
