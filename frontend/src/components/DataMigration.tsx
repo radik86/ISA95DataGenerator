@@ -120,12 +120,19 @@ interface TableMapping {
   isBridge?: boolean;
   bridgeEntity1?: string;
   bridgeEntity1Column?: string;
+  bridgeEntity1JoinFields?: BridgeJoinField[]; // Multiple join fields for Entity 1 lookup
   bridgeEntity1UsePKRule?: boolean; // If true, use the PK rule from bridgeEntity1's mapping
   bridgeEntity2?: string;
   bridgeEntity2Column?: string;
+  bridgeEntity2JoinFields?: BridgeJoinField[]; // Multiple join fields for Entity 2 lookup
   bridgeEntity2UsePKRule?: boolean; // If true, use the PK rule from bridgeEntity2's mapping
   relationshipType?: string; // For bridge tables
   filters?: TableFilter[]; // Add filters for source table
+}
+
+interface BridgeJoinField {
+  bridgeField: string; // Field from bridge table
+  entityField: string; // Field from entity table to match against
 }
 
 interface TableFilter {
@@ -179,9 +186,11 @@ const DataMigration: React.FC = () => {
   const [isBridgeMode, setIsBridgeMode] = useState(false);
   const [bridgeEntity1, setBridgeEntity1] = useState('');
   const [bridgeEntity1Column, setBridgeEntity1Column] = useState('');
+  const [bridgeEntity1JoinFields, setBridgeEntity1JoinFields] = useState<BridgeJoinField[]>([{ bridgeField: '', entityField: '' }]);
   const [bridgeEntity1UsePKRule, setBridgeEntity1UsePKRule] = useState(false);
   const [bridgeEntity2, setBridgeEntity2] = useState('');
   const [bridgeEntity2Column, setBridgeEntity2Column] = useState('');
+  const [bridgeEntity2JoinFields, setBridgeEntity2JoinFields] = useState<BridgeJoinField[]>([{ bridgeField: '', entityField: '' }]);
   const [bridgeEntity2UsePKRule, setBridgeEntity2UsePKRule] = useState(false);
   const [bridgeName, setBridgeName] = useState('');
   const [relationshipType, setRelationshipType] = useState('related');
@@ -1381,19 +1390,37 @@ const DataMigration: React.FC = () => {
   };
 
   const handleAddBridgeMapping = () => {
-    // Validate that at least one source is provided for each entity (column or PK rule)
+    // Validate required fields
     if (!selectedSourceTable || !bridgeEntity1 || !bridgeEntity2 || !bridgeName) {
       showSnackbar('Please fill all required bridge table fields', 'error');
       return;
     }
     
-    if (!bridgeEntity1Column && !bridgeEntity1UsePKRule) {
-      showSnackbar('Please select either a source column or use PK rule for Entity 1', 'error');
+    // Validate Entity 1 has at least one complete join field
+    const validEntity1Joins = bridgeEntity1JoinFields.filter(f => f.bridgeField && f.entityField);
+    if (validEntity1Joins.length === 0) {
+      showSnackbar('Please configure at least one join field for Entity 1', 'error');
       return;
     }
     
-    if (!bridgeEntity2Column && !bridgeEntity2UsePKRule) {
-      showSnackbar('Please select either a source column or use PK rule for Entity 2', 'error');
+    // Validate Entity 2 has at least one complete join field
+    const validEntity2Joins = bridgeEntity2JoinFields.filter(f => f.bridgeField && f.entityField);
+    if (validEntity2Joins.length === 0) {
+      showSnackbar('Please configure at least one join field for Entity 2', 'error');
+      return;
+    }
+    
+    // Check if entity mappings exist
+    const entity1Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity1);
+    const entity2Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity2);
+    
+    if (!entity1Mapping) {
+      showSnackbar(`Entity mapping for ${bridgeEntity1} not found. Please create it in Step 2 first.`, 'error');
+      return;
+    }
+    
+    if (!entity2Mapping) {
+      showSnackbar(`Entity mapping for ${bridgeEntity2} not found. Please create it in Step 2 first.`, 'error');
       return;
     }
 
@@ -1457,9 +1484,11 @@ const DataMigration: React.FC = () => {
       isBridge: true,
       bridgeEntity1: bridgeEntity1,
       bridgeEntity1Column: bridgeEntity1Column,
+      bridgeEntity1JoinFields: bridgeEntity1JoinFields.filter(f => f.bridgeField && f.entityField), // Only save non-empty join fields
       bridgeEntity1UsePKRule: bridgeEntity1UsePKRule,
       bridgeEntity2: bridgeEntity2,
       bridgeEntity2Column: bridgeEntity2Column,
+      bridgeEntity2JoinFields: bridgeEntity2JoinFields.filter(f => f.bridgeField && f.entityField), // Only save non-empty join fields
       bridgeEntity2UsePKRule: bridgeEntity2UsePKRule,
       relationshipType: relationshipType || 'related',
     };
@@ -1480,9 +1509,11 @@ const DataMigration: React.FC = () => {
     setSelectedSourceTable('');
     setBridgeEntity1('');
     setBridgeEntity1Column('');
+    setBridgeEntity1JoinFields([{ bridgeField: '', entityField: '' }]);
     setBridgeEntity1UsePKRule(false);
     setBridgeEntity2('');
     setBridgeEntity2Column('');
+    setBridgeEntity2JoinFields([{ bridgeField: '', entityField: '' }]);
     setBridgeEntity2UsePKRule(false);
     setBridgeName('');
     setRelationshipType('related');
@@ -2646,31 +2677,194 @@ const DataMigration: React.FC = () => {
       const previewRows = filteredSourceData.slice(0, 5); // Preview first 5 rows
 
       // Generate preview with field mappings applied
-      const previews = previewRows.map((row, idx) => {
+      const previews = await Promise.all(previewRows.map(async (row, idx) => {
         const previewRow: any = { _sourceRow: idx + 1 };
         
-        // First, apply all field mappings to build the transformed row
-        mapping.fieldMappings.forEach(fieldMapping => {
-          if (!fieldMapping.generate) return;
-
-          if (fieldMapping.sourceColumn) {
-            // Direct column mapping
-            previewRow[fieldMapping.fieldName] = row[fieldMapping.sourceColumn];
-          } else if (fieldMapping.fieldRule) {
-            // Apply rule
-            previewRow[fieldMapping.fieldName] = applyFieldRuleForPreview(fieldMapping.fieldRule, row, idx);
-          } else {
-            previewRow[fieldMapping.fieldName] = '';
+        // Special handling for bridge tables - use join-based lookup
+        if (mapping.isBridge && mapping.bridgeEntity1 && mapping.bridgeEntity2) {
+          const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
+          const entity2 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity2 || e.name === mapping.bridgeEntity2);
+          
+          if (entity1 && entity2) {
+            previewRow['Source type'] = entity1.name;
+            previewRow['Source PrimaryKey'] = '[Lookup from Entity 1]';
+            previewRow['Target Type'] = entity2.name;
+            previewRow['Target PrimaryKey'] = '[Lookup from Entity 2]';
+            previewRow['Relationship Type'] = mapping.relationshipType || 'related';
+            
+            // Try to perform actual lookups for preview
+            const entity1Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity1);
+            const entity2Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity2);
+            
+            // Entity 1 lookup
+            if (entity1Mapping && mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
+              try {
+                const getTableDataFunc = async (tableName: string): Promise<any[]> => {
+                  const masterStoreMap: { [key: string]: string } = {
+                    'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
+                    'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
+                    'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
+                    'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
+                    'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
+                    'equipment_class_properties': 'equipmentClassProperties',
+                    'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
+                    'plants': 'plants', 'production_lines': 'productionLines', 'process_segments': 'processSegments',
+                    'line_equipment': 'lineEquipment', 'segment_boms': 'segmentBOMs', 'equipment_usages': 'equipmentUsages',
+                    'operation_event_definitions': 'operationEventDefinitions',
+                    'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+                    'operation_event_definition_properties': 'operationEventDefinitionProperties',
+                    'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
+                    'hierarchy_scopes': 'hierarchyScopes', 'shifts': 'shifts', 'crews': 'crews',
+                    'shift_crew_assignments': 'shiftCrewAssignments',
+                  };
+                  const processStoreMap: { [key: string]: string } = {
+                    'operations_requests': 'operationsRequests', 'segment_requirements': 'segmentRequirements',
+                    'segment_material_requirements': 'segmentMaterialRequirements',
+                    'segment_equipment_requirements': 'segmentEquipmentRequirements',
+                    'operations_responses': 'operationsResponses', 'segment_responses': 'segmentResponses',
+                    'segment_material_actuals': 'segmentMaterialActuals', 'segment_equipment_actuals': 'segmentEquipmentActuals',
+                    'equipment_property_tracking': 'equipmentPropertyTracking', 'test_results': 'testResults',
+                    'operations_events': 'operationsEvents', 'operations_event_records': 'operationsEventRecords',
+                    'operations_event_entries': 'operationsEventEntries', 'operations_event_properties': 'operationsEventProperties',
+                    'segment_data': 'segmentData',
+                  };
+                  const masterStoreName = masterStoreMap[tableName];
+                  if (masterStoreName) return await masterDataDB.getAll(masterStoreName);
+                  const processStoreName = processStoreMap[tableName];
+                  if (processStoreName) return await processDataDB.getAll(processStoreName);
+                  if (importedTablesData[tableName]) return importedTablesData[tableName];
+                  return [];
+                };
+                
+                const entity1SourceData = await getTableDataFunc(entity1Mapping.sourceTable);
+                const entity1TransformedData = entity1SourceData.slice(0, 100).map((srcRecord: any) => {
+                  const entityTransformed: any = {};
+                  entity1Mapping.fieldMappings?.forEach((fm) => {
+                    if (fm.rule) {
+                      entityTransformed[fm.targetColumn] = applyFieldRuleForPreview(fm.rule, srcRecord, 0);
+                    } else {
+                      entityTransformed[fm.targetColumn] = srcRecord[fm.sourceColumn];
+                    }
+                  });
+                  if (entity1Mapping.primaryKeyRule) {
+                    entityTransformed['PrimaryKey'] = applyFieldRuleForPreview(entity1Mapping.primaryKeyRule, srcRecord, 0, entityTransformed);
+                  }
+                  return entityTransformed;
+                });
+                
+                const matchingEntity1 = entity1TransformedData.find((entityRecord: any) => {
+                  return mapping.bridgeEntity1JoinFields!.every(joinField => {
+                    return row[joinField.bridgeField] === entityRecord[joinField.entityField];
+                  });
+                });
+                
+                if (matchingEntity1 && matchingEntity1['PrimaryKey']) {
+                  previewRow['Source PrimaryKey'] = matchingEntity1['PrimaryKey'];
+                }
+              } catch (error) {
+                console.error('[Preview Bridge] Error looking up Entity 1:', error);
+              }
+            }
+            
+            // Entity 2 lookup
+            if (entity2Mapping && mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
+              try {
+                const getTableDataFunc = async (tableName: string): Promise<any[]> => {
+                  const masterStoreMap: { [key: string]: string } = {
+                    'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
+                    'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
+                    'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
+                    'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
+                    'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
+                    'equipment_class_properties': 'equipmentClassProperties',
+                    'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
+                    'plants': 'plants', 'production_lines': 'productionLines', 'process_segments': 'processSegments',
+                    'line_equipment': 'lineEquipment', 'segment_boms': 'segmentBOMs', 'equipment_usages': 'equipmentUsages',
+                    'operation_event_definitions': 'operationEventDefinitions',
+                    'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+                    'operation_event_definition_properties': 'operationEventDefinitionProperties',
+                    'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
+                    'hierarchy_scopes': 'hierarchyScopes', 'shifts': 'shifts', 'crews': 'crews',
+                    'shift_crew_assignments': 'shiftCrewAssignments',
+                  };
+                  const processStoreMap: { [key: string]: string } = {
+                    'operations_requests': 'operationsRequests', 'segment_requirements': 'segmentRequirements',
+                    'segment_material_requirements': 'segmentMaterialRequirements',
+                    'segment_equipment_requirements': 'segmentEquipmentRequirements',
+                    'operations_responses': 'operationsResponses', 'segment_responses': 'segmentResponses',
+                    'segment_material_actuals': 'segmentMaterialActuals', 'segment_equipment_actuals': 'segmentEquipmentActuals',
+                    'equipment_property_tracking': 'equipmentPropertyTracking', 'test_results': 'testResults',
+                    'operations_events': 'operationsEvents', 'operations_event_records': 'operationsEventRecords',
+                    'operations_event_entries': 'operationsEventEntries', 'operations_event_properties': 'operationsEventProperties',
+                    'segment_data': 'segmentData',
+                  };
+                  const masterStoreName = masterStoreMap[tableName];
+                  if (masterStoreName) return await masterDataDB.getAll(masterStoreName);
+                  const processStoreName = processStoreMap[tableName];
+                  if (processStoreName) return await processDataDB.getAll(processStoreName);
+                  if (importedTablesData[tableName]) return importedTablesData[tableName];
+                  return [];
+                };
+                
+                const entity2SourceData = await getTableDataFunc(entity2Mapping.sourceTable);
+                const entity2TransformedData = entity2SourceData.slice(0, 100).map((srcRecord: any) => {
+                  const entityTransformed: any = {};
+                  entity2Mapping.fieldMappings?.forEach((fm) => {
+                    if (fm.rule) {
+                      entityTransformed[fm.targetColumn] = applyFieldRuleForPreview(fm.rule, srcRecord, 0);
+                    } else {
+                      entityTransformed[fm.targetColumn] = srcRecord[fm.sourceColumn];
+                    }
+                  });
+                  if (entity2Mapping.primaryKeyRule) {
+                    entityTransformed['PrimaryKey'] = applyFieldRuleForPreview(entity2Mapping.primaryKeyRule, srcRecord, 0, entityTransformed);
+                  }
+                  return entityTransformed;
+                });
+                
+                const matchingEntity2 = entity2TransformedData.find((entityRecord: any) => {
+                  return mapping.bridgeEntity2JoinFields!.every(joinField => {
+                    return row[joinField.bridgeField] === entityRecord[joinField.entityField];
+                  });
+                });
+                
+                if (matchingEntity2 && matchingEntity2['PrimaryKey']) {
+                  previewRow['Target PrimaryKey'] = matchingEntity2['PrimaryKey'];
+                }
+              } catch (error) {
+                console.error('[Preview Bridge] Error looking up Entity 2:', error);
+              }
+            }
+            
+            // Apply bridge PK rule if configured
+            if (mapping.primaryKeyRule) {
+              previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx, previewRow);
+            }
           }
-        });
-        
-        // Then apply primary key rule using the transformed row
-        if (mapping.primaryKeyRule) {
-          previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx, previewRow);
+        } else {
+          // Normal entity mapping - apply field mappings
+          mapping.fieldMappings.forEach(fieldMapping => {
+            if (!fieldMapping.generate) return;
+
+            if (fieldMapping.sourceColumn) {
+              // Direct column mapping
+              previewRow[fieldMapping.fieldName] = row[fieldMapping.sourceColumn];
+            } else if (fieldMapping.fieldRule) {
+              // Apply rule
+              previewRow[fieldMapping.fieldName] = applyFieldRuleForPreview(fieldMapping.fieldRule, row, idx);
+            } else {
+              previewRow[fieldMapping.fieldName] = '';
+            }
+          });
+          
+          // Apply primary key rule using the transformed row
+          if (mapping.primaryKeyRule) {
+            previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx, previewRow);
+          }
         }
 
         return previewRow;
-      });
+      }));
 
       setPreviewData(previews);
       setPreviewMappingIndex(mappingIndex);
@@ -3176,7 +3370,7 @@ const DataMigration: React.FC = () => {
         }
 
         // Transform data based on field mappings
-        const transformedData = filteredData.map((record: any, recordIndex: number) => {
+        const transformedData = await Promise.all(filteredData.map(async (record: any, recordIndex: number) => {
           const transformed: any = {};
           
           // Special handling for bridge tables
@@ -3188,147 +3382,128 @@ const DataMigration: React.FC = () => {
               // Bridge table structure: initialize columns in strict order
               // Required order: Source type, Source PrimaryKey, Target Type, Target PrimaryKey, Relationship Type
               transformed['Source type'] = entity1.name;
-              transformed['Source PrimaryKey'] = ''; // Placeholder, will be set below
+              transformed['Source PrimaryKey'] = ''; // Will be looked up from entity1 data
               transformed['Target Type'] = entity2.name;
-              transformed['Target PrimaryKey'] = ''; // Placeholder, will be set below
+              transformed['Target PrimaryKey'] = ''; // Will be looked up from entity2 data
               transformed['Relationship Type'] = mapping.relationshipType || 'related';
               
-              // Handle Entity 1 PrimaryKey - either from source column or using PK rule from entity mapping
-              if (mapping.bridgeEntity1UsePKRule) {
-                // Find the entity mapping for bridgeEntity1
-                const entity1Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity1);
-                console.log('[Bridge Mapping] Using PK rule for Entity 1:', {
-                  bridgeEntity1: mapping.bridgeEntity1,
-                  foundMapping: !!entity1Mapping,
-                  hasPKRule: !!entity1Mapping?.primaryKeyRule
-                });
-                
-                if (entity1Mapping && entity1Mapping.primaryKeyRule) {
-                  const pkParams = entity1Mapping.primaryKeyRule.parameters as any;
-                  let pkValue: any;
-
-                  switch (entity1Mapping.primaryKeyRule.ruleType) {
-                    case RuleType.Static:
-                      pkValue = pkParams?.value || '';
-                      break;
-                    case RuleType.Range:
-                      const min = pkParams?.min || 0;
-                      const max = pkParams?.max || 100;
-                      pkValue = Math.random() * (max - min) + min;
-                      break;
-                    case RuleType.Examples:
-                      const values = pkParams?.values || [];
-                      pkValue = values[Math.floor(Math.random() * values.length)];
-                      break;
-                    case RuleType.Pattern:
-                      pkValue = pkParams?.regex || '';
-                      break;
-                    case RuleType.Sequence:
-                      pkValue = pkSequenceCounter;
-                      pkSequenceCounter += pkParams?.increment || 1;
-                      break;
-                    case RuleType.PrefixSequence:
-                      const padding = pkParams?.padding || 0;
-                      const numStr = padding > 0 ? String(pkSequenceCounter).padStart(padding, '0') : String(pkSequenceCounter);
-                      pkValue = `${pkParams?.prefix || ''}${numStr}${pkParams?.suffix || ''}`;
-                      pkSequenceCounter += 1;
-                      break;
-                    case 'Composite':
-                      const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
-                        return record[fieldName] || '';
-                      });
-                      pkValue = fieldValues.join(pkParams?.separator || '_');
-                      break;
-                    case RuleType.CompositeConcat:
-                      const concatParts = (pkParams?.fields || []).map((field: any) => {
-                        const fieldValue = record[field.fieldName] || '';
-                        return `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
-                      });
-                      pkValue = `${pkParams?.globalPrefix || ''}${concatParts.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
-                      break;
-                    default:
-                      pkValue = '';
-                  }
+              // NEW APPROACH: Use join conditions to lookup PKs from entity mappings
+              // Find the entity mappings for both entities
+              const entity1Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity1);
+              const entity2Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity2);
+              
+              // Load entity1 data and perform join lookup
+              if (entity1Mapping && mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
+                try {
+                  // Load the transformed data for entity1
+                  const entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
                   
-                  transformed['Source PrimaryKey'] = pkValue;
-                  console.log('[Bridge Mapping] Generated Entity 1 PK:', pkValue);
-                } else {
-                  console.warn('[Bridge Mapping] No PK rule found for Entity 1');
+                  // Apply field mappings to get transformed entity1 data (similar to what we did for this bridge table)
+                  const entity1TransformedData = entity1SourceData.map((srcRecord: any) => {
+                    const entityTransformed: any = {};
+                    
+                    // Apply all field mappings
+                    entity1Mapping.fieldMappings?.forEach((fm) => {
+                      if (fm.rule) {
+                        const ruleValue = generateValueFromRule(fm.rule, srcRecord);
+                        entityTransformed[fm.targetColumn] = ruleValue;
+                      } else {
+                        entityTransformed[fm.targetColumn] = srcRecord[fm.sourceColumn];
+                      }
+                    });
+                    
+                    // Apply PK rule if configured (note: Composite rules won't work properly in bridge lookups)
+                    if (entity1Mapping.primaryKeyRule) {
+                      const pkValue = generateValueFromRule(entity1Mapping.primaryKeyRule, srcRecord);
+                      entityTransformed['PrimaryKey'] = pkValue;
+                    }
+                    
+                    return entityTransformed;
+                  });
+                  
+                  // Find matching entity1 record based on join conditions
+                  const matchingEntity1Record = entity1TransformedData.find((entityRecord: any) => {
+                    return mapping.bridgeEntity1JoinFields!.every(joinField => {
+                      const bridgeValue = record[joinField.bridgeField];
+                      const entityValue = entityRecord[joinField.entityField];
+                      return bridgeValue === entityValue;
+                    });
+                  });
+                  
+                  if (matchingEntity1Record && matchingEntity1Record['PrimaryKey']) {
+                    transformed['Source PrimaryKey'] = matchingEntity1Record['PrimaryKey'];
+                    console.log('[Bridge Join] Entity 1 PK found via join:', transformed['Source PrimaryKey']);
+                  } else {
+                    console.warn('[Bridge Join] No matching Entity 1 record found for join:', {
+                      joinFields: mapping.bridgeEntity1JoinFields,
+                      bridgeRecord: record
+                    });
+                    transformed['Source PrimaryKey'] = '';
+                  }
+                } catch (error) {
+                  console.error('[Bridge Join] Error loading Entity 1 data:', error);
                   transformed['Source PrimaryKey'] = '';
                 }
               } else {
-                // Use source column
-                transformed['Source PrimaryKey'] = record[mapping.bridgeEntity1Column || ''] || '';
-                console.log('[Bridge Mapping] Entity 1 PK from column:', mapping.bridgeEntity1Column, '=', transformed['Source PrimaryKey']);
+                console.warn('[Bridge Mapping] No Entity 1 mapping or join fields configured');
+                transformed['Source PrimaryKey'] = '';
               }
               
-              // Handle Entity 2 PrimaryKey - either from source column or using PK rule from entity mapping
-              if (mapping.bridgeEntity2UsePKRule) {
-                // Find the entity mapping for bridgeEntity2
-                const entity2Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity2);
-                console.log('[Bridge Mapping] Using PK rule for Entity 2:', {
-                  bridgeEntity2: mapping.bridgeEntity2,
-                  foundMapping: !!entity2Mapping,
-                  hasPKRule: !!entity2Mapping?.primaryKeyRule
-                });
-                
-                if (entity2Mapping && entity2Mapping.primaryKeyRule) {
-                  const pkParams = entity2Mapping.primaryKeyRule.parameters as any;
-                  let pkValue: any;
-
-                  switch (entity2Mapping.primaryKeyRule.ruleType) {
-                    case RuleType.Static:
-                      pkValue = pkParams?.value || '';
-                      break;
-                    case RuleType.Range:
-                      const min = pkParams?.min || 0;
-                      const max = pkParams?.max || 100;
-                      pkValue = Math.random() * (max - min) + min;
-                      break;
-                    case RuleType.Examples:
-                      const values = pkParams?.values || [];
-                      pkValue = values[Math.floor(Math.random() * values.length)];
-                      break;
-                    case RuleType.Pattern:
-                      pkValue = pkParams?.regex || '';
-                      break;
-                    case RuleType.Sequence:
-                      pkValue = pkSequenceCounter;
-                      pkSequenceCounter += pkParams?.increment || 1;
-                      break;
-                    case RuleType.PrefixSequence:
-                      const padding = pkParams?.padding || 0;
-                      const numStr = padding > 0 ? String(pkSequenceCounter).padStart(padding, '0') : String(pkSequenceCounter);
-                      pkValue = `${pkParams?.prefix || ''}${numStr}${pkParams?.suffix || ''}`;
-                      pkSequenceCounter += 1;
-                      break;
-                    case 'Composite':
-                      const fieldValues = (pkParams?.fields || []).map((fieldName: string) => {
-                        return record[fieldName] || '';
-                      });
-                      pkValue = fieldValues.join(pkParams?.separator || '_');
-                      break;
-                    case RuleType.CompositeConcat:
-                      const concatParts2 = (pkParams?.fields || []).map((field: any) => {
-                        const fieldValue = record[field.fieldName] || '';
-                        return `${field.prefix || ''}${fieldValue}${field.suffix || ''}`;
-                      });
-                      pkValue = `${pkParams?.globalPrefix || ''}${concatParts2.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
-                      break;
-                    default:
-                      pkValue = '';
-                  }
+              // Load entity2 data and perform join lookup
+              if (entity2Mapping && mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
+                try {
+                  // Load the transformed data for entity2
+                  const entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
                   
-                  transformed['Target PrimaryKey'] = pkValue;
-                  console.log('[Bridge Mapping] Generated Entity 2 PK:', pkValue);
-                } else {
-                  console.warn('[Bridge Mapping] No PK rule found for Entity 2');
+                  // Apply field mappings to get transformed entity2 data
+                  const entity2TransformedData = entity2SourceData.map((srcRecord: any) => {
+                    const entityTransformed: any = {};
+                    
+                    // Apply all field mappings
+                    entity2Mapping.fieldMappings?.forEach((fm) => {
+                      if (fm.rule) {
+                        const ruleValue = generateValueFromRule(fm.rule, srcRecord);
+                        entityTransformed[fm.targetColumn] = ruleValue;
+                      } else {
+                        entityTransformed[fm.targetColumn] = srcRecord[fm.sourceColumn];
+                      }
+                    });
+                    
+                    // Apply PK rule if configured (note: Composite rules won't work properly in bridge lookups)
+                    if (entity2Mapping.primaryKeyRule) {
+                      const pkValue = generateValueFromRule(entity2Mapping.primaryKeyRule, srcRecord);
+                      entityTransformed['PrimaryKey'] = pkValue;
+                    }
+                    
+                    return entityTransformed;
+                  });
+                  
+                  // Find matching entity2 record based on join conditions
+                  const matchingEntity2Record = entity2TransformedData.find((entityRecord: any) => {
+                    return mapping.bridgeEntity2JoinFields!.every(joinField => {
+                      const bridgeValue = record[joinField.bridgeField];
+                      const entityValue = entityRecord[joinField.entityField];
+                      return bridgeValue === entityValue;
+                    });
+                  });
+                  
+                  if (matchingEntity2Record && matchingEntity2Record['PrimaryKey']) {
+                    transformed['Target PrimaryKey'] = matchingEntity2Record['PrimaryKey'];
+                    console.log('[Bridge Join] Entity 2 PK found via join:', transformed['Target PrimaryKey']);
+                  } else {
+                    console.warn('[Bridge Join] No matching Entity 2 record found for join:', {
+                      joinFields: mapping.bridgeEntity2JoinFields,
+                      bridgeRecord: record
+                    });
+                    transformed['Target PrimaryKey'] = '';
+                  }
+                } catch (error) {
+                  console.error('[Bridge Join] Error loading Entity 2 data:', error);
                   transformed['Target PrimaryKey'] = '';
                 }
               } else {
-                // Use source column
-                transformed['Target PrimaryKey'] = record[mapping.bridgeEntity2Column || ''] || '';
-                console.log('[Bridge Mapping] Entity 2 PK from column:', mapping.bridgeEntity2Column, '=', transformed['Target PrimaryKey']);
+                console.warn('[Bridge Mapping] No Entity 2 mapping or join fields configured');
+                transformed['Target PrimaryKey'] = '';
               }
               
               // Generate PrimaryKey for bridge table if PK rule is configured
@@ -3504,7 +3679,7 @@ const DataMigration: React.FC = () => {
           }
           
           return transformed;
-        });
+        }));
 
         log(`Transformed ${transformedData.length} records`);
 
@@ -5005,8 +5180,12 @@ const DataMigration: React.FC = () => {
                             setSelectedSourceTable(mapping.sourceTable);
                             setBridgeEntity1(mapping.bridgeEntity1);
                             setBridgeEntity1Column(mapping.bridgeEntity1Column);
+                            setBridgeEntity1JoinFields(mapping.bridgeEntity1JoinFields || [{ bridgeField: '', entityField: '' }]);
+                            setBridgeEntity1UsePKRule(mapping.bridgeEntity1UsePKRule || false);
                             setBridgeEntity2(mapping.bridgeEntity2);
                             setBridgeEntity2Column(mapping.bridgeEntity2Column);
+                            setBridgeEntity2JoinFields(mapping.bridgeEntity2JoinFields || [{ bridgeField: '', entityField: '' }]);
+                            setBridgeEntity2UsePKRule(mapping.bridgeEntity2UsePKRule || false);
                             setBridgeName(mapping.targetEntity);
                             setRelationshipType(mapping.relationshipType || 'related');
                             setBridgeDialog(true);
@@ -7118,47 +7297,81 @@ const DataMigration: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-
-              <FormControl fullWidth>
-                <InputLabel>Source Column for Entity 1</InputLabel>
-                <Select
-                  value={bridgeEntity1Column}
-                  onChange={(e) => {
-                    const newValue = e.target.value;
-                    setBridgeEntity1Column(newValue);
-                    if (newValue) {
-                      setBridgeEntity1UsePKRule(false);
-                    }
-                  }}
-                  label="Source Column for Entity 1"
-                  disabled={!selectedSourceTable || bridgeEntity1UsePKRule}
-                >
-                  {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
-                    <MenuItem key={col.name} value={col.name}>
-                      {col.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              <FormControl fullWidth>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={bridgeEntity1UsePKRule}
-                      onChange={(e) => {
-                        setBridgeEntity1UsePKRule(e.target.checked);
-                        if (e.target.checked) {
-                          setBridgeEntity1Column('');
-                        }
-                      }}
-                      disabled={!bridgeEntity1}
-                    />
-                  }
-                  label={`Use PK Rule from ${isa95Entities.find(e => e.tableName === bridgeEntity1)?.name || 'Entity 1'} mapping`}
-                />
-              </FormControl>
             </Box>
+
+            {/* Entity 1 Join Configuration */}
+            {bridgeEntity1 && selectedSourceTable && (
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  {isa95Entities.find(e => e.tableName === bridgeEntity1)?.name} Join Configuration
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                  Define how to join the bridge table to the {isa95Entities.find(e => e.tableName === bridgeEntity1)?.name} entity table to lookup its Primary Key
+                </Typography>
+                
+                {bridgeEntity1JoinFields.map((joinField, index) => (
+                  <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                    <FormControl sx={{ flex: 1 }}>
+                      <InputLabel size="small">Bridge Table Field</InputLabel>
+                      <Select
+                        size="small"
+                        value={joinField.bridgeField}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity1JoinFields];
+                          updated[index].bridgeField = e.target.value;
+                          setBridgeEntity1JoinFields(updated);
+                        }}
+                        label="Bridge Table Field"
+                      >
+                        {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
+                          <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Typography>=</Typography>
+                    <FormControl sx={{ flex: 1 }}>
+                      <InputLabel size="small">Entity Field</InputLabel>
+                      <Select
+                        size="small"
+                        value={joinField.entityField}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity1JoinFields];
+                          updated[index].entityField = e.target.value;
+                          setBridgeEntity1JoinFields(updated);
+                        }}
+                        label="Entity Field"
+                      >
+                        {(() => {
+                          const entity1Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity1);
+                          if (!entity1Mapping) return <MenuItem value="">Entity mapping not found</MenuItem>;
+                          return entity1Mapping.fieldMappings
+                            .filter(fm => fm.generate)
+                            .map(fm => (
+                              <MenuItem key={fm.fieldName} value={fm.fieldName}>{fm.fieldName}</MenuItem>
+                            ));
+                        })()}
+                      </Select>
+                    </FormControl>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setBridgeEntity1JoinFields(bridgeEntity1JoinFields.filter((_, i) => i !== index));
+                      }}
+                      disabled={bridgeEntity1JoinFields.length === 1}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Button
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => setBridgeEntity1JoinFields([...bridgeEntity1JoinFields, { bridgeField: '', entityField: '' }])}
+                >
+                  Add Join Field
+                </Button>
+              </Box>
+            )}
 
             <Box sx={{ display: 'flex', gap: 2 }}>
               <FormControl fullWidth>
@@ -7189,46 +7402,81 @@ const DataMigration: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-
-              <FormControl fullWidth>
-                <InputLabel>Source Column for Entity 2</InputLabel>
-                <Select
-                  value={bridgeEntity2Column}
-                  onChange={(e) => {
-                    setBridgeEntity2Column(e.target.value);
-                    if (e.target.value) {
-                      setBridgeEntity2UsePKRule(false);
-                    }
-                  }}
-                  label="Source Column for Entity 2"
-                  disabled={!selectedSourceTable || bridgeEntity2UsePKRule}
-                >
-                  {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
-                    <MenuItem key={col.name} value={col.name}>
-                      {col.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              <FormControl fullWidth>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={bridgeEntity2UsePKRule}
-                      onChange={(e) => {
-                        setBridgeEntity2UsePKRule(e.target.checked);
-                        if (e.target.checked) {
-                          setBridgeEntity2Column('');
-                        }
-                      }}
-                      disabled={!bridgeEntity2}
-                    />
-                  }
-                  label={`Use PK Rule from ${isa95Entities.find(e => e.tableName === bridgeEntity2)?.name || 'Entity 2'} mapping`}
-                />
-              </FormControl>
             </Box>
+
+            {/* Entity 2 Join Configuration */}
+            {bridgeEntity2 && selectedSourceTable && (
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  {isa95Entities.find(e => e.tableName === bridgeEntity2)?.name} Join Configuration
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                  Define how to join the bridge table to the {isa95Entities.find(e => e.tableName === bridgeEntity2)?.name} entity table to lookup its Primary Key
+                </Typography>
+                
+                {bridgeEntity2JoinFields.map((joinField, index) => (
+                  <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                    <FormControl sx={{ flex: 1 }}>
+                      <InputLabel size="small">Bridge Table Field</InputLabel>
+                      <Select
+                        size="small"
+                        value={joinField.bridgeField}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity2JoinFields];
+                          updated[index].bridgeField = e.target.value;
+                          setBridgeEntity2JoinFields(updated);
+                        }}
+                        label="Bridge Table Field"
+                      >
+                        {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
+                          <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Typography>=</Typography>
+                    <FormControl sx={{ flex: 1 }}>
+                      <InputLabel size="small">Entity Field</InputLabel>
+                      <Select
+                        size="small"
+                        value={joinField.entityField}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity2JoinFields];
+                          updated[index].entityField = e.target.value;
+                          setBridgeEntity2JoinFields(updated);
+                        }}
+                        label="Entity Field"
+                      >
+                        {(() => {
+                          const entity2Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity2);
+                          if (!entity2Mapping) return <MenuItem value="">Entity mapping not found</MenuItem>;
+                          return entity2Mapping.fieldMappings
+                            .filter(fm => fm.generate)
+                            .map(fm => (
+                              <MenuItem key={fm.fieldName} value={fm.fieldName}>{fm.fieldName}</MenuItem>
+                            ));
+                        })()}
+                      </Select>
+                    </FormControl>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setBridgeEntity2JoinFields(bridgeEntity2JoinFields.filter((_, i) => i !== index));
+                      }}
+                      disabled={bridgeEntity2JoinFields.length === 1}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Button
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => setBridgeEntity2JoinFields([...bridgeEntity2JoinFields, { bridgeField: '', entityField: '' }])}
+                >
+                  Add Join Field
+                </Button>
+              </Box>
+            )}
 
             <Autocomplete
               freeSolo
