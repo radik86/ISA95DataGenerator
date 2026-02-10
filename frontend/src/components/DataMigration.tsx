@@ -4074,6 +4074,29 @@ const DataMigration: React.FC = () => {
           const batchEnd = Math.min(batchStart + TRANSFORM_BATCH_SIZE, filteredData.length);
           const batch = filteredData.slice(batchStart, batchEnd);
           
+          // Aggressive memory management for last 10% of processing
+          const progressPercent = (i + (batchStart / filteredData.length)) / sortedMappings.length;
+          if (progressPercent > 0.9) {
+            // In final 10%, clear caches more aggressively every 1000 records
+            if (batchStart > 0 && batchStart % 1000 === 0) {
+              console.log(`[Memory - Final Stage ${(progressPercent * 100).toFixed(1)}%] Aggressive cache clearing at batch ${batchStart}`);
+              const entitiesToKeep = mapping.isBridge ? [mapping.bridgeEntity1, mapping.bridgeEntity2] : [];
+              const allCacheKeys = Array.from(entityDataCache.keys());
+              allCacheKeys.forEach(key => {
+                if (!entitiesToKeep.some(entity => key.includes(entity))) {
+                  entityDataCache.delete(key);
+                }
+              });
+              // Also clear index cache for non-current entities
+              const allIndexKeys = Array.from(entityIndexCache.keys());
+              allIndexKeys.forEach(key => {
+                if (!entitiesToKeep.some(entity => key.includes(entity))) {
+                  entityIndexCache.delete(key);
+                }
+              });
+            }
+          }
+          
           // For large bridge tables, clear caches more frequently
           if (mapping.isBridge && filteredData.length > 50000 && batchStart > 0 && batchStart % 5000 === 0) {
             console.log(`[Memory] Clearing caches at batch ${batchStart} to prevent memory buildup`);
@@ -4464,9 +4487,25 @@ const DataMigration: React.FC = () => {
           sampleRecord: transformedData[0],
           columns: transformedData[0] ? Object.keys(transformedData[0]) : []
         });
-        await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge);
         
-        log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
+        try {
+          await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge);
+          log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
+        } catch (csvError) {
+          console.error(`[CSV Save Error] Failed to save ${entityDisplayName}:`, csvError);
+          log(`❌ Error saving CSV for ${entityDisplayName}: ${csvError.message}`);
+          failedMappingsCount++;
+          
+          // Try to recover and continue with next mapping
+          const errorMsg = `Failed to save ${entityDisplayName}: ${csvError.message}. Continuing with remaining mappings...`;
+          showSnackbar(errorMsg, 'error');
+          
+          // Clear memory and continue
+          entityDataCache.clear();
+          entityIndexCache.clear();
+          await yieldToBrowser();
+          continue;
+        }
         
         // Special logging for material_sublots after CSV save
         if (mapping.sourceTable === 'material_sublots') {
@@ -4872,7 +4911,7 @@ const DataMigration: React.FC = () => {
       dataLength: data.length,
       sampleRecord: data[0],
       hasData: data.length > 0,
-      estimatedSizeMB: ((JSON.stringify(data).length) / (1024 * 1024)).toFixed(2)
+      estimatedSizeMB: ((JSON.stringify(data[0] || {}).length * data.length) / (1024 * 1024)).toFixed(2)
     });
     
     if (data.length === 0) {
@@ -4880,7 +4919,9 @@ const DataMigration: React.FC = () => {
       return;
     }
 
-    const CHUNK_SIZE = 1000; // Process 1000 rows at a time to avoid memory issues
+    // Use smaller chunks for very large datasets to avoid memory pressure
+    const CHUNK_SIZE = data.length > 50000 ? 500 : 1000;
+    
     let writable: any = null;
     const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
     const fileName = `${entityName}_${timestamp}.csv`;
@@ -4959,11 +5000,19 @@ const DataMigration: React.FC = () => {
         // Write chunk to file
         if (csvRows.length > 0) {
           await writable.write(csvRows.join('\n') + '\n');
+          
+          // For very large datasets, null out the csvRows array to help GC
+          csvRows.length = 0;
         }
         
         // Log progress for large datasets
         if (data.length > 10000 && (i + CHUNK_SIZE) % 10000 === 0) {
           console.log(`[CSV Save] Progress: ${Math.min(i + CHUNK_SIZE, data.length)}/${data.length} rows written`);
+        }
+        
+        // Yield to browser to prevent UI freeze on huge files
+        if (i % 5000 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
       
