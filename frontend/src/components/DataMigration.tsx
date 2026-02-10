@@ -132,7 +132,11 @@ interface TableMapping {
 
 interface BridgeJoinField {
   bridgeField: string; // Field from bridge table
+  bridgePrefix?: string; // Optional prefix to concatenate to bridge field value
+  bridgeSuffix?: string; // Optional suffix to concatenate to bridge field value
   entityField: string; // Field from entity table to match against
+  entityPrefix?: string; // Optional prefix to concatenate to entity field value
+  entitySuffix?: string; // Optional suffix to concatenate to entity field value
 }
 
 interface TableFilter {
@@ -1943,8 +1947,18 @@ const DataMigration: React.FC = () => {
         if (validJoinFields1.length > 0 && entity1TransformedData.length > 0) {
           const matchingEntity1 = entity1TransformedData.find((entityRecord: any) => {
             return validJoinFields1.every(joinField => {
-              const bridgeValue = String(record[joinField.bridgeField] ?? '').trim().toLowerCase();
-              const entityValue = String(entityRecord[joinField.entityField] ?? '').trim().toLowerCase();
+              // Apply prefix/suffix to bridge field value
+              let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
+              if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+              if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+              bridgeValue = bridgeValue.toLowerCase();
+              
+              // Apply prefix/suffix to entity field value
+              let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
+              if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
+              if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
+              entityValue = entityValue.toLowerCase();
+              
               const match = bridgeValue === entityValue;
               if (idx === 0) {
                 console.log(`[Bridge Preview] Entity 1 Join check: bridge.${joinField.bridgeField}="${bridgeValue}" vs entity.${joinField.entityField}="${entityValue}" => ${match}`);
@@ -1964,8 +1978,18 @@ const DataMigration: React.FC = () => {
         if (validJoinFields2.length > 0 && entity2TransformedData.length > 0) {
           const matchingEntity2 = entity2TransformedData.find((entityRecord: any) => {
             return validJoinFields2.every(joinField => {
-              const bridgeValue = String(record[joinField.bridgeField] ?? '').trim().toLowerCase();
-              const entityValue = String(entityRecord[joinField.entityField] ?? '').trim().toLowerCase();
+              // Apply prefix/suffix to bridge field value
+              let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
+              if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+              if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+              bridgeValue = bridgeValue.toLowerCase();
+              
+              // Apply prefix/suffix to entity field value
+              let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
+              if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
+              if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
+              entityValue = entityValue.toLowerCase();
+              
               const match = bridgeValue === entityValue;
               if (idx === 0) {
                 console.log(`[Bridge Preview] Entity 2 Join check: bridge.${joinField.bridgeField}="${bridgeValue}" vs entity.${joinField.entityField}="${entityValue}" => ${match}`);
@@ -2128,8 +2152,18 @@ const DataMigration: React.FC = () => {
         if (validJoinFields1.length > 0 && entity1TransformedData.length > 0) {
           const matchingEntity1 = entity1TransformedData.find((entityRecord: any) => {
             return validJoinFields1.every(joinField => {
-              const bridgeValue = String(row[joinField.bridgeField] ?? '').trim().toLowerCase();
-              const entityValue = String(entityRecord[joinField.entityField] ?? '').trim().toLowerCase();
+              // Apply prefix/suffix to bridge field value
+              let bridgeValue = String(row[joinField.bridgeField] ?? '').trim();
+              if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+              if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+              bridgeValue = bridgeValue.toLowerCase();
+              
+              // Apply prefix/suffix to entity field value
+              let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
+              if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
+              if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
+              entityValue = entityValue.toLowerCase();
+              
               return bridgeValue === entityValue;
             });
           });
@@ -2140,8 +2174,18 @@ const DataMigration: React.FC = () => {
         if (validJoinFields2.length > 0 && entity2TransformedData.length > 0) {
           const matchingEntity2 = entity2TransformedData.find((entityRecord: any) => {
             return validJoinFields2.every(joinField => {
-              const bridgeValue = String(row[joinField.bridgeField] ?? '').trim().toLowerCase();
-              const entityValue = String(entityRecord[joinField.entityField] ?? '').trim().toLowerCase();
+              // Apply prefix/suffix to bridge field value
+              let bridgeValue = String(row[joinField.bridgeField] ?? '').trim();
+              if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+              if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+              bridgeValue = bridgeValue.toLowerCase();
+              
+              // Apply prefix/suffix to entity field value
+              let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
+              if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
+              if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
+              entityValue = entityValue.toLowerCase();
+              
               return bridgeValue === entityValue;
             });
           });
@@ -3934,8 +3978,18 @@ const DataMigration: React.FC = () => {
                   // Find matching entity1 record based on join conditions (loose comparison)
                   const matchingEntity1Record = entity1TransformedData.find((entityRecord: any) => {
                     return mapping.bridgeEntity1JoinFields!.every(joinField => {
-                      const bridgeValue = String(record[joinField.bridgeField] ?? '').trim().toLowerCase();
-                      const entityValue = String(entityRecord[joinField.entityField] ?? '').trim().toLowerCase();
+                      // Apply prefix/suffix to bridge field value
+                      let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
+                      if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+                      if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+                      bridgeValue = bridgeValue.toLowerCase();
+                      
+                      // Apply prefix/suffix to entity field value
+                      let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
+                      if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
+                      if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
+                      entityValue = entityValue.toLowerCase();
+                      
                       return bridgeValue === entityValue;
                     });
                   });
@@ -3979,8 +4033,18 @@ const DataMigration: React.FC = () => {
                   // Find matching entity2 record based on join conditions (loose comparison)
                   const matchingEntity2Record = entity2TransformedData.find((entityRecord: any) => {
                     return mapping.bridgeEntity2JoinFields!.every(joinField => {
-                      const bridgeValue = String(record[joinField.bridgeField] ?? '').trim().toLowerCase();
-                      const entityValue = String(entityRecord[joinField.entityField] ?? '').trim().toLowerCase();
+                      // Apply prefix/suffix to bridge field value
+                      let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
+                      if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+                      if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+                      bridgeValue = bridgeValue.toLowerCase();
+                      
+                      // Apply prefix/suffix to entity field value
+                      let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
+                      if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
+                      if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
+                      entityValue = entityValue.toLowerCase();
+                      
                       return bridgeValue === entityValue;
                     });
                   });
@@ -7904,57 +7968,109 @@ const DataMigration: React.FC = () => {
                 </Typography>
                 
                 {bridgeEntity1JoinFields.map((joinField, index) => (
-                  <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-                    <FormControl sx={{ flex: 1 }}>
-                      <InputLabel size="small">Bridge Table Field</InputLabel>
-                      <Select
+                  <Box key={index} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                      <FormControl sx={{ flex: 1 }}>
+                        <InputLabel size="small">Bridge Table Field</InputLabel>
+                        <Select
+                          size="small"
+                          value={joinField.bridgeField}
+                          onChange={(e) => {
+                            const updated = [...bridgeEntity1JoinFields];
+                            updated[index].bridgeField = e.target.value;
+                            setBridgeEntity1JoinFields(updated);
+                          }}
+                          label="Bridge Table Field"
+                        >
+                          {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
+                            <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Typography>=</Typography>
+                      <FormControl sx={{ flex: 1 }}>
+                        <InputLabel size="small">Entity Field</InputLabel>
+                        <Select
+                          size="small"
+                          value={joinField.entityField}
+                          onChange={(e) => {
+                            const updated = [...bridgeEntity1JoinFields];
+                            updated[index].entityField = e.target.value;
+                            setBridgeEntity1JoinFields(updated);
+                          }}
+                          label="Entity Field"
+                        >
+                          {(() => {
+                            const entity1Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity1);
+                            if (!entity1Mapping) return <MenuItem value="">Entity mapping not found</MenuItem>;
+                            return entity1Mapping.fieldMappings
+                              .filter(fm => fm.generate)
+                              .map(fm => (
+                                <MenuItem key={fm.fieldName} value={fm.fieldName}>{fm.fieldName}</MenuItem>
+                              ));
+                          })()}
+                        </Select>
+                      </FormControl>
+                      <IconButton
                         size="small"
-                        value={joinField.bridgeField}
+                        onClick={() => {
+                          setBridgeEntity1JoinFields(bridgeEntity1JoinFields.filter((_, i) => i !== index));
+                        }}
+                        disabled={bridgeEntity1JoinFields.length === 1}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                      <TextField
+                        size="small"
+                        label="Bridge Field Prefix"
+                        placeholder="e.g., LOT-"
+                        value={joinField.bridgePrefix || ''}
                         onChange={(e) => {
                           const updated = [...bridgeEntity1JoinFields];
-                          updated[index].bridgeField = e.target.value;
+                          updated[index].bridgePrefix = e.target.value;
                           setBridgeEntity1JoinFields(updated);
                         }}
-                        label="Bridge Table Field"
-                      >
-                        {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
-                          <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Typography>=</Typography>
-                    <FormControl sx={{ flex: 1 }}>
-                      <InputLabel size="small">Entity Field</InputLabel>
-                      <Select
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
                         size="small"
-                        value={joinField.entityField}
+                        label="Bridge Field Suffix"
+                        placeholder="e.g., -2024"
+                        value={joinField.bridgeSuffix || ''}
                         onChange={(e) => {
                           const updated = [...bridgeEntity1JoinFields];
-                          updated[index].entityField = e.target.value;
+                          updated[index].bridgeSuffix = e.target.value;
                           setBridgeEntity1JoinFields(updated);
                         }}
-                        label="Entity Field"
-                      >
-                        {(() => {
-                          const entity1Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity1);
-                          if (!entity1Mapping) return <MenuItem value="">Entity mapping not found</MenuItem>;
-                          return entity1Mapping.fieldMappings
-                            .filter(fm => fm.generate)
-                            .map(fm => (
-                              <MenuItem key={fm.fieldName} value={fm.fieldName}>{fm.fieldName}</MenuItem>
-                            ));
-                        })()}
-                      </Select>
-                    </FormControl>
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setBridgeEntity1JoinFields(bridgeEntity1JoinFields.filter((_, i) => i !== index));
-                      }}
-                      disabled={bridgeEntity1JoinFields.length === 1}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Entity Field Prefix"
+                        placeholder="e.g., MAT-"
+                        value={joinField.entityPrefix || ''}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity1JoinFields];
+                          updated[index].entityPrefix = e.target.value;
+                          setBridgeEntity1JoinFields(updated);
+                        }}
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Entity Field Suffix"
+                        placeholder="e.g., _ID"
+                        value={joinField.entitySuffix || ''}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity1JoinFields];
+                          updated[index].entitySuffix = e.target.value;
+                          setBridgeEntity1JoinFields(updated);
+                        }}
+                        sx={{ flex: 1 }}
+                      />
+                    </Box>
                   </Box>
                 ))}
                 <Button
@@ -8009,57 +8125,109 @@ const DataMigration: React.FC = () => {
                 </Typography>
                 
                 {bridgeEntity2JoinFields.map((joinField, index) => (
-                  <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-                    <FormControl sx={{ flex: 1 }}>
-                      <InputLabel size="small">Bridge Table Field</InputLabel>
-                      <Select
+                  <Box key={index} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                      <FormControl sx={{ flex: 1 }}>
+                        <InputLabel size="small">Bridge Table Field</InputLabel>
+                        <Select
+                          size="small"
+                          value={joinField.bridgeField}
+                          onChange={(e) => {
+                            const updated = [...bridgeEntity2JoinFields];
+                            updated[index].bridgeField = e.target.value;
+                            setBridgeEntity2JoinFields(updated);
+                          }}
+                          label="Bridge Table Field"
+                        >
+                          {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
+                            <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Typography>=</Typography>
+                      <FormControl sx={{ flex: 1 }}>
+                        <InputLabel size="small">Entity Field</InputLabel>
+                        <Select
+                          size="small"
+                          value={joinField.entityField}
+                          onChange={(e) => {
+                            const updated = [...bridgeEntity2JoinFields];
+                            updated[index].entityField = e.target.value;
+                            setBridgeEntity2JoinFields(updated);
+                          }}
+                          label="Entity Field"
+                        >
+                          {(() => {
+                            const entity2Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity2);
+                            if (!entity2Mapping) return <MenuItem value="">Entity mapping not found</MenuItem>;
+                            return entity2Mapping.fieldMappings
+                              .filter(fm => fm.generate)
+                              .map(fm => (
+                                <MenuItem key={fm.fieldName} value={fm.fieldName}>{fm.fieldName}</MenuItem>
+                              ));
+                          })()}
+                        </Select>
+                      </FormControl>
+                      <IconButton
                         size="small"
-                        value={joinField.bridgeField}
+                        onClick={() => {
+                          setBridgeEntity2JoinFields(bridgeEntity2JoinFields.filter((_, i) => i !== index));
+                        }}
+                        disabled={bridgeEntity2JoinFields.length === 1}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                      <TextField
+                        size="small"
+                        label="Bridge Field Prefix"
+                        placeholder="e.g., LOT-"
+                        value={joinField.bridgePrefix || ''}
                         onChange={(e) => {
                           const updated = [...bridgeEntity2JoinFields];
-                          updated[index].bridgeField = e.target.value;
+                          updated[index].bridgePrefix = e.target.value;
                           setBridgeEntity2JoinFields(updated);
                         }}
-                        label="Bridge Table Field"
-                      >
-                        {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
-                          <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Typography>=</Typography>
-                    <FormControl sx={{ flex: 1 }}>
-                      <InputLabel size="small">Entity Field</InputLabel>
-                      <Select
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
                         size="small"
-                        value={joinField.entityField}
+                        label="Bridge Field Suffix"
+                        placeholder="e.g., -2024"
+                        value={joinField.bridgeSuffix || ''}
                         onChange={(e) => {
                           const updated = [...bridgeEntity2JoinFields];
-                          updated[index].entityField = e.target.value;
+                          updated[index].bridgeSuffix = e.target.value;
                           setBridgeEntity2JoinFields(updated);
                         }}
-                        label="Entity Field"
-                      >
-                        {(() => {
-                          const entity2Mapping = tableMappings.find(m => m.targetEntity === bridgeEntity2);
-                          if (!entity2Mapping) return <MenuItem value="">Entity mapping not found</MenuItem>;
-                          return entity2Mapping.fieldMappings
-                            .filter(fm => fm.generate)
-                            .map(fm => (
-                              <MenuItem key={fm.fieldName} value={fm.fieldName}>{fm.fieldName}</MenuItem>
-                            ));
-                        })()}
-                      </Select>
-                    </FormControl>
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setBridgeEntity2JoinFields(bridgeEntity2JoinFields.filter((_, i) => i !== index));
-                      }}
-                      disabled={bridgeEntity2JoinFields.length === 1}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Entity Field Prefix"
+                        placeholder="e.g., PROP-"
+                        value={joinField.entityPrefix || ''}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity2JoinFields];
+                          updated[index].entityPrefix = e.target.value;
+                          setBridgeEntity2JoinFields(updated);
+                        }}
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Entity Field Suffix"
+                        placeholder="e.g., _ID"
+                        value={joinField.entitySuffix || ''}
+                        onChange={(e) => {
+                          const updated = [...bridgeEntity2JoinFields];
+                          updated[index].entitySuffix = e.target.value;
+                          setBridgeEntity2JoinFields(updated);
+                        }}
+                        sx={{ flex: 1 }}
+                      />
+                    </Box>
                   </Box>
                 ))}
                 <Button
