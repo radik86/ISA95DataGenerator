@@ -3808,44 +3808,76 @@ const DataMigration: React.FC = () => {
       const entityIndexCache = new Map<string, Map<string, any>>();
 
       // Helper function to load and transform entity data with caching
-      const getTransformedEntityData = async (entityMapping: any): Promise<any[]> => {
-        const cacheKey = `${entityMapping.sourceTable}->${entityMapping.targetEntity}`;
+      // Handles MULTIPLE mappings for same target entity (e.g., equipment + equipment_child -> Equipment)
+      const getTransformedEntityData = async (targetEntity: string): Promise<any[]> => {
+        const combinedCacheKey = `COMBINED_${targetEntity}`;
         
-        if (entityDataCache.has(cacheKey)) {
-          console.log(`[Cache Hit] Using cached data for ${cacheKey}`);
-          return entityDataCache.get(cacheKey)!;
+        if (entityDataCache.has(combinedCacheKey)) {
+          console.log(`[Cache Hit] Using cached combined data for ${targetEntity}`);
+          return entityDataCache.get(combinedCacheKey)!;
         }
 
-        console.log(`[Cache Miss] Loading and transforming data for ${cacheKey}`);
-        const entitySourceData = await loadSourceData(entityMapping.sourceTable);
+        console.log(`[Cache Miss] Loading and transforming ALL data for entity: ${targetEntity}`);
         
-        // Apply field mappings to get transformed entity data
-        const entityTransformedData = entitySourceData.map((srcRecord: any) => {
-          const entityTransformed: any = {};
+        // Find ALL mappings for this target entity (can be multiple source tables)
+        const entityMappings = tableMappings.filter((m: any) => !m.isBridge && m.targetEntity === targetEntity);
+        
+        if (entityMappings.length === 0) {
+          console.warn(`[getTransformedEntityData] No mappings found for entity: ${targetEntity}`);
+          return [];
+        }
+        
+        console.log(`[getTransformedEntityData] Found ${entityMappings.length} mapping(s) for ${targetEntity}:`, 
+          entityMappings.map((m: any) => m.sourceTable));
+        
+        // Combine data from ALL mappings for this entity
+        const allTransformedData: any[] = [];
+        
+        for (const entityMapping of entityMappings) {
+          let entitySourceData = await loadSourceData(entityMapping.sourceTable);
           
-          // Apply all field mappings
-          entityMapping.fieldMappings?.forEach((fm: any) => {
-            if (fm.generate) {
-              if (fm.fieldRule) {
-                const ruleValue = generateValueFromRule(fm.fieldRule, srcRecord, 0, entityTransformed);
-                entityTransformed[fm.fieldName] = ruleValue;
-              } else if (fm.sourceColumn) {
-                entityTransformed[fm.fieldName] = srcRecord[fm.sourceColumn];
-              }
+          // CRITICAL: Apply filters from entity mapping to match filtered entity data
+          if (entityMapping.filters && entityMapping.filters.length > 0) {
+            const enabledFilters = entityMapping.filters.filter((f: any) => f.enabled);
+            if (enabledFilters.length > 0) {
+              const originalCount = entitySourceData.length;
+              entitySourceData = applyFilters(entitySourceData, enabledFilters);
+              console.log(`[Bridge Entity Filters] ${entityMapping.sourceTable}->${targetEntity}: Applied ${enabledFilters.length} filter(s): ${originalCount} → ${entitySourceData.length} records`);
             }
-          });
-          
-          // Apply PK rule if configured
-          if (entityMapping.primaryKeyRule) {
-            const pkValue = generateValueFromRule(entityMapping.primaryKeyRule, srcRecord, 0, entityTransformed);
-            entityTransformed['PrimaryKey'] = pkValue;
           }
           
-          return entityTransformed;
-        });
+          // Apply field mappings to get transformed entity data
+          const entityTransformedData = entitySourceData.map((srcRecord: any) => {
+            const entityTransformed: any = {};
+            
+            // Apply all field mappings
+            entityMapping.fieldMappings?.forEach((fm: any) => {
+              if (fm.generate) {
+                if (fm.fieldRule) {
+                  const ruleValue = generateValueFromRule(fm.fieldRule, srcRecord, 0, entityTransformed);
+                  entityTransformed[fm.fieldName] = ruleValue;
+                } else if (fm.sourceColumn) {
+                  entityTransformed[fm.fieldName] = srcRecord[fm.sourceColumn];
+                }
+              }
+            });
+            
+            // Apply PK rule if configured
+            if (entityMapping.primaryKeyRule) {
+              const pkValue = generateValueFromRule(entityMapping.primaryKeyRule, srcRecord, 0, entityTransformed);
+              entityTransformed['PrimaryKey'] = pkValue;
+            }
+            
+            return entityTransformed;
+          });
 
-        entityDataCache.set(cacheKey, entityTransformedData);
-        return entityTransformedData;
+          allTransformedData.push(...entityTransformedData);
+          console.log(`[getTransformedEntityData] ${entityMapping.sourceTable}->${targetEntity}: added ${entityTransformedData.length} transformed records`);
+        }
+
+        console.log(`[getTransformedEntityData] Total combined records for ${targetEntity}: ${allTransformedData.length}`);
+        entityDataCache.set(combinedCacheKey, allTransformedData);
+        return allTransformedData;
       };
       
       // Helper to build indexed lookup for faster bridge joins
@@ -3961,12 +3993,18 @@ const DataMigration: React.FC = () => {
           }
 
           // Apply filters if configured
+          // NOTE: For bridge tables, these filters only affect which BRIDGE RECORDS are processed
+          // Entity lookups use filters from their own entity mappings (not bridge filters)
           let filteredData = sourceData;
           if (mapping.filters && mapping.filters.length > 0) {
             const enabledFilters = mapping.filters.filter(f => f.enabled);
             if (enabledFilters.length > 0) {
               filteredData = applyFilters(sourceData, enabledFilters);
               log(`Applied ${enabledFilters.length} filter(s): ${sourceData.length} → ${filteredData.length} records`);
+              if (mapping.isBridge) {
+                console.log(`[Bridge Filters] Filters applied to bridge source data only (entity lookups use their own filters):`, 
+                  enabledFilters.map(f => ({ field: f.field, operator: f.operator, value: f.value })));
+              }
             }
           }
           
@@ -4074,15 +4112,13 @@ const DataMigration: React.FC = () => {
               transformed['Relationship Type'] = mapping.relationshipType || 'related';
               
               // NEW APPROACH: Use join conditions to lookup PKs from entity mappings
-              // Find the entity mappings for both entities
-              const entity1Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity1);
-              const entity2Mapping = tableMappings.find(m => m.targetEntity === mapping.bridgeEntity2);
+              // Find ALL entity mappings for both entities (can be multiple source tables per entity)
               
               // Load entity1 data and perform join lookup (using cache to avoid repeated loads)
-              if (entity1Mapping && mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
+              if (mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
                 try {
-                  // Get cached/transformed entity1 data
-                  const entity1TransformedData = await getTransformedEntityData(entity1Mapping);
+                  // Get cached/transformed entity1 data (combines ALL mappings for this entity)
+                  const entity1TransformedData = await getTransformedEntityData(mapping.bridgeEntity1);
                   
                   // Get or create indexed lookup for fast joins
                   const entity1IndexKey = `${mapping.bridgeEntity1}_index`;
@@ -4115,8 +4151,15 @@ const DataMigration: React.FC = () => {
                       console.log(`[Bridge ${recordIndex}] ✓ Entity1 PK found (indexed):`, matchingEntity1Record['PrimaryKey']);
                     }
                   } else {
+                    // Enhanced diagnostic logging for failed lookups
                     if (recordIndex < 3) {
-                      console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 1 record found for key:`, lookupKey);
+                      console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 1 record found`);
+                      console.warn(`  Bridge record:`, record);
+                      console.warn(`  Join fields config:`, mapping.bridgeEntity1JoinFields);
+                      console.warn(`  Built lookup key:`, lookupKey);
+                      console.warn(`  Entity1 index size:`, entity1Index.size);
+                      console.warn(`  Sample Entity1 index keys (first 5):`, Array.from(entity1Index.keys()).slice(0, 5));
+                      console.warn(`  Entity1 target:`, mapping.bridgeEntity1);
                     }
                     transformed['Source PrimaryKey'] = '';
                   }
@@ -4125,15 +4168,15 @@ const DataMigration: React.FC = () => {
                   transformed['Source PrimaryKey'] = '';
                 }
               } else {
-                console.warn('[Bridge Mapping] No Entity 1 mapping or join fields configured');
+                console.warn('[Bridge Mapping] No Entity 1 join fields configured');
                 transformed['Source PrimaryKey'] = '';
               }
               
               // Load entity2 data and perform join lookup (using cache to avoid repeated loads)
-              if (entity2Mapping && mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
+              if (mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
                 try {
-                  // Get cached/transformed entity2 data
-                  const entity2TransformedData = await getTransformedEntityData(entity2Mapping);
+                  // Get cached/transformed entity2 data (combines ALL mappings for this entity)
+                  const entity2TransformedData = await getTransformedEntityData(mapping.bridgeEntity2);
                   
                   // Get or create indexed lookup for fast joins
                   const entity2IndexKey = `${mapping.bridgeEntity2}_index`;
@@ -4166,8 +4209,15 @@ const DataMigration: React.FC = () => {
                       console.log(`[Bridge ${recordIndex}] ✓ Entity2 PK found (indexed):`, matchingEntity2Record['PrimaryKey']);
                     }
                   } else {
-                    if (recordIndex < 3) {
-                      console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 2 record found for key:`, lookupKey);
+                    // Enhanced diagnostic logging for failed lookups
+                    if (recordIndex < 3 || transformed['Source PrimaryKey'] === 'OPS-EVENT-SEG-RESP-PLANT01MUNICH-LINE-01-202601010030-RUN1-498-OED-PROC-TEMPDEV-937') {
+                      console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 2 record found`);
+                      console.warn(`  Bridge record:`, record);
+                      console.warn(`  Join fields config:`, mapping.bridgeEntity2JoinFields);
+                      console.warn(`  Built lookup key:`, lookupKey);
+                      console.warn(`  Entity2 index size:`, entity2Index.size);
+                      console.warn(`  Sample Entity2 index keys (first 5):`, Array.from(entity2Index.keys()).slice(0, 5));
+                      console.warn(`  Entity2 target:`, mapping.bridgeEntity2);
                     }
                     transformed['Target PrimaryKey'] = '';
                   }
@@ -4176,7 +4226,7 @@ const DataMigration: React.FC = () => {
                   transformed['Target PrimaryKey'] = '';
                 }
               } else {
-                console.warn('[Bridge Mapping] No Entity 2 mapping or join fields configured');
+                console.warn('[Bridge Mapping] No Entity 2 join fields configured');
                 transformed['Target PrimaryKey'] = '';
               }
               
