@@ -3804,6 +3804,8 @@ const DataMigration: React.FC = () => {
 
       // Cache for transformed entity data to avoid reloading for each bridge record
       const entityDataCache = new Map<string, any[]>();
+      // Cache for indexed lookups - dramatically speeds up bridge table joins
+      const entityIndexCache = new Map<string, Map<string, any>>();
 
       // Helper function to load and transform entity data with caching
       const getTransformedEntityData = async (entityMapping: any): Promise<any[]> => {
@@ -3845,22 +3847,74 @@ const DataMigration: React.FC = () => {
         entityDataCache.set(cacheKey, entityTransformedData);
         return entityTransformedData;
       };
+      
+      // Helper to build indexed lookup for faster bridge joins
+      const getEntityIndex = (entityData: any[], joinFields: any[], cacheKey: string): Map<string, any> => {
+        if (entityIndexCache.has(cacheKey)) {
+          return entityIndexCache.get(cacheKey)!;
+        }
+        
+        const index = new Map<string, any>();
+        entityData.forEach(record => {
+          // Create composite key from join fields
+          const keyParts = joinFields.map(jf => {
+            let value = String(record[jf.entityField] ?? '').trim();
+            if (jf.entityPrefix) value = jf.entityPrefix + value;
+            if (jf.entitySuffix) value = value + jf.entitySuffix;
+            return value.toLowerCase();
+          });
+          const compositeKey = keyParts.join('||');
+          index.set(compositeKey, record);
+        });
+        
+        entityIndexCache.set(cacheKey, index);
+        console.log(`[Index Created] ${cacheKey}: ${index.size} entries`);
+        return index;
+      };
 
       let failedMappingsCount = 0;
       let successfulMappingsCount = 0;
+      
+      // Track memory usage
+      const logMemoryUsage = () => {
+        if (performance && (performance as any).memory) {
+          const memInfo = (performance as any).memory;
+          console.log('[Memory] Usage:', {
+            usedMB: (memInfo.usedJSHeapSize / (1024 * 1024)).toFixed(2),
+            totalMB: (memInfo.totalJSHeapSize / (1024 * 1024)).toFixed(2),
+            limitMB: (memInfo.jsHeapSizeLimit / (1024 * 1024)).toFixed(2),
+            usagePercent: ((memInfo.usedJSHeapSize / memInfo.jsHeapSizeLimit) * 100).toFixed(2) + '%'
+          });
+        }
+      };
+      
+      // CRITICAL: Reorder mappings to process bridge tables LAST
+      // Bridge tables require joins and consume more memory
+      const sortedMappings = [...tableMappings].sort((a, b) => {
+        // Non-bridge tables first (0), bridge tables last (1)
+        const aOrder = a.isBridge ? 1 : 0;
+        const bOrder = b.isBridge ? 1 : 0;
+        return aOrder - bOrder;
+      });
+      
+      log('Processing order: Regular tables first, then bridge tables');
+      const bridgeCount = sortedMappings.filter(m => m.isBridge).length;
+      const regularCount = sortedMappings.length - bridgeCount;
+      log(`  → ${regularCount} regular table(s), ${bridgeCount} bridge table(s)`);
 
-      for (let i = 0; i < tableMappings.length; i++) {
-        const mapping = tableMappings[i];
+      for (let i = 0; i < sortedMappings.length; i++) {
+        const mapping = sortedMappings[i];
         if (!mapping.enabled) {
           log(`Skipping disabled mapping: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
           continue;
         }
 
         const mappingStartTime = Date.now();
+        logMemoryUsage();
 
         try {
-          log(`Processing [${i + 1}/${tableMappings.length}]: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
-          console.log(`[Migration] Processing mapping ${i + 1}/${tableMappings.length}:`, {
+          log(`Processing [${i + 1}/${sortedMappings.length}]: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
+          console.log(`[Migration] Processing mapping ${i + 1}/${sortedMappings.length}:`, {
             sourceTable: mapping.sourceTable,
             targetEntity: mapping.targetEntity,
             isBridge: mapping.isBridge,
@@ -3915,6 +3969,24 @@ const DataMigration: React.FC = () => {
               log(`Applied ${enabledFilters.length} filter(s): ${sourceData.length} → ${filteredData.length} records`);
             }
           }
+          
+          // Warn about large bridge table datasets
+          if (mapping.isBridge && filteredData.length > 50000) {
+            log(`⚠️  Warning: Large bridge table dataset (${filteredData.length} records). This may take several minutes...`);
+            console.warn(`[Bridge Warning] Processing ${filteredData.length} bridge records. Consider filtering or splitting the data.`);
+          }
+          
+          // Warn about large bridge table datasets
+          if (mapping.isBridge && filteredData.length > 50000) {
+            log(`⚠️  Warning: Large bridge table dataset (${filteredData.length} records). This may take several minutes...`);
+            console.warn(`[Bridge Warning] Processing ${filteredData.length} bridge records. Consider filtering or splitting the data.`);
+          }
+          
+          // Warn about large bridge table datasets
+          if (mapping.isBridge && filteredData.length > 50000) {
+            log(`⚠️  Warning: Large bridge table dataset (${filteredData.length} records). This may take several minutes...`);
+            console.warn(`[Bridge Warning] Processing ${filteredData.length} bridge records. Consider filtering or splitting the data.`);
+          }
 
           // Get entity for file naming
           const targetEntity = isa95Entities.find(e => e.tableName === mapping.targetEntity);
@@ -3937,8 +4009,55 @@ const DataMigration: React.FC = () => {
         }
 
         // Transform data based on field mappings
-        const transformedData = await Promise.all(filteredData.map(async (record: any, recordIndex: number) => {
-          const transformed: any = {};
+        // Process in smaller batches to avoid Promise.all memory issues with large datasets
+        // Use even smaller batches for bridge tables due to complex lookups
+        const transformedData: any[] = [];
+        
+        // Dynamic batch sizing based on dataset size and type
+        let TRANSFORM_BATCH_SIZE;
+        if (mapping.isBridge) {
+          // Ultra-small batches for huge bridge tables
+          if (filteredData.length > 50000) {
+            TRANSFORM_BATCH_SIZE = 100; // Very large datasets
+            log(`  Using ultra-small batches (${TRANSFORM_BATCH_SIZE}) for large bridge table`);
+          } else if (filteredData.length > 20000) {
+            TRANSFORM_BATCH_SIZE = 250; // Large datasets
+          } else {
+            TRANSFORM_BATCH_SIZE = 500; // Normal bridge tables
+          }
+        } else {
+          TRANSFORM_BATCH_SIZE = 5000; // Regular tables
+        }
+        
+        // Helper to yield to browser to prevent UI freeze
+        const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
+        
+        for (let batchStart = 0; batchStart < filteredData.length; batchStart += TRANSFORM_BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + TRANSFORM_BATCH_SIZE, filteredData.length);
+          const batch = filteredData.slice(batchStart, batchEnd);
+          
+          // For large bridge tables, clear caches more frequently
+          if (mapping.isBridge && filteredData.length > 50000 && batchStart > 0 && batchStart % 5000 === 0) {
+            console.log(`[Memory] Clearing caches at batch ${batchStart} to prevent memory buildup`);
+            // Clear only non-essential cached data
+            const entitiesToKeep = [mapping.bridgeEntity1, mapping.bridgeEntity2];
+            const allCacheKeys = Array.from(entityDataCache.keys());
+            allCacheKeys.forEach(key => {
+              if (!entitiesToKeep.some(entity => key.includes(entity))) {
+                entityDataCache.delete(key);
+              }
+            });
+          }
+          
+          // Yield to browser every batch to prevent freezing
+          await yieldToBrowser();
+          
+          try {
+            const batchTransformed = await Promise.all(batch.map(async (record: any, batchIndex: number) => {
+              const recordIndex = batchStart + batchIndex;
+              const transformed: any = {};
+              
+              try {
           
           // Special handling for bridge tables
           if (mapping.isBridge && mapping.bridgeEntity1 && mapping.bridgeEntity2) {
@@ -3965,44 +4084,40 @@ const DataMigration: React.FC = () => {
                   // Get cached/transformed entity1 data
                   const entity1TransformedData = await getTransformedEntityData(entity1Mapping);
                   
-                  console.log(`[Bridge ${recordIndex}] Entity1 lookup:`, {
-                    entity1Name: mapping.bridgeEntity1,
-                    availableRecords: entity1TransformedData.length,
-                    joinFields: mapping.bridgeEntity1JoinFields,
-                    bridgeRecordValues: mapping.bridgeEntity1JoinFields?.map(jf => ({
-                      field: jf.bridgeField,
-                      value: record[jf.bridgeField]
-                    }))
-                  });
+                  // Get or create indexed lookup for fast joins
+                  const entity1IndexKey = `${mapping.bridgeEntity1}_index`;
+                  const entity1Index = getEntityIndex(entity1TransformedData, mapping.bridgeEntity1JoinFields, entity1IndexKey);
                   
-                  // Find matching entity1 record based on join conditions (loose comparison)
-                  const matchingEntity1Record = entity1TransformedData.find((entityRecord: any) => {
-                    return mapping.bridgeEntity1JoinFields!.every(joinField => {
-                      // Apply prefix/suffix to bridge field value
-                      let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
-                      if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
-                      if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
-                      bridgeValue = bridgeValue.toLowerCase();
-                      
-                      // Apply prefix/suffix to entity field value
-                      let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
-                      if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
-                      if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
-                      entityValue = entityValue.toLowerCase();
-                      
-                      return bridgeValue === entityValue;
+                  // Only log first few records to avoid console spam
+                  if (recordIndex < 3) {
+                    console.log(`[Bridge ${recordIndex}] Entity1 lookup (indexed):`, {
+                      entity1Name: mapping.bridgeEntity1,
+                      indexSize: entity1Index.size,
+                      joinFields: mapping.bridgeEntity1JoinFields
                     });
+                  }
+                  
+                  // Build lookup key from bridge record
+                  const lookupKeyParts = mapping.bridgeEntity1JoinFields.map((joinField: any) => {
+                    let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
+                    if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+                    if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+                    return bridgeValue.toLowerCase();
                   });
+                  const lookupKey = lookupKeyParts.join('||');
+                  
+                  // Use indexed lookup (O(1) instead of O(n))
+                  const matchingEntity1Record = entity1Index.get(lookupKey);
                   
                   if (matchingEntity1Record && matchingEntity1Record['PrimaryKey']) {
                     transformed['Source PrimaryKey'] = matchingEntity1Record['PrimaryKey'];
-                    console.log(`[Bridge ${recordIndex}] ✓ Entity1 PK found:`, matchingEntity1Record['PrimaryKey']);
+                    if (recordIndex < 3) {
+                      console.log(`[Bridge ${recordIndex}] ✓ Entity1 PK found (indexed):`, matchingEntity1Record['PrimaryKey']);
+                    }
                   } else {
-                    console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 1 record found:`, {
-                      joinFields: mapping.bridgeEntity1JoinFields,
-                      bridgeRecord: record,
-                      sampleEntityRecords: entity1TransformedData.slice(0, 3)
-                    });
+                    if (recordIndex < 3) {
+                      console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 1 record found for key:`, lookupKey);
+                    }
                     transformed['Source PrimaryKey'] = '';
                   }
                 } catch (error) {
@@ -4020,44 +4135,40 @@ const DataMigration: React.FC = () => {
                   // Get cached/transformed entity2 data
                   const entity2TransformedData = await getTransformedEntityData(entity2Mapping);
                   
-                  console.log(`[Bridge ${recordIndex}] Entity2 lookup:`, {
-                    entity2Name: mapping.bridgeEntity2,
-                    availableRecords: entity2TransformedData.length,
-                    joinFields: mapping.bridgeEntity2JoinFields,
-                    bridgeRecordValues: mapping.bridgeEntity2JoinFields?.map(jf => ({
-                      field: jf.bridgeField,
-                      value: record[jf.bridgeField]
-                    }))
-                  });
+                  // Get or create indexed lookup for fast joins
+                  const entity2IndexKey = `${mapping.bridgeEntity2}_index`;
+                  const entity2Index = getEntityIndex(entity2TransformedData, mapping.bridgeEntity2JoinFields, entity2IndexKey);
                   
-                  // Find matching entity2 record based on join conditions (loose comparison)
-                  const matchingEntity2Record = entity2TransformedData.find((entityRecord: any) => {
-                    return mapping.bridgeEntity2JoinFields!.every(joinField => {
-                      // Apply prefix/suffix to bridge field value
-                      let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
-                      if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
-                      if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
-                      bridgeValue = bridgeValue.toLowerCase();
-                      
-                      // Apply prefix/suffix to entity field value
-                      let entityValue = String(entityRecord[joinField.entityField] ?? '').trim();
-                      if (joinField.entityPrefix) entityValue = joinField.entityPrefix + entityValue;
-                      if (joinField.entitySuffix) entityValue = entityValue + joinField.entitySuffix;
-                      entityValue = entityValue.toLowerCase();
-                      
-                      return bridgeValue === entityValue;
+                  // Only log first few records to avoid console spam
+                  if (recordIndex < 3) {
+                    console.log(`[Bridge ${recordIndex}] Entity2 lookup (indexed):`, {
+                      entity2Name: mapping.bridgeEntity2,
+                      indexSize: entity2Index.size,
+                      joinFields: mapping.bridgeEntity2JoinFields
                     });
+                  }
+                  
+                  // Build lookup key from bridge record
+                  const lookupKeyParts = mapping.bridgeEntity2JoinFields.map((joinField: any) => {
+                    let bridgeValue = String(record[joinField.bridgeField] ?? '').trim();
+                    if (joinField.bridgePrefix) bridgeValue = joinField.bridgePrefix + bridgeValue;
+                    if (joinField.bridgeSuffix) bridgeValue = bridgeValue + joinField.bridgeSuffix;
+                    return bridgeValue.toLowerCase();
                   });
+                  const lookupKey = lookupKeyParts.join('||');
+                  
+                  // Use indexed lookup (O(1) instead of O(n))
+                  const matchingEntity2Record = entity2Index.get(lookupKey);
                   
                   if (matchingEntity2Record && matchingEntity2Record['PrimaryKey']) {
                     transformed['Target PrimaryKey'] = matchingEntity2Record['PrimaryKey'];
-                    console.log(`[Bridge ${recordIndex}] ✓ Entity2 PK found:`, matchingEntity2Record['PrimaryKey']);
+                    if (recordIndex < 3) {
+                      console.log(`[Bridge ${recordIndex}] ✓ Entity2 PK found (indexed):`, matchingEntity2Record['PrimaryKey']);
+                    }
                   } else {
-                    console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 2 record found:`, {
-                      joinFields: mapping.bridgeEntity2JoinFields,
-                      bridgeRecord: record,
-                      sampleEntityRecords: entity2TransformedData.slice(0, 3)
-                    });
+                    if (recordIndex < 3) {
+                      console.warn(`[Bridge ${recordIndex}] ❌ No matching Entity 2 record found for key:`, lookupKey);
+                    }
                     transformed['Target PrimaryKey'] = '';
                   }
                 } catch (error) {
@@ -4241,13 +4352,38 @@ const DataMigration: React.FC = () => {
             }
           }
           
-          // Log the final transformed record for debugging
-          if (mapping.isBridge && recordIndex < 3) {
-            console.log(`[Bridge Record ${recordIndex}] Final transformed:`, transformed);
+              // Log the final transformed record for debugging
+              if (mapping.isBridge && recordIndex < 3) {
+                console.log(`[Bridge Record ${recordIndex}] Final transformed:`, transformed);
+              }
+              
+              return transformed;
+              } catch (recordError) {
+                console.error(`[Transform Error] Record ${recordIndex}:`, recordError, record);
+                // Return empty object on error to avoid crashing entire batch
+                return {};
+              }
+            }));
+            
+            transformedData.push(...batchTransformed);
+            
+            // Log progress for large datasets or bridge tables
+            if (filteredData.length > 10000 || (mapping.isBridge && filteredData.length > 1000)) {
+              const progressPercent = ((batchEnd / filteredData.length) * 100).toFixed(1);
+              log(`Transformed ${batchEnd}/${filteredData.length} records (${progressPercent}%)...`);
+              
+              // Update overall migration progress more frequently for bridge tables
+              if (mapping.isBridge && batchEnd % 2000 === 0) {
+                const overallProgress = ((i + (batchEnd / filteredData.length)) / sortedMappings.length) * 100;
+                setMigrationProgress(overallProgress);
+              }
+            }
+          } catch (batchError) {
+            console.error(`[Transform Error] Batch ${batchStart}-${batchEnd}:`, batchError);
+            log(`⚠️  Error transforming batch, attempting to continue...`);
+            // Continue with next batch
           }
-          
-          return transformed;
-        }));
+        }
 
         log(`Transformed ${transformedData.length} records`);
         console.log(`[Migration] Transformation complete for ${mapping.targetEntity}:`, {
@@ -4291,21 +4427,79 @@ const DataMigration: React.FC = () => {
         log(`⏱️  Mapping took ${mappingDuration}s`);
         successfulMappingsCount++;
 
-        setMigrationProgress(((i + 1) / tableMappings.length) * 100);
+        // Clear entity cache for this mapping to free memory
+        const cacheKeys = Array.from(entityDataCache.keys());
+        const relatedCacheKeys = cacheKeys.filter(key => 
+          key.includes(mapping.bridgeEntity1 || '') || 
+          key.includes(mapping.bridgeEntity2 || '')
+        );
+        relatedCacheKeys.forEach(key => entityDataCache.delete(key));
+        
+        // Also clear related index caches
+        const indexKeys = Array.from(entityIndexCache.keys());
+        const relatedIndexKeys = indexKeys.filter(key =>
+          key.includes(mapping.bridgeEntity1 || '') ||
+          key.includes(mapping.bridgeEntity2 || '')
+        );
+        relatedIndexKeys.forEach(key => entityIndexCache.delete(key));
+        
+        // Force garbage collection hint (browser may or may not honor)
+        if (i % 5 === 0 && (entityDataCache.size > 10 || entityIndexCache.size > 10)) {
+          console.log('[Memory] Clearing caches, sizes were:', {
+            dataCache: entityDataCache.size,
+            indexCache: entityIndexCache.size
+          });
+          entityDataCache.clear();
+          entityIndexCache.clear();
+        }
+        
+        // For very large bridge tables, force cache clear after completion
+        if (mapping.isBridge && filteredData.length > 50000) {
+          console.log('[Memory] Forcing cache clear after large bridge table');
+          entityDataCache.clear();
+          entityIndexCache.clear();
+        }
+
+        setMigrationProgress(((i + 1) / sortedMappings.length) * 100);
         } catch (mappingError) {
           // Log error for this specific mapping but continue with others
           const errorMessage = mappingError instanceof Error ? mappingError.message : String(mappingError);
           const errorStack = mappingError instanceof Error ? mappingError.stack : '';
+          
+          // Check if it's a memory-related error
+          const isMemoryError = errorMessage.toLowerCase().includes('memory') || 
+                               errorMessage.toLowerCase().includes('heap') ||
+                               errorMessage.toLowerCase().includes('out of');
+          
+          if (isMemoryError) {
+            log(`❌ MEMORY ERROR: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
+            log(`⚠️  Try reducing the dataset size or processing this table separately`);
+            console.error('[Memory Error] Clearing all caches and attempting to continue...');
+            entityDataCache.clear();
+            entityIndexCache.clear();
+          }
+          
           log(`❌ Failed to process ${mapping.sourceTable} -> ${mapping.targetEntity}: ${errorMessage}`);
           console.error(`[Migration Error] Mapping failed for ${mapping.sourceTable}:`, {
             error: mappingError,
             stack: errorStack,
-            mapping: mapping
+            mapping: mapping,
+            isMemoryError
           });
           failedMappingsCount++;
+          
+          // Clear cache on error to free memory
+          entityDataCache.clear();
+          entityIndexCache.clear();
+          
           // Continue with next mapping instead of crashing
         }
       }
+      
+      // Final cleanup
+      entityDataCache.clear();
+      entityIndexCache.clear();
+      logMemoryUsage();
 
       // Final summary
       log('─────────────────────────────────');
@@ -4627,7 +4821,8 @@ const DataMigration: React.FC = () => {
       isBridge,
       dataLength: data.length,
       sampleRecord: data[0],
-      hasData: data.length > 0
+      hasData: data.length > 0,
+      estimatedSizeMB: ((JSON.stringify(data).length) / (1024 * 1024)).toFixed(2)
     });
     
     if (data.length === 0) {
@@ -4635,65 +4830,20 @@ const DataMigration: React.FC = () => {
       return;
     }
 
-    // Get all column names from the data
-    let columns = Object.keys(data[0]);
-    
-    // Ensure PrimaryKey is first if it exists
-    if (columns.includes('PrimaryKey')) {
-      columns = ['PrimaryKey', ...columns.filter(col => col !== 'PrimaryKey')];
-    }
-    
-    // Create CSV content
-    const csvRows: string[] = [];
-    
-    // Header row
-    csvRows.push(columns.join(','));
-    
-    // Data rows
-    data.forEach(row => {
-      const values = columns.map(col => {
-        const value = row[col];
-        // Handle values that need quoting (contain commas, quotes, or newlines)
-        if (value === null || value === undefined) {
-          return '';
-        }
-        
-        // Special handling for Date objects - convert to full ISO 8601 string with seconds
-        if (value instanceof Date) {
-          return value.toISOString();
-        }
-        
-        // Check if it's a datetime string and ensure it has full timestamp with seconds
-        const stringValue = String(value);
-        
-        // If it looks like a datetime string (contains T or has datetime pattern), ensure it has seconds
-        if (stringValue.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/)) {
-          try {
-            const date = new Date(stringValue);
-            if (!isNaN(date.getTime())) {
-              // Convert to ISO string to ensure full format with seconds
-              return date.toISOString();
-            }
-          } catch (e) {
-            // If parsing fails, just use the original string
-          }
-        }
-        
-        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-          return `"${stringValue.replace(/"/g, '""')}"`;
-        }
-        return stringValue;
-      });
-      csvRows.push(values.join(','));
-    });
-
-    const csvContent = csvRows.join('\n');
-    // Preserve spaces in entity name for file naming (e.g., "Equipment Actual")
-    // Add timestamp to filename
+    const CHUNK_SIZE = 1000; // Process 1000 rows at a time to avoid memory issues
+    let writable: any = null;
     const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
     const fileName = `${entityName}_${timestamp}.csv`;
 
     try {
+      // Get all column names from the data
+      let columns = Object.keys(data[0]);
+      
+      // Ensure PrimaryKey is first if it exists
+      if (columns.includes('PrimaryKey')) {
+        columns = ['PrimaryKey', ...columns.filter(col => col !== 'PrimaryKey')];
+      }
+      
       // Get the target directory handle (create mapping subfolder if bridge table)
       let targetDirectoryHandle = directoryHandle;
       if (isBridge) {
@@ -4704,12 +4854,86 @@ const DataMigration: React.FC = () => {
       // @ts-ignore - File System Access API
       const fileHandle = await targetDirectoryHandle.getFileHandle(fileName, { create: true });
       // @ts-ignore
-      const writable = await fileHandle.createWritable();
-      await writable.write(csvContent);
+      writable = await fileHandle.createWritable();
+      
+      // Write header
+      await writable.write(columns.join(',') + '\n');
+      
+      // Process data in chunks to avoid memory issues
+      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const chunk = data.slice(i, Math.min(i + CHUNK_SIZE, data.length));
+        const csvRows: string[] = [];
+        
+        for (const row of chunk) {
+          try {
+            const values = columns.map(col => {
+              const value = row[col];
+              // Handle values that need quoting (contain commas, quotes, or newlines)
+              if (value === null || value === undefined) {
+                return '';
+              }
+              
+              // Special handling for Date objects - convert to full ISO 8601 string with seconds
+              if (value instanceof Date) {
+                return value.toISOString();
+              }
+              
+              // Check if it's a datetime string and ensure it has full timestamp with seconds
+              const stringValue = String(value);
+              
+              // If it looks like a datetime string (contains T or has datetime pattern), ensure it has seconds
+              if (stringValue.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/)) {
+                try {
+                  const date = new Date(stringValue);
+                  if (!isNaN(date.getTime())) {
+                    // Convert to ISO string to ensure full format with seconds
+                    return date.toISOString();
+                  }
+                } catch (e) {
+                  // If parsing fails, just use the original string
+                }
+              }
+              
+              if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+                return `"${stringValue.replace(/"/g, '""')}"`;
+              }
+              return stringValue;
+            });
+            csvRows.push(values.join(','));
+          } catch (rowError) {
+            console.error(`[CSV Save] Error processing row ${i}:`, rowError, row);
+            // Continue with next row instead of failing entire export
+          }
+        }
+        
+        // Write chunk to file
+        if (csvRows.length > 0) {
+          await writable.write(csvRows.join('\n') + '\n');
+        }
+        
+        // Log progress for large datasets
+        if (data.length > 10000 && (i + CHUNK_SIZE) % 10000 === 0) {
+          console.log(`[CSV Save] Progress: ${Math.min(i + CHUNK_SIZE, data.length)}/${data.length} rows written`);
+        }
+      }
+      
       await writable.close();
+      writable = null;
+      
+      console.log(`[CSV Save] Successfully saved ${data.length} rows to ${fileName}`);
     } catch (error) {
-      console.error('Failed to save CSV:', error);
+      console.error('[CSV Save] Failed to save CSV:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Attempt to close writable if it's still open
+      if (writable) {
+        try {
+          await writable.close();
+        } catch (closeError) {
+          console.error('[CSV Save] Error closing writable:', closeError);
+        }
+      }
+      
       throw new Error(`Failed to save CSV file "${fileName}": ${errorMessage}`);
     }
   };
