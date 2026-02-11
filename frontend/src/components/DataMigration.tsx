@@ -2417,25 +2417,53 @@ const DataMigration: React.FC = () => {
           break;
         case RuleType.IfThen:
           setIfThenSourceField(params?.sourceField || fieldMapping?.sourceColumn || '');
-          setIfThenSourceFields(params?.sourceFields || []);
+          // Ensure arrays have valid values (no undefined elements)
+          setIfThenSourceFields(Array.isArray(params?.sourceFields) && params.sourceFields.length > 0 
+            ? params.sourceFields.filter((f: any) => f !== undefined && f !== null) 
+            : []);
           setIfThenCondition(params?.condition || '');
           setIfThenTrueValue(params?.trueValue || '');
           setIfThenFalseValue(params?.falseValue || '');
           break;
         case RuleType.Case:
           setCaseSourceField(params?.sourceField || fieldMapping?.sourceColumn || '');
-          setCaseCases(params?.cases || [{ case: '', value: '' }]);
+          // Ensure arrays have valid case objects (no undefined elements)
+          setCaseCases(Array.isArray(params?.cases) && params.cases.length > 0 
+            ? params.cases.filter((c: any) => c !== undefined && c !== null && typeof c === 'object') 
+            : [{ case: '', value: '' }]);
           setCaseDefaultValue(params?.defaultValue || '');
           break;
         case RuleType.Coalesce:
-          setCoalesceSourceFields(params?.sourceFields || ['']);
+          // Ensure arrays have valid values (no undefined elements)
+          setCoalesceSourceFields(Array.isArray(params?.sourceFields) && params.sourceFields.length > 0 
+            ? params.sourceFields.filter((f: any) => f !== undefined && f !== null) 
+            : ['']);
           setCoalesceDefaultValue(params?.defaultValue || '');
           break;
         case RuleType.Concat:
-          setConcatSourceFields(params?.sourceFields || ['']);
+          // Ensure arrays have valid values (no undefined elements)
+          setConcatSourceFields(Array.isArray(params?.sourceFields) && params.sourceFields.length > 0 
+            ? params.sourceFields.filter((f: any) => f !== undefined && f !== null) 
+            : ['']);
           setConcatSeparator(params?.separator || '');
           setConcatPrefix(params?.prefix || '');
           setConcatSuffix(params?.suffix || '');
+          break;
+        case RuleType.Lookup:
+          setLookupSourceTable(params?.lookupTable || '');
+          setLookupLocalField(params?.sourceField || '');
+          setLookupSourceField(params?.matchField || '');
+          setLookupReturnField(params?.returnField || '');
+          setLookupDefaultValue(params?.defaultValue || '');
+          setLookupMultipleMatchBehavior(params?.multipleMatchBehavior || 'first');
+          setLookupJoinType(params?.joinType || 'field');
+          // Ensure arrays have valid values (no undefined elements)
+          setLookupLocalFields(Array.isArray(params?.localFields) && params.localFields.length > 0 
+            ? params.localFields.filter((f: any) => f !== undefined && f !== null) 
+            : ['']);
+          setLookupSourceFields(Array.isArray(params?.matchFields) && params.matchFields.length > 0 
+            ? params.matchFields.filter((f: any) => f !== undefined && f !== null) 
+            : ['']);
           break;
       }
     } else {
@@ -2472,12 +2500,28 @@ const DataMigration: React.FC = () => {
     setSeqPadding(0);
     setEnumValues([]);
     setIfThenSourceField('');
+    setIfThenSourceFields([]);
     setIfThenCondition('');
     setIfThenTrueValue('');
     setIfThenFalseValue('');
     setCaseSourceField('');
     setCaseCases([{ case: '', value: '' }]);
     setCaseDefaultValue('');
+    setCoalesceSourceFields(['']);
+    setCoalesceDefaultValue('');
+    setConcatSourceFields(['']);
+    setConcatSeparator('');
+    setConcatPrefix('');
+    setConcatSuffix('');
+    setLookupSourceTable('');
+    setLookupLocalField('');
+    setLookupSourceField('');
+    setLookupReturnField('');
+    setLookupDefaultValue('');
+    setLookupMultipleMatchBehavior('first');
+    setLookupJoinType('field');
+    setLookupLocalFields(['']);
+    setLookupSourceFields(['']);
   };
 
   const handleSaveFieldRule = () => {
@@ -3650,14 +3694,19 @@ const DataMigration: React.FC = () => {
           'segment_data': 'segmentData',
         };
 
+        // Check imported tables first
+        if (importedTablesData[tableName]) {
+          return importedTablesData[tableName];
+        }
+
         const processStoreName = processStoreMap[tableName];
         if (processStoreName) {
           return await processDataDB.getAll(processStoreName);
         }
 
-        // Check imported tables
-        if (importedTablesData[tableName]) {
-          return importedTablesData[tableName];
+        const masterStoreName = masterStoreMap[tableName];
+        if (masterStoreName) {
+          return await masterDataDB.getAll(masterStoreName);
         }
 
         return [];
@@ -3744,11 +3793,82 @@ const DataMigration: React.FC = () => {
             suffix: concatSuffix
           };
           break;
+        case RuleType.Lookup:
+          tempRule.parameters = {
+            sourceField: lookupLocalField,        // Field from entity's source table
+            lookupTable: lookupSourceTable,
+            matchField: lookupSourceField,        // Field from lookup table to match
+            returnField: lookupReturnField,
+            defaultValue: lookupDefaultValue,
+            multipleMatchBehavior: lookupMultipleMatchBehavior
+          };
+          break;
+      }
+
+      // For Lookup rules, pre-load the lookup table data
+      let lookupData: any[] = [];
+      if (tempRule.ruleType === RuleType.Lookup && tempRule.parameters?.lookupTable) {
+        try {
+          lookupData = await getTableDataFunc(tempRule.parameters.lookupTable);
+          console.log('[Field Rule Preview] Loaded lookup table:', {
+            table: tempRule.parameters.lookupTable,
+            rowCount: lookupData.length,
+            sampleRow: lookupData[0]
+          });
+        } catch (error) {
+          console.error('[Field Rule Preview] Error loading lookup table:', error);
+        }
       }
 
       // Generate preview data by applying the rule to each source row
       const preview = previewRows.map((row, idx) => {
-        const transformed = applyFieldRuleForPreview(tempRule, row, idx);
+        let transformed;
+        
+        // Special handling for Lookup to show actual values
+        if (tempRule.ruleType === RuleType.Lookup && lookupData.length > 0) {
+          const params = tempRule.parameters as any;
+          const sourceValue = row[params.sourceField];
+          
+          console.log(`[Preview Lookup ${idx}] Source value:`, {
+            sourceField: params.sourceField,
+            sourceValue,
+            matchField: params.matchField,
+            returnField: params.returnField
+          });
+          
+          // Find matching record in lookup table
+          if (sourceValue) {
+            const matchedRecord = lookupData.find(lookupRow => {
+              const lookupValue = lookupRow[params.matchField];
+              const match = String(lookupValue || '').trim().toLowerCase() === String(sourceValue).trim().toLowerCase();
+              if (idx === 0) {
+                console.log(`[Preview Lookup ${idx}] Comparing:`, {
+                  lookupValue,
+                  sourceValue,
+                  match
+                });
+              }
+              return match;
+            });
+            
+            if (matchedRecord) {
+              transformed = matchedRecord[params.returnField] || params.defaultValue || '';
+              console.log(`[Preview Lookup ${idx}] Match found:`, {
+                matchedRecord,
+                returnFieldValue: transformed
+              });
+            } else {
+              transformed = params.defaultValue || '';
+              console.log(`[Preview Lookup ${idx}] No match, using default:`, transformed);
+            }
+          } else {
+            transformed = params.defaultValue || '';
+            console.log(`[Preview Lookup ${idx}] Empty source value, using default:`, transformed);
+          }
+        } else {
+          transformed = applyFieldRuleForPreview(tempRule, row, idx);
+        }
+        
         return {
           source: row,
           transformed: transformed
@@ -4314,6 +4434,19 @@ const DataMigration: React.FC = () => {
               }
             }
           } else {
+            // Pre-load lookup tables for this mapping if any field uses Lookup rule
+            const lookupTables = new Map<string, any[]>();
+            for (const fm of mapping.fieldMappings) {
+              if (fm.generate && fm.fieldRule?.ruleType === RuleType.Lookup) {
+                const lookupTableName = (fm.fieldRule.parameters as any)?.lookupTable;
+                if (lookupTableName && !lookupTables.has(lookupTableName)) {
+                  const lookupData = await loadSourceData(lookupTableName);
+                  lookupTables.set(lookupTableName, lookupData);
+                  console.log(`[Lookup] Pre-loaded lookup table: ${lookupTableName} (${lookupData.length} records)`);
+                }
+              }
+            }
+            
             // Process each field mapping normally
             mapping.fieldMappings.forEach(fm => {
               if (fm.generate) {
@@ -4327,9 +4460,40 @@ const DataMigration: React.FC = () => {
                 
                 // Priority: Field rule first, then direct mapping, then empty value
                 if (fm.fieldRule) {
-                  // Generate value using field rule, passing source record for conditional rules
-                  console.log(`[${mapping.targetEntity}] Using field rule for ${fm.fieldName}:`, fm.fieldRule);
-                  transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, record, recordIndex, transformed);
+                  // Special handling for Lookup rule
+                  if (fm.fieldRule.ruleType === RuleType.Lookup) {
+                    const params = fm.fieldRule.parameters as any;
+                    const sourceValue = record[params?.sourceField];
+                    const lookupData = lookupTables.get(params?.lookupTable);
+                    
+                    if (!lookupData) {
+                      console.warn(`[Lookup] Table not loaded: ${params?.lookupTable}`);
+                      transformed[fm.fieldName] = params?.defaultValue || '';
+                    } else {
+                      // Perform lookup
+                      const matchField = params?.matchField;
+                      const returnField = params?.returnField;
+                      const matchingRecord = lookupData.find((r: any) => 
+                        String(r[matchField]).toLowerCase().trim() === String(sourceValue).toLowerCase().trim()
+                      );
+                      
+                      if (matchingRecord && matchingRecord[returnField]) {
+                        transformed[fm.fieldName] = matchingRecord[returnField];
+                        if (recordIndex < 3) {
+                          console.log(`[Lookup] Match found: ${sourceValue} -> ${matchingRecord[returnField]}`);
+                        }
+                      } else {
+                        transformed[fm.fieldName] = params?.defaultValue || '';
+                        if (recordIndex < 3) {
+                          console.warn(`[Lookup] No match found for: ${sourceValue} in ${params?.lookupTable}.${matchField}`);
+                        }
+                      }
+                    }
+                  } else {
+                    // Generate value using field rule, passing source record for conditional rules
+                    console.log(`[${mapping.targetEntity}] Using field rule for ${fm.fieldName}:`, fm.fieldRule);
+                    transformed[fm.fieldName] = generateValueFromRule(fm.fieldRule, record, recordIndex, transformed);
+                  }
                 } else if (fm.sourceColumn) {
                   // Map from source column, use empty string if undefined/null
                   let value = record[fm.sourceColumn];
@@ -4808,6 +4972,36 @@ const DataMigration: React.FC = () => {
         
         const concatenated = concatValues.join(params?.separator || '');
         return `${params?.prefix || ''}${concatenated}${params?.suffix || ''}`;
+      
+      case RuleType.Lookup:
+        // Lookup value from another table
+        if (!sourceRecord || !params?.sourceField) {
+          console.warn('❌ Lookup rule: missing sourceRecord or sourceField');
+          return params?.defaultValue || '';
+        }
+        
+        // Get the value from the source field
+        const lookupValue = sourceRecord[params.sourceField];
+        if (!lookupValue) {
+          console.warn('❌ Lookup rule: source field value is empty', {
+            sourceField: params.sourceField,
+            availableFields: Object.keys(sourceRecord)
+          });
+          return params?.defaultValue || '';
+        }
+        
+        console.log('[Lookup] Attempting lookup:', {
+          sourceField: params.sourceField,
+          lookupValue,
+          lookupTable: params.lookupTable,
+          matchField: params.matchField,
+          returnField: params.returnField
+        });
+        
+        // Note: This is a synchronous function but lookup requires async data loading
+        // The actual lookup needs to be handled during the migration execution
+        // For preview, we return a placeholder
+        return `[Lookup: ${params.lookupTable}.${params.returnField}]`;
         
       default:
         return '';
@@ -5475,7 +5669,7 @@ const DataMigration: React.FC = () => {
                     onChange={(e) => setSelectedSourceTable(e.target.value)}
                     label="Source Table"
                   >
-                    {dataSource?.tables.map(table => (
+                    {(dataSource?.tables || []).map(table => (
                       <MenuItem key={table.name} value={table.name}>
                         {table.name} ({table.rowCount} rows)
                       </MenuItem>
@@ -5851,7 +6045,7 @@ const DataMigration: React.FC = () => {
                                         <MenuItem value="">
                                           <em>No source (use rule/transformation)</em>
                                         </MenuItem>
-                                        {sourceTable?.columns.map(col => (
+                                        {(sourceTable?.columns || []).map(col => (
                                           <MenuItem key={col.name} value={col.name}>
                                             {col.name} ({col.type})
                                           </MenuItem>
@@ -5993,7 +6187,7 @@ const DataMigration: React.FC = () => {
                   onChange={(e) => setSelectedSourceTable(e.target.value)}
                   label="Source Table"
                 >
-                  {dataSource?.tables.map(table => (
+                  {(dataSource?.tables || []).map(table => (
                     <MenuItem key={table.name} value={table.name}>
                       {table.name}
                     </MenuItem>
@@ -6722,7 +6916,7 @@ const DataMigration: React.FC = () => {
                           <MenuItem value="">
                             <em>Select a source field</em>
                           </MenuItem>
-                          {sourceTable?.columns.map((col) => (
+                          {(sourceTable?.columns || []).map((col) => (
                             <MenuItem key={col.name} value={col.name}>
                               {col.name} ({col.type})
                             </MenuItem>
@@ -6738,7 +6932,7 @@ const DataMigration: React.FC = () => {
                           <FormControl fullWidth>
                             <InputLabel>Additional Field {index + 1}</InputLabel>
                             <Select
-                              value={field}
+                              value={field || ''}
                               onChange={(e) => {
                                 const newFields = [...ifThenSourceFields];
                                 newFields[index] = e.target.value;
@@ -6749,7 +6943,7 @@ const DataMigration: React.FC = () => {
                               <MenuItem value="">
                                 <em>Select a field</em>
                               </MenuItem>
-                              {sourceTable?.columns.map((col) => (
+                              {(sourceTable?.columns || []).map((col) => (
                                 <MenuItem key={col.name} value={col.name}>
                                   {col.name} ({col.type})
                                 </MenuItem>
@@ -6842,9 +7036,9 @@ const DataMigration: React.FC = () => {
                         <MenuItem value="">
                           <em>Select a source field</em>
                       </MenuItem>
-                      {importedTables
+                      {(importedTables
                         .find((t: SourceTable) => t.name === tableMappings[mappingIndex]?.sourceTable)
-                        ?.columns.map((col: any) => (
+                        ?.columns || []).map((col: any) => (
                           <MenuItem key={col.name} value={col.name}>
                             {col.name} ({col.type})
                           </MenuItem>
@@ -6860,7 +7054,7 @@ const DataMigration: React.FC = () => {
                       <TextField
                         fullWidth
                         label="Case"
-                        value={caseItem.case}
+                        value={caseItem?.case || ''}
                         onChange={(e) => {
                           const newCases = [...caseCases];
                           newCases[index].case = e.target.value;
@@ -6872,7 +7066,7 @@ const DataMigration: React.FC = () => {
                         <FormControl fullWidth>
                           <InputLabel>Result Value</InputLabel>
                           <Select
-                            value={caseItem.value}
+                            value={caseItem?.value || ''}
                             onChange={(e) => {
                               const newCases = [...caseCases];
                               newCases[index].value = e.target.value;
@@ -6895,7 +7089,7 @@ const DataMigration: React.FC = () => {
                         <TextField
                           fullWidth
                           label="Result Value"
-                          value={caseItem.value}
+                          value={caseItem?.value || ''}
                           onChange={(e) => {
                             const newCases = [...caseCases];
                             newCases[index].value = e.target.value;
@@ -6982,7 +7176,7 @@ const DataMigration: React.FC = () => {
                       <FormControl fullWidth>
                         <InputLabel>Field {index + 1}</InputLabel>
                         <Select
-                          value={field}
+                          value={field || ''}
                           onChange={(e) => {
                             const newFields = [...coalesceSourceFields];
                             newFields[index] = e.target.value;
@@ -6993,7 +7187,7 @@ const DataMigration: React.FC = () => {
                           <MenuItem value="">
                             <em>Select a field</em>
                           </MenuItem>
-                          {sourceTable?.columns.map((col) => (
+                          {(sourceTable?.columns || []).map((col) => (
                             <MenuItem key={col.name} value={col.name}>
                               {col.name} ({col.type})
                             </MenuItem>
@@ -7051,7 +7245,7 @@ const DataMigration: React.FC = () => {
                       <FormControl fullWidth>
                         <InputLabel>Field {index + 1}</InputLabel>
                         <Select
-                          value={field}
+                          value={field || ''}
                           onChange={(e) => {
                             const newFields = [...concatSourceFields];
                             newFields[index] = e.target.value;
@@ -7062,7 +7256,7 @@ const DataMigration: React.FC = () => {
                           <MenuItem value="">
                             <em>Select a field</em>
                           </MenuItem>
-                          {sourceTable?.columns.map((col) => (
+                          {(sourceTable?.columns || []).map((col) => (
                             <MenuItem key={col.name} value={col.name}>
                               {col.name} ({col.type})
                             </MenuItem>
@@ -7133,13 +7327,13 @@ const DataMigration: React.FC = () => {
                   
                   {/* Source Table Selection */}
                   <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Source Table</InputLabel>
+                    <InputLabel>Lookup Table</InputLabel>
                     <Select
                       value={lookupSourceTable}
                       onChange={(e) => setLookupSourceTable(e.target.value)}
-                      label="Source Table"
+                      label="Lookup Table"
                     >
-                      {dataSource?.tables.map((table) => (
+                      {(dataSource?.tables || []).map((table) => (
                         <MenuItem key={table.name} value={table.name}>
                           {table.name}
                         </MenuItem>
@@ -7165,14 +7359,13 @@ const DataMigration: React.FC = () => {
                   {lookupJoinType === 'field' && (
                     <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                       <FormControl fullWidth>
-                        <InputLabel>Local Field</InputLabel>
+                        <InputLabel>Local Field (from source table)</InputLabel>
                         <Select
                           value={lookupLocalField}
                           onChange={(e) => setLookupLocalField(e.target.value)}
-                          label="Local Field"
+                          label="Local Field (from source table)"
                         >
-                          {currentSourceTable?.columns
-                            .map((col) => (
+                          {(currentSourceTable?.columns || []).map((col) => (
                               <MenuItem key={col.name} value={col.name}>
                                 {col.name}
                               </MenuItem>
@@ -7180,15 +7373,14 @@ const DataMigration: React.FC = () => {
                         </Select>
                       </FormControl>
                       <FormControl fullWidth>
-                        <InputLabel>Source Field</InputLabel>
+                        <InputLabel>Lookup Field (from lookup table)</InputLabel>
                         <Select
                           value={lookupSourceField}
                           onChange={(e) => setLookupSourceField(e.target.value)}
-                          label="Source Field"
+                          label="Lookup Field (from lookup table)"
                         >
-                          {lookupSourceTable && dataSource?.tables
-                            .find(t => t.name === lookupSourceTable)?.columns
-                            .map((col) => (
+                          {(lookupSourceTable ? dataSource?.tables
+                            .find(t => t.name === lookupSourceTable)?.columns || [] : []).map((col) => (
                               <MenuItem key={col.name} value={col.name}>
                                 {col.name}
                               </MenuItem>
@@ -7207,18 +7399,17 @@ const DataMigration: React.FC = () => {
                       {lookupLocalFields.map((localField, index) => (
                         <Box key={index} sx={{ display: 'flex', gap: 2, mb: 1 }}>
                           <FormControl fullWidth>
-                            <InputLabel>Local Field {index + 1}</InputLabel>
+                            <InputLabel>Local Field {index + 1} (source)</InputLabel>
                             <Select
-                              value={localField}
+                              value={localField || ''}
                               onChange={(e) => {
                                 const newLocalFields = [...lookupLocalFields];
                                 newLocalFields[index] = e.target.value;
                                 setLookupLocalFields(newLocalFields);
                               }}
-                              label={`Local Field ${index + 1}`}
+                              label={`Local Field ${index + 1} (source)`}
                             >
-                              {currentSourceTable?.columns
-                                .map((col) => (
+                              {(currentSourceTable?.columns || []).map((col) => (
                                   <MenuItem key={col.name} value={col.name}>
                                     {col.name}
                                   </MenuItem>
@@ -7226,7 +7417,7 @@ const DataMigration: React.FC = () => {
                             </Select>
                           </FormControl>
                           <FormControl fullWidth>
-                            <InputLabel>Source Field {index + 1}</InputLabel>
+                            <InputLabel>Lookup Field {index + 1}</InputLabel>
                             <Select
                               value={lookupSourceFields[index] || ''}
                               onChange={(e) => {
@@ -7234,11 +7425,10 @@ const DataMigration: React.FC = () => {
                                 newSourceFields[index] = e.target.value;
                                 setLookupSourceFields(newSourceFields);
                               }}
-                              label={`Source Field ${index + 1}`}
+                              label={`Lookup Field ${index + 1}`}
                             >
-                              {lookupSourceTable && dataSource?.tables
-                                .find(t => t.name === lookupSourceTable)?.columns
-                                .map((col) => (
+                              {(lookupSourceTable ? dataSource?.tables
+                                .find(t => t.name === lookupSourceTable)?.columns || [] : []).map((col) => (
                                   <MenuItem key={col.name} value={col.name}>
                                     {col.name}
                                   </MenuItem>
@@ -7303,9 +7493,8 @@ const DataMigration: React.FC = () => {
                       onChange={(e) => setLookupReturnField(e.target.value)}
                       label="Return Field"
                     >
-                      {lookupSourceTable && dataSource?.tables
-                        .find(t => t.name === lookupSourceTable)?.columns
-                        .map((col) => (
+                      {(lookupSourceTable ? dataSource?.tables
+                        .find(t => t.name === lookupSourceTable)?.columns || [] : []).map((col) => (
                           <MenuItem key={col.name} value={col.name}>
                             {col.name}
                           </MenuItem>
@@ -7395,6 +7584,24 @@ const DataMigration: React.FC = () => {
                               <Box sx={{ fontSize: '0.875rem' }}>
                                 {fieldRuleType === RuleType.Sequence || fieldRuleType === RuleType.Static ? (
                                   <em style={{ color: '#666' }}>N/A (generated value)</em>
+                                ) : fieldRuleType === RuleType.Lookup ? (
+                                  <>
+                                    {lookupLocalField && (
+                                      <div>
+                                        <strong>Local Field ({lookupLocalField}):</strong> {String(row.source[lookupLocalField] ?? 'null')}
+                                      </div>
+                                    )}
+                                    {lookupSourceField && lookupSourceTable && (
+                                      <div style={{ marginTop: '4px', color: '#1976d2', fontSize: '0.85rem' }}>
+                                        <strong>↓ Matching against:</strong> {lookupSourceTable}.{lookupSourceField}
+                                      </div>
+                                    )}
+                                    {lookupReturnField && (
+                                      <div style={{ marginTop: '2px', color: '#666', fontSize: '0.8rem' }}>
+                                        <em>Returning: {lookupReturnField}</em>
+                                      </div>
+                                    )}
+                                  </>
                                 ) : sourceFieldsToShow.length > 0 ? (
                                   sourceFieldsToShow.map((field, idx) => (
                                     <div key={idx}>
@@ -7769,7 +7976,7 @@ const DataMigration: React.FC = () => {
                           <FormControl fullWidth>
                             <InputLabel>Field</InputLabel>
                             <Select
-                              value={field.fieldName}
+                              value={field.fieldName || ''}
                               onChange={(e) => {
                                 const updated = [...pkCompositeConcatFields];
                                 updated[index].fieldName = e.target.value;
@@ -7887,7 +8094,7 @@ const DataMigration: React.FC = () => {
                     onChange={(e) => setLookupSourceTable(e.target.value)}
                     label="Source Table (Lookup From)"
                   >
-                    {dataSource?.tables.map((table) => (
+                    {(dataSource?.tables || []).map((table) => (
                       <MenuItem key={table.name} value={table.name}>
                         {table.name}
                       </MenuItem>
@@ -7919,8 +8126,7 @@ const DataMigration: React.FC = () => {
                         onChange={(e) => setLookupLocalField(e.target.value)}
                         label="Local Field"
                       >
-                        {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns
-                          .map((col) => (
+                        {(dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns || []).map((col) => (
                             <MenuItem key={col.name} value={col.name}>
                               {col.name}
                             </MenuItem>
@@ -7934,8 +8140,7 @@ const DataMigration: React.FC = () => {
                         onChange={(e) => setLookupSourceField(e.target.value)}
                         label="Source Field"
                       >
-                        {lookupSourceTable && dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns
-                          .map((col) => (
+                        {(lookupSourceTable ? dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns || [] : []).map((col) => (
                             <MenuItem key={col.name} value={col.name}>
                               {col.name}
                             </MenuItem>
@@ -7956,7 +8161,7 @@ const DataMigration: React.FC = () => {
                         <FormControl fullWidth>
                           <InputLabel>Local Field {index + 1}</InputLabel>
                           <Select
-                            value={localField}
+                            value={localField || ''}
                             onChange={(e) => {
                               const newLocalFields = [...lookupLocalFields];
                               newLocalFields[index] = e.target.value;
@@ -7964,8 +8169,7 @@ const DataMigration: React.FC = () => {
                             }}
                             label={`Local Field ${index + 1}`}
                           >
-                            {dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns
-                              .map((col) => (
+                            {(dataSource?.tables.find(t => t.name === tableMappings[selectedMappingForPK]?.sourceTable)?.columns || []).map((col) => (
                                 <MenuItem key={col.name} value={col.name}>
                                   {col.name}
                                 </MenuItem>
@@ -7983,8 +8187,7 @@ const DataMigration: React.FC = () => {
                             }}
                             label={`Source Field ${index + 1}`}
                           >
-                            {lookupSourceTable && dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns
-                              .map((col) => (
+                            {(lookupSourceTable ? dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns || [] : []).map((col) => (
                                 <MenuItem key={col.name} value={col.name}>
                                   {col.name}
                                 </MenuItem>
@@ -8049,8 +8252,7 @@ const DataMigration: React.FC = () => {
                     onChange={(e) => setLookupReturnField(e.target.value)}
                     label="Return Field (Value to Use as PK)"
                   >
-                    {lookupSourceTable && dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns
-                      .map((col) => (
+                    {(lookupSourceTable ? dataSource?.tables.find(t => t.name === lookupSourceTable)?.columns || [] : []).map((col) => (
                         <MenuItem key={col.name} value={col.name}>
                           {col.name}
                         </MenuItem>
@@ -8136,9 +8338,9 @@ const DataMigration: React.FC = () => {
                     onChange={(e) => handleUpdateFilter(selectedFilter.mappingIndex, selectedFilter.filterIndex, 'column', e.target.value)}
                     label="Column"
                   >
-                    {dataSource?.tables
+                    {(dataSource?.tables
                       .find(t => t.name === tableMappings[selectedFilter.mappingIndex]?.sourceTable)
-                      ?.columns.map(column => (
+                      ?.columns || []).map(column => (
                         <MenuItem key={column.name} value={column.name}>
                           {column.name} ({column.type})
                         </MenuItem>
@@ -8233,7 +8435,7 @@ const DataMigration: React.FC = () => {
                 onChange={(e) => setSelectedSourceTable(e.target.value)}
                 label="Source Table"
               >
-                {dataSource?.tables.map(table => (
+                {(dataSource?.tables || []).map(table => (
                   <MenuItem key={table.name} value={table.name}>
                     {table.name} ({table.rowCount} rows)
                   </MenuItem>
@@ -8305,7 +8507,7 @@ const DataMigration: React.FC = () => {
                           }}
                           label="Bridge Table Field"
                         >
-                          {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
+                          {(dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns || []).map(col => (
                             <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
                           ))}
                         </Select>
@@ -8462,7 +8664,7 @@ const DataMigration: React.FC = () => {
                           }}
                           label="Bridge Table Field"
                         >
-                          {dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns.map(col => (
+                          {(dataSource?.tables.find(t => t.name === selectedSourceTable)?.columns || []).map(col => (
                             <MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>
                           ))}
                         </Select>

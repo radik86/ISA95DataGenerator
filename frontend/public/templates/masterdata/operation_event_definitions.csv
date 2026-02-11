@@ -1,30 +1,30 @@
 OperationsEventDefinitionID,EventCategory,EventCode,Description,CausesDowntime,CausesScrap,RootCauseType,EventType
-OED-UD-OVERTEMP,UnplannedDowntime,OvenOverTemperature,Oven temperature exceeds safe limit,TRUE,FALSE,Equipment,Alarm
-OED-UD-MIXFAIL,UnplannedDowntime,MixerFailure,Mixer mechanical or electrical failure,TRUE,FALSE,Equipment,Alarm
-OED-UD-POWER,UnplannedDowntime,PowerLoss,External power outage,TRUE,FALSE,Utility,Alarm
-OED-UD-BEARING,UnplannedDowntime,BearingOverheat,Mixer bearing temperature exceeded,TRUE,FALSE,Equipment,Alarm
-OED-UD-BELT,UnplannedDowntime,DriveBeltFailure,Drive belt snapped,TRUE,FALSE,Equipment,Alarm
-OED-UD-SENSOR,UnplannedDowntime,SensorFailure,Critical process sensor failure,TRUE,FALSE,Equipment,Alarm
-OED-UD-LUBE,UnplannedDowntime,LubricationFault,Insufficient lubrication detected,TRUE,FALSE,Equipment,Alarm
-OED-UTIL-GAS,UtilityFailure,GasSupplyLoss,Gas supply interrupted,TRUE,FALSE,Utility,Alarm
-OED-UTIL-WATER,UtilityFailure,WaterPressureLow,Insufficient water pressure,TRUE,FALSE,Utility,Alarm
+OED-UD-OVERTEMP,UnplannedDowntime,OvenOverTemperature,Oven temperature exceeds safe limit,TRUE,FALSE,Machine Malfunction,Alarm
+OED-UD-MIXFAIL,UnplannedDowntime,MixerFailure,Mixer mechanical or electrical failure,TRUE,FALSE,Machine Malfunction,Alarm
+OED-UD-POWER,UnplannedDowntime,PowerLoss,External power outage,TRUE,FALSE,Production Interruption,Alarm
+OED-UD-BEARING,UnplannedDowntime,BearingOverheat,Mixer bearing temperature exceeded,TRUE,FALSE,Machine Malfunction,Alarm
+OED-UD-BELT,UnplannedDowntime,DriveBeltFailure,Drive belt snapped,TRUE,FALSE,Machine Malfunction,Alarm
+OED-UD-SENSOR,UnplannedDowntime,SensorFailure,Critical process sensor failure,TRUE,FALSE,Production Interruption,Alarm
+OED-UD-LUBE,UnplannedDowntime,LubricationFault,Insufficient lubrication detected,TRUE,FALSE,Production Interruption,Alarm
+OED-UTIL-GAS,UtilityFailure,GasSupplyLoss,Gas supply interrupted,TRUE,FALSE,Production Interruption,Alarm
+OED-UTIL-WATER,UtilityFailure,WaterPressureLow,Insufficient water pressure,TRUE,FALSE,Production Interruption,Alarm
 OED-SCR-BURN,QualityScrap,BurnedProduct,Product burned during baking,FALSE,TRUE,Process,Alarm
 OED-SCR-UNDER,QualityScrap,UnderbakedProduct,Product underbaked,FALSE,TRUE,Process,Alarm
 OED-SCR-CONT,QualityScrap,Contamination,Foreign material contamination,FALSE,TRUE,Quality,Alarm
 OED-QC-FAIL,Quality,QualityCheckFailure,Final quality inspection failed,FALSE,TRUE,Quality,Alarm
-OED-QC-ALLERGEN,Quality,AllergenRisk,Potential allergen cross-contamination,TRUE,TRUE,Quality,Alarm
+OED-QC-ALLERGEN,Quality,AllergenRisk,Potential allergen cross-contamination,TRUE,TRUE,On Hold,Alarm
 OED-QC-LABEL,Quality,LabelingError,Incorrect product labeling,FALSE,TRUE,Quality,Alarm
 OED-PROC-TEMPDEV,ProcessDeviation,TemperatureDeviation,Process temperature outside tolerance,FALSE,TRUE,Process,Alarm
 OED-PROC-TIMEDEV,ProcessDeviation,ProcessTimeDeviation,Process time exceeded limits,FALSE,TRUE,Process,Alarm
 OED-PROC-MIXERR,ProcessDeviation,MixingError,Incorrect mixing parameters,FALSE,TRUE,Process,Alarm
 OED-PROC-FLOW,ProcessDeviation,IngredientFlowError,Incorrect ingredient dosing,FALSE,TRUE,Process,Alarm
-OED-MAT-SHORT,MaterialIssue,MaterialShortage,Required material not available,TRUE,FALSE,Material,Alarm
-OED-MAT-EXPIRED,MaterialIssue,MaterialExpired,Expired raw material detected,TRUE,TRUE,Material,Alarm
-OED-MAT-CONT,MaterialIssue,MaterialContaminated,Raw material contamination,TRUE,TRUE,Material,Alarm
+OED-MAT-SHORT,MaterialIssue,MaterialShortage,Required material not available,TRUE,FALSE,On Hold,Alarm
+OED-MAT-EXPIRED,MaterialIssue,MaterialExpired,Expired raw material detected,TRUE,TRUE,On Hold,Alarm
+OED-MAT-CONT,MaterialIssue,MaterialContaminated,Raw material contamination,TRUE,TRUE,On Hold,Alarm
 OED-ENV-TEMP,Environmental,AmbientTempHigh,Ambient temperature exceeded limits,FALSE,TRUE,Environment,Alarm
 OED-PLAN-DELAY,Planning,ScheduleDelay,Production started later than planned,FALSE,FALSE,Planning,Alarm
 OED-PLAN-OVERRUN,Planning,RunTimeOverrun,Segment execution exceeded planned duration,FALSE,FALSE,Planning,Alarm
-OED-PLAN-CANCEL,Planning,OrderCancelled,Operations request cancelled,TRUE,FALSE,Planning,Alarm
+OED-PLAN-CANCEL,Planning,OrderCancelled,Operations request cancelled,TRUE,FALSE,Production Interruption,Alarm
 OED-PROD-MIX-START,Production,MixingStart,Start of Mixing,FALSE,FALSE,Production,Event
 OED-PROD-MIX-END,Production,MixingEnd,End of Mixing,FALSE,FALSE,Production,Event
 OED-PROD-BAKE-START,Production,BAKEingStart,Start of BAKEing,FALSE,FALSE,Production,Event
