@@ -2450,20 +2450,50 @@ const DataMigration: React.FC = () => {
           setConcatSuffix(params?.suffix || '');
           break;
         case RuleType.Lookup:
-          setLookupSourceTable(params?.lookupTable || '');
-          setLookupLocalField(params?.sourceField || '');
-          setLookupSourceField(params?.matchField || '');
+          // Support both saved format (sourceTable + joinConditions) and legacy format (lookupTable + flat fields)
+          setLookupSourceTable(params?.sourceTable || params?.lookupTable || '');
           setLookupReturnField(params?.returnField || '');
           setLookupDefaultValue(params?.defaultValue || '');
           setLookupMultipleMatchBehavior(params?.multipleMatchBehavior || 'first');
-          setLookupJoinType(params?.joinType || 'field');
-          // Ensure arrays have valid values (no undefined elements)
-          setLookupLocalFields(Array.isArray(params?.localFields) && params.localFields.length > 0 
-            ? params.localFields.filter((f: any) => f !== undefined && f !== null) 
-            : ['']);
-          setLookupSourceFields(Array.isArray(params?.matchFields) && params.matchFields.length > 0 
-            ? params.matchFields.filter((f: any) => f !== undefined && f !== null) 
-            : ['']);
+          
+          // Restore join configuration from joinConditions array (saved format)
+          if (params?.joinConditions && params.joinConditions.length > 0) {
+            const joinCond = params.joinConditions[0];
+            setLookupJoinType(joinCond.type || 'field');
+            if (joinCond.type === 'field') {
+              setLookupLocalField(joinCond.localField || '');
+              setLookupSourceField(joinCond.sourceField || '');
+              setLookupLocalFields(['']);
+              setLookupSourceFields(['']);
+            } else if (joinCond.type === 'composite') {
+              setLookupLocalField('');
+              setLookupSourceField('');
+              setLookupLocalFields(Array.isArray(joinCond.localFields) && joinCond.localFields.length > 0
+                ? joinCond.localFields.filter((f: any) => f !== undefined && f !== null)
+                : ['']);
+              setLookupSourceFields(Array.isArray(joinCond.sourceFields) && joinCond.sourceFields.length > 0
+                ? joinCond.sourceFields.filter((f: any) => f !== undefined && f !== null)
+                : ['']);
+            } else if (joinCond.type === 'concatenation') {
+              setLookupLocalField('');
+              setLookupSourceField(joinCond.sourceField || '');
+              setLookupLocalExpression(joinCond.localExpression || '');
+              setLookupSourceExpression(joinCond.sourceExpression || '');
+              setLookupLocalFields(['']);
+              setLookupSourceFields(['']);
+            }
+          } else {
+            // Legacy/preview flat format fallback
+            setLookupJoinType(params?.joinType || 'field');
+            setLookupLocalField(params?.sourceField || '');
+            setLookupSourceField(params?.matchField || '');
+            setLookupLocalFields(Array.isArray(params?.localFields) && params.localFields.length > 0
+              ? params.localFields.filter((f: any) => f !== undefined && f !== null)
+              : ['']);
+            setLookupSourceFields(Array.isArray(params?.matchFields) && params.matchFields.length > 0
+              ? params.matchFields.filter((f: any) => f !== undefined && f !== null)
+              : ['']);
+          }
           break;
       }
     } else {
@@ -2834,6 +2864,42 @@ const DataMigration: React.FC = () => {
           setPkCompositeConcatSeparator(params?.separator || '-');
           setPkCompositeConcatGlobalPrefix(params?.globalPrefix || '');
           setPkCompositeConcatGlobalSuffix(params?.globalSuffix || '');
+          break;
+        case RuleType.Lookup:
+          // Restore lookup parameters from saved format (sourceTable + joinConditions)
+          setLookupSourceTable(params?.sourceTable || params?.lookupTable || '');
+          setLookupReturnField(params?.returnField || '');
+          setLookupDefaultValue(params?.defaultValue || '');
+          setLookupMultipleMatchBehavior(params?.multipleMatchBehavior || 'first');
+          
+          if (params?.joinConditions && params.joinConditions.length > 0) {
+            const joinCond = params.joinConditions[0];
+            setLookupJoinType(joinCond.type || 'field');
+            if (joinCond.type === 'field') {
+              setLookupLocalField(joinCond.localField || '');
+              setLookupSourceField(joinCond.sourceField || '');
+              setLookupLocalFields(['']);
+              setLookupSourceFields(['']);
+            } else if (joinCond.type === 'composite') {
+              setLookupLocalField('');
+              setLookupSourceField('');
+              setLookupLocalFields(Array.isArray(joinCond.localFields) && joinCond.localFields.length > 0
+                ? joinCond.localFields.filter((f: any) => f !== undefined && f !== null)
+                : ['']);
+              setLookupSourceFields(Array.isArray(joinCond.sourceFields) && joinCond.sourceFields.length > 0
+                ? joinCond.sourceFields.filter((f: any) => f !== undefined && f !== null)
+                : ['']);
+            } else if (joinCond.type === 'concatenation') {
+              setLookupLocalField('');
+              setLookupSourceField(joinCond.sourceField || '');
+              setLookupLocalExpression(joinCond.localExpression || '');
+              setLookupSourceExpression(joinCond.sourceExpression || '');
+              setLookupLocalFields(['']);
+              setLookupSourceFields(['']);
+            }
+          } else {
+            setLookupJoinType('field');
+          }
           break;
       }
     } else {
@@ -3394,6 +3460,28 @@ const DataMigration: React.FC = () => {
           }
         } else {
           // Normal entity mapping - apply field mappings
+          // Pre-load lookup tables for this mapping
+          const previewLookupTables = new Map<string, any[]>();
+          for (const fm of mapping.fieldMappings) {
+            if (fm.generate && fm.fieldRule?.ruleType === RuleType.Lookup) {
+              const params = fm.fieldRule.parameters as any;
+              const lookupTableName = params?.sourceTable || params?.lookupTable;
+              if (lookupTableName && !previewLookupTables.has(lookupTableName)) {
+                const lookupData = await getTableDataFunc(lookupTableName);
+                previewLookupTables.set(lookupTableName, lookupData);
+              }
+            }
+          }
+          // Also check PK rule for lookup
+          if (mapping.primaryKeyRule?.ruleType === RuleType.Lookup) {
+            const pkParams = mapping.primaryKeyRule.parameters as any;
+            const pkLookupTable = pkParams?.sourceTable || pkParams?.lookupTable;
+            if (pkLookupTable && !previewLookupTables.has(pkLookupTable)) {
+              const lookupData = await getTableDataFunc(pkLookupTable);
+              previewLookupTables.set(pkLookupTable, lookupData);
+            }
+          }
+
           mapping.fieldMappings.forEach(fieldMapping => {
             if (!fieldMapping.generate) return;
 
@@ -3401,8 +3489,40 @@ const DataMigration: React.FC = () => {
               // Direct column mapping
               previewRow[fieldMapping.fieldName] = row[fieldMapping.sourceColumn];
             } else if (fieldMapping.fieldRule) {
-              // Apply rule
-              previewRow[fieldMapping.fieldName] = applyFieldRuleForPreview(fieldMapping.fieldRule, row, idx);
+              // Special handling for Lookup rule in preview
+              if (fieldMapping.fieldRule.ruleType === RuleType.Lookup) {
+                const params = fieldMapping.fieldRule.parameters as any;
+                // Resolve field names from joinConditions (saved format) or flat params (preview format)
+                let localField = params?.sourceField;
+                let matchField = params?.matchField;
+                const lookupTableName = params?.sourceTable || params?.lookupTable;
+                
+                if (params?.joinConditions && params.joinConditions.length > 0) {
+                  const joinCond = params.joinConditions[0];
+                  if (joinCond.type === 'field') {
+                    localField = joinCond.localField;
+                    matchField = joinCond.sourceField;
+                  } else if (joinCond.type === 'composite') {
+                    localField = joinCond.localFields?.[0];
+                    matchField = joinCond.sourceFields?.[0];
+                  }
+                }
+                
+                const sourceValue = row[localField];
+                const lookupData = previewLookupTables.get(lookupTableName);
+                
+                if (lookupData && sourceValue) {
+                  const matchingRecord = lookupData.find((r: any) => 
+                    String(r[matchField] || '').toLowerCase().trim() === String(sourceValue).toLowerCase().trim()
+                  );
+                  previewRow[fieldMapping.fieldName] = matchingRecord?.[params?.returnField] ?? params?.defaultValue ?? '';
+                } else {
+                  previewRow[fieldMapping.fieldName] = params?.defaultValue || '';
+                }
+              } else {
+                // Apply other rules
+                previewRow[fieldMapping.fieldName] = applyFieldRuleForPreview(fieldMapping.fieldRule, row, idx);
+              }
             } else {
               previewRow[fieldMapping.fieldName] = '';
             }
@@ -3410,7 +3530,37 @@ const DataMigration: React.FC = () => {
           
           // Apply primary key rule using the transformed row
           if (mapping.primaryKeyRule) {
-            previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx, previewRow);
+            if (mapping.primaryKeyRule.ruleType === RuleType.Lookup) {
+              const params = mapping.primaryKeyRule.parameters as any;
+              let localField = params?.sourceField;
+              let matchField = params?.matchField;
+              const lookupTableName = params?.sourceTable || params?.lookupTable;
+              
+              if (params?.joinConditions && params.joinConditions.length > 0) {
+                const joinCond = params.joinConditions[0];
+                if (joinCond.type === 'field') {
+                  localField = joinCond.localField;
+                  matchField = joinCond.sourceField;
+                } else if (joinCond.type === 'composite') {
+                  localField = joinCond.localFields?.[0];
+                  matchField = joinCond.sourceFields?.[0];
+                }
+              }
+              
+              const sourceValue = row[localField];
+              const lookupData = previewLookupTables.get(lookupTableName);
+              
+              if (lookupData && sourceValue) {
+                const matchingRecord = lookupData.find((r: any) => 
+                  String(r[matchField] || '').toLowerCase().trim() === String(sourceValue).toLowerCase().trim()
+                );
+                previewRow['PrimaryKey'] = matchingRecord?.[params?.returnField] ?? params?.defaultValue ?? '';
+              } else {
+                previewRow['PrimaryKey'] = params?.defaultValue || '';
+              }
+            } else {
+              previewRow['PrimaryKey'] = applyFieldRuleForPreview(mapping.primaryKeyRule, row, idx, previewRow);
+            }
           }
         }
 
@@ -4438,12 +4588,24 @@ const DataMigration: React.FC = () => {
             const lookupTables = new Map<string, any[]>();
             for (const fm of mapping.fieldMappings) {
               if (fm.generate && fm.fieldRule?.ruleType === RuleType.Lookup) {
-                const lookupTableName = (fm.fieldRule.parameters as any)?.lookupTable;
+                const params = fm.fieldRule.parameters as any;
+                // Support both saved format (sourceTable) and preview format (lookupTable)
+                const lookupTableName = params?.sourceTable || params?.lookupTable;
                 if (lookupTableName && !lookupTables.has(lookupTableName)) {
                   const lookupData = await loadSourceData(lookupTableName);
                   lookupTables.set(lookupTableName, lookupData);
                   console.log(`[Lookup] Pre-loaded lookup table: ${lookupTableName} (${lookupData.length} records)`);
                 }
+              }
+            }
+            // Also pre-load lookup table for PK rule if it's a Lookup
+            if (mapping.primaryKeyRule?.ruleType === RuleType.Lookup) {
+              const pkParams = mapping.primaryKeyRule.parameters as any;
+              const pkLookupTableName = pkParams?.sourceTable || pkParams?.lookupTable;
+              if (pkLookupTableName && !lookupTables.has(pkLookupTableName)) {
+                const lookupData = await loadSourceData(pkLookupTableName);
+                lookupTables.set(pkLookupTableName, lookupData);
+                console.log(`[Lookup] Pre-loaded PK lookup table: ${pkLookupTableName} (${lookupData.length} records)`);
               }
             }
             
@@ -4463,21 +4625,67 @@ const DataMigration: React.FC = () => {
                   // Special handling for Lookup rule
                   if (fm.fieldRule.ruleType === RuleType.Lookup) {
                     const params = fm.fieldRule.parameters as any;
-                    const sourceValue = record[params?.sourceField];
-                    const lookupData = lookupTables.get(params?.lookupTable);
+                    
+                    // Resolve field names from joinConditions (saved format) or flat params (preview format)
+                    let localField = params?.sourceField; // preview format
+                    let matchField = params?.matchField;  // preview format
+                    const lookupTableName = params?.sourceTable || params?.lookupTable;
+                    
+                    // Check joinConditions for the saved format
+                    if (params?.joinConditions && params.joinConditions.length > 0) {
+                      const joinCond = params.joinConditions[0];
+                      if (joinCond.type === 'field') {
+                        localField = joinCond.localField;
+                        matchField = joinCond.sourceField;
+                      } else if (joinCond.type === 'composite') {
+                        // For composite, use first field pair
+                        localField = joinCond.localFields?.[0];
+                        matchField = joinCond.sourceFields?.[0];
+                      }
+                    }
+                    
+                    const sourceValue = record[localField];
+                    const lookupData = lookupTables.get(lookupTableName);
+                    
+                    if (recordIndex < 3) {
+                      console.log(`[Lookup] Resolving field ${fm.fieldName}:`, {
+                        localField, matchField, lookupTableName,
+                        sourceValue, returnField: params?.returnField,
+                        hasLookupData: !!lookupData, lookupDataSize: lookupData?.length
+                      });
+                    }
                     
                     if (!lookupData) {
-                      console.warn(`[Lookup] Table not loaded: ${params?.lookupTable}`);
+                      console.warn(`[Lookup] Table not loaded: ${lookupTableName}`);
                       transformed[fm.fieldName] = params?.defaultValue || '';
+                    } else if (!sourceValue && sourceValue !== 0) {
+                      transformed[fm.fieldName] = params?.defaultValue || '';
+                      if (recordIndex < 3) {
+                        console.warn(`[Lookup] Empty source value for field: ${localField}`);
+                      }
                     } else {
                       // Perform lookup
-                      const matchField = params?.matchField;
                       const returnField = params?.returnField;
-                      const matchingRecord = lookupData.find((r: any) => 
-                        String(r[matchField]).toLowerCase().trim() === String(sourceValue).toLowerCase().trim()
-                      );
                       
-                      if (matchingRecord && matchingRecord[returnField]) {
+                      // Support composite join (match on multiple fields)
+                      let matchingRecord: any = null;
+                      if (params?.joinConditions?.[0]?.type === 'composite') {
+                        const joinCond = params.joinConditions[0];
+                        const localFields = joinCond.localFields || [];
+                        const sourceFields = joinCond.sourceFields || [];
+                        matchingRecord = lookupData.find((r: any) => {
+                          return localFields.every((lf: string, i: number) => {
+                            const sf = sourceFields[i];
+                            return sf && String(r[sf] || '').toLowerCase().trim() === String(record[lf] || '').toLowerCase().trim();
+                          });
+                        });
+                      } else {
+                        matchingRecord = lookupData.find((r: any) => 
+                          String(r[matchField] || '').toLowerCase().trim() === String(sourceValue).toLowerCase().trim()
+                        );
+                      }
+                      
+                      if (matchingRecord && matchingRecord[returnField] !== undefined) {
                         transformed[fm.fieldName] = matchingRecord[returnField];
                         if (recordIndex < 3) {
                           console.log(`[Lookup] Match found: ${sourceValue} -> ${matchingRecord[returnField]}`);
@@ -4485,7 +4693,7 @@ const DataMigration: React.FC = () => {
                       } else {
                         transformed[fm.fieldName] = params?.defaultValue || '';
                         if (recordIndex < 3) {
-                          console.warn(`[Lookup] No match found for: ${sourceValue} in ${params?.lookupTable}.${matchField}`);
+                          console.warn(`[Lookup] No match found for: ${sourceValue} in ${lookupTableName}.${matchField}`);
                         }
                       }
                     }
@@ -4577,6 +4785,36 @@ const DataMigration: React.FC = () => {
                   });
                   pkValue = `${pkParams?.globalPrefix || ''}${concatParts.join(pkParams?.separator || '-')}${pkParams?.globalSuffix || ''}`;
                   console.log(`[${mapping.targetEntity}] CompositeConcat result:`, pkValue);
+                  break;
+                case RuleType.Lookup:
+                  // Lookup PK value from another table
+                  let pkLocalField = pkParams?.sourceField;
+                  let pkMatchField = pkParams?.matchField;
+                  const pkLookupTableName = pkParams?.sourceTable || pkParams?.lookupTable;
+                  
+                  if (pkParams?.joinConditions && pkParams.joinConditions.length > 0) {
+                    const joinCond = pkParams.joinConditions[0];
+                    if (joinCond.type === 'field') {
+                      pkLocalField = joinCond.localField;
+                      pkMatchField = joinCond.sourceField;
+                    } else if (joinCond.type === 'composite') {
+                      pkLocalField = joinCond.localFields?.[0];
+                      pkMatchField = joinCond.sourceFields?.[0];
+                    }
+                  }
+                  
+                  const pkSourceValue = record[pkLocalField];
+                  const pkLookupData = lookupTables.get(pkLookupTableName);
+                  
+                  if (pkLookupData && pkSourceValue) {
+                    const pkMatchingRecord = pkLookupData.find((r: any) => 
+                      String(r[pkMatchField] || '').toLowerCase().trim() === String(pkSourceValue).toLowerCase().trim()
+                    );
+                    pkValue = pkMatchingRecord?.[pkParams?.returnField] ?? pkParams?.defaultValue ?? '';
+                  } else {
+                    pkValue = pkParams?.defaultValue || '';
+                  }
+                  console.log(`[${mapping.targetEntity}] Lookup PK result:`, pkValue);
                   break;
                 default:
                   console.log(`[${mapping.targetEntity}] Using default rule (recordIndex + 1), rule type was:`, mapping.primaryKeyRule.ruleType);
@@ -4975,33 +5213,42 @@ const DataMigration: React.FC = () => {
       
       case RuleType.Lookup:
         // Lookup value from another table
-        if (!sourceRecord || !params?.sourceField) {
-          console.warn('❌ Lookup rule: missing sourceRecord or sourceField');
+        // Resolve field names from joinConditions (saved format) or flat params (preview format)
+        let lookupLocalField = params?.sourceField; // preview format: flat sourceField
+        let lookupMatchField = params?.matchField;  // preview format: flat matchField
+        const lookupTableName = params?.sourceTable || params?.lookupTable;
+        
+        // Check joinConditions for the saved format
+        if (params?.joinConditions && params.joinConditions.length > 0) {
+          const joinCond = params.joinConditions[0];
+          if (joinCond.type === 'field') {
+            lookupLocalField = joinCond.localField;
+            lookupMatchField = joinCond.sourceField;
+          } else if (joinCond.type === 'composite') {
+            lookupLocalField = joinCond.localFields?.[0];
+            lookupMatchField = joinCond.sourceFields?.[0];
+          }
+        }
+        
+        if (!sourceRecord || !lookupLocalField) {
+          console.warn('❌ Lookup rule: missing sourceRecord or localField');
           return params?.defaultValue || '';
         }
         
-        // Get the value from the source field
-        const lookupValue = sourceRecord[params.sourceField];
-        if (!lookupValue) {
+        // Get the value from the local field
+        const lookupValue = sourceRecord[lookupLocalField];
+        if (!lookupValue && lookupValue !== 0) {
           console.warn('❌ Lookup rule: source field value is empty', {
-            sourceField: params.sourceField,
+            localField: lookupLocalField,
             availableFields: Object.keys(sourceRecord)
           });
           return params?.defaultValue || '';
         }
         
-        console.log('[Lookup] Attempting lookup:', {
-          sourceField: params.sourceField,
-          lookupValue,
-          lookupTable: params.lookupTable,
-          matchField: params.matchField,
-          returnField: params.returnField
-        });
-        
-        // Note: This is a synchronous function but lookup requires async data loading
-        // The actual lookup needs to be handled during the migration execution
-        // For preview, we return a placeholder
-        return `[Lookup: ${params.lookupTable}.${params.returnField}]`;
+        // Note: This is a synchronous function - actual lookup requires pre-loaded data
+        // During migration execution, lookup is handled inline with pre-loaded tables
+        // For other callers, return a descriptive placeholder
+        return `[Lookup: ${lookupTableName}.${params?.returnField}]`;
         
       default:
         return '';
