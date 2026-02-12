@@ -60,6 +60,7 @@ interface SegmentRequirement {
   id: string;
   operationsRequestId: string;
   processSegmentId: string;
+  equipmentId?: string;
   sequence: number;
   earliestStartDateTime: string;
   latestEndDateTime: string;
@@ -91,6 +92,8 @@ interface OperationsResponse {
   id: string;
   operationsRequestId: string;
   description: string;
+  plantId: string;
+  productionLineId: string;
   actualStartDateTime: string;
   actualEndDateTime: string;
   actualQuantity: number;
@@ -103,6 +106,7 @@ interface SegmentResponse {
   segmentRequirementId: string;
   operationsResponseId: string;
   processSegmentId: string;
+  equipmentId?: string;
   actualStartDateTime: string;
   actualEndDateTime: string;
   actualQuantity: number;
@@ -626,6 +630,7 @@ const ProcessDataGenerator: React.FC = () => {
             segmentRequirementId: segReq.id,
             operationsResponseId: opsResponseId,
             processSegmentId: segReq.processSegmentId,
+            equipmentId: eqUsages.length > 0 ? eqUsages[0].equipmentId : undefined,
             actualStartDateTime: runStartTime.toISOString().slice(0, 19).replace('T', ' '),
             actualEndDateTime: endTime.toISOString().slice(0, 19).replace('T', ' '),
             actualQuantity: runQuantity,
@@ -1476,6 +1481,8 @@ const ProcessDataGenerator: React.FC = () => {
         id: opsResponseId,
         operationsRequestId: selectedOperationsRequestId,
         description: orData.operationsRequest.description,
+        plantId: plantId,
+        productionLineId: lineId,
         actualStartDateTime: operationsStartTime.toISOString().slice(0, 19).replace('T', ' '),
         actualEndDateTime: operationsEndTime.toISOString().slice(0, 19).replace('T', ' '),
         actualQuantity: actualProductQuantity,
@@ -1981,12 +1988,12 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     // Export Operations Response
-    const orCsv = `OperationsResponseID,OperationsRequestID,Description,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,Status\n${generatedOperationsResponse.id},${generatedOperationsResponse.operationsRequestId},${generatedOperationsResponse.description},${generatedOperationsResponse.actualStartDateTime},${generatedOperationsResponse.actualEndDateTime},${generatedOperationsResponse.actualQuantity},${generatedOperationsResponse.quantityUoM},${generatedOperationsResponse.status}`;
+    const orCsv = `OperationsResponseID,OperationsRequestID,PlantID,ProductionLineID,Description,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,Status\n${generatedOperationsResponse.id},${generatedOperationsResponse.operationsRequestId},${generatedOperationsResponse.plantId},${generatedOperationsResponse.productionLineId},${generatedOperationsResponse.description},${generatedOperationsResponse.actualStartDateTime},${generatedOperationsResponse.actualEndDateTime},${generatedOperationsResponse.actualQuantity},${generatedOperationsResponse.quantityUoM},${generatedOperationsResponse.status}`;
 
     // Export Segment Responses
-    const srHeaders = 'SegmentResponseID,SegmentRequirementID,OperationsResponseID,ProcessSegmentID,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,Status';
+    const srHeaders = 'SegmentResponseID,SegmentRequirementID,OperationsResponseID,ProcessSegmentID,EquipmentID,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,Status';
     const srRows = segmentResponses.map(sr => 
-      `${sr.id},${sr.segmentRequirementId},${sr.operationsResponseId},${sr.processSegmentId},${sr.actualStartDateTime},${sr.actualEndDateTime},${sr.actualQuantity},${sr.quantityUoM},${sr.status}`
+      `${sr.id},${sr.segmentRequirementId},${sr.operationsResponseId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.actualStartDateTime},${sr.actualEndDateTime},${sr.actualQuantity},${sr.quantityUoM},${sr.status}`
     ).join('\n');
     const srCsv = `${srHeaders}\n${srRows}`;
 
@@ -2254,6 +2261,11 @@ const ProcessDataGenerator: React.FC = () => {
             plannedDurationHours: totalDuration,
           };
           generatedEqReqs.push(eqReq);
+
+          // Update segment requirement with equipment ID (first equipment)
+          if (eqIndex === 0 && !segReqs[index].equipmentId) {
+            segReqs[index].equipmentId = usage.equipmentId;
+          }
         });
 
         // Note: currentTime is updated above to allRunsEnd for tracking overall timeline
@@ -2333,9 +2345,9 @@ const ProcessDataGenerator: React.FC = () => {
 ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${generatedOperationsRequest.plantId},${generatedOperationsRequest.lineId},${generatedOperationsRequest.productMaterialId},${generatedOperationsRequest.plannedQuantity},${generatedOperationsRequest.quantityUoM},${generatedOperationsRequest.plannedStartDateTime},${generatedOperationsRequest.plannedEndDateTime},${generatedOperationsRequest.priority},${generatedOperationsRequest.status}`;
 
     // Export Segment Requirements
-    const srHeaders = 'SegmentRequirementID,OperationsRequestID,ProcessSegmentID,Sequence,EarliestStartDateTime,LatestEndDateTime,TargetQuantity,QuantityUoM';
+    const srHeaders = 'SegmentRequirementID,OperationsRequestID,ProcessSegmentID,EquipmentID,Sequence,EarliestStartDateTime,LatestEndDateTime,TargetQuantity,QuantityUoM';
     const srRows = segmentRequirements.map(sr => 
-      `${sr.id},${sr.operationsRequestId},${sr.processSegmentId},${sr.sequence},${sr.earliestStartDateTime},${sr.latestEndDateTime},${sr.targetQuantity},${sr.quantityUoM}`
+      `${sr.id},${sr.operationsRequestId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.sequence},${sr.earliestStartDateTime},${sr.latestEndDateTime},${sr.targetQuantity},${sr.quantityUoM}`
     ).join('\n');
     const srCsv = `${srHeaders}\n${srRows}`;
 
@@ -3160,6 +3172,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   <TableRow>
                     <TableCell>ID</TableCell>
                     <TableCell>Process Segment</TableCell>
+                    <TableCell>Equipment ID</TableCell>
                     <TableCell>Sequence</TableCell>
                     <TableCell>Start</TableCell>
                     <TableCell>End</TableCell>
@@ -3173,6 +3186,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       <TableRow key={sr.id}>
                         <TableCell>{sr.id}</TableCell>
                         <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
+                        <TableCell>{sr.equipmentId || 'N/A'}</TableCell>
                         <TableCell>{sr.sequence}</TableCell>
                         <TableCell>{sr.earliestStartDateTime}</TableCell>
                         <TableCell>{sr.latestEndDateTime}</TableCell>
@@ -3772,6 +3786,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableRow>
                           <TableCell>ID</TableCell>
                           <TableCell>Operations Request ID</TableCell>
+                          <TableCell>Plant ID</TableCell>
+                          <TableCell>Production Line ID</TableCell>
                           <TableCell>Description</TableCell>
                           <TableCell>Actual Start</TableCell>
                           <TableCell>Actual End</TableCell>
@@ -3783,6 +3799,8 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableRow>
                           <TableCell>{generatedOperationsResponse.id}</TableCell>
                           <TableCell>{generatedOperationsResponse.operationsRequestId}</TableCell>
+                          <TableCell>{generatedOperationsResponse.plantId}</TableCell>
+                          <TableCell>{generatedOperationsResponse.productionLineId}</TableCell>
                           <TableCell>{generatedOperationsResponse.description}</TableCell>
                           <TableCell>{generatedOperationsResponse.actualStartDateTime}</TableCell>
                           <TableCell>{generatedOperationsResponse.actualEndDateTime}</TableCell>
@@ -3809,6 +3827,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableRow>
                           <TableCell>ID</TableCell>
                           <TableCell>Process Segment</TableCell>
+                          <TableCell>Equipment ID</TableCell>
                           <TableCell>Sequence</TableCell>
                           <TableCell>Earliest Start</TableCell>
                           <TableCell>Latest End</TableCell>
@@ -3822,6 +3841,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             <TableRow key={sr.id}>
                               <TableCell>{sr.id}</TableCell>
                               <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
+                              <TableCell>{sr.equipmentId || 'N/A'}</TableCell>
                               <TableCell>{sr.sequence}</TableCell>
                               <TableCell>{sr.earliestStartDateTime}</TableCell>
                               <TableCell>{sr.latestEndDateTime}</TableCell>
@@ -3860,6 +3880,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       <TableRow>
                         <TableCell>ID</TableCell>
                         <TableCell>Process Segment</TableCell>
+                        <TableCell>Equipment ID</TableCell>
                         <TableCell>Actual Start</TableCell>
                         <TableCell>Actual End</TableCell>
                         <TableCell>Actual Quantity</TableCell>
@@ -3880,6 +3901,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             <TableRow key={sr.id}>
                               <TableCell>{sr.id}</TableCell>
                               <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
+                              <TableCell>{sr.equipmentId || 'N/A'}</TableCell>
                               <TableCell>{sr.actualStartDateTime}</TableCell>
                               <TableCell>{sr.actualEndDateTime}</TableCell>
                               <TableCell>{sr.actualQuantity} {sr.quantityUoM}</TableCell>

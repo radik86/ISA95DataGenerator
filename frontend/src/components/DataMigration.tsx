@@ -719,6 +719,8 @@ const DataMigration: React.FC = () => {
           columns: [
             { name: 'id', type: 'string', sample: operationsRequests[0]?.id },
             { name: 'description', type: 'string', sample: operationsRequests[0]?.description },
+            { name: 'plantId', type: 'string', sample: operationsRequests[0]?.plantId },
+            { name: 'lineId', type: 'string', sample: operationsRequests[0]?.lineId },
             { name: 'plannedStartDateTime', type: 'datetime', sample: operationsRequests[0]?.plannedStartDateTime },
             { name: 'plannedEndDateTime', type: 'datetime', sample: operationsRequests[0]?.plannedEndDateTime },
             { name: 'status', type: 'string', sample: operationsRequests[0]?.status },
@@ -731,6 +733,7 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: segmentRequirements[0]?.id },
             { name: 'operationsRequestId', type: 'string', sample: segmentRequirements[0]?.operationsRequestId },
             { name: 'processSegmentId', type: 'string', sample: segmentRequirements[0]?.processSegmentId },
+            { name: 'equipmentId', type: 'string', sample: segmentRequirements[0]?.equipmentId },
             { name: 'sequence', type: 'number', sample: segmentRequirements[0]?.sequence?.toString() },
             { name: 'earliestStartDateTime', type: 'datetime', sample: segmentRequirements[0]?.earliestStartDateTime },
             { name: 'latestEndDateTime', type: 'datetime', sample: segmentRequirements[0]?.latestEndDateTime },
@@ -773,6 +776,8 @@ const DataMigration: React.FC = () => {
           columns: [
             { name: 'id', type: 'string', sample: operationsResponses[0]?.id },
             { name: 'operationsRequestId', type: 'string', sample: operationsResponses[0]?.operationsRequestId },
+            { name: 'plantId', type: 'string', sample: operationsResponses[0]?.plantId },
+            { name: 'productionLineId', type: 'string', sample: operationsResponses[0]?.productionLineId },
             { name: 'actualStartDateTime', type: 'datetime', sample: operationsResponses[0]?.actualStartDateTime },
             { name: 'actualEndDateTime', type: 'datetime', sample: operationsResponses[0]?.actualEndDateTime },
             { name: 'status', type: 'string', sample: operationsResponses[0]?.status },
@@ -785,6 +790,7 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: segmentResponses[0]?.id },
             { name: 'operationsResponseId', type: 'string', sample: segmentResponses[0]?.operationsResponseId },
             { name: 'segmentRequirementId', type: 'string', sample: segmentResponses[0]?.segmentRequirementId },
+            { name: 'equipmentId', type: 'string', sample: segmentResponses[0]?.equipmentId },
             { name: 'actualStartDateTime', type: 'datetime', sample: segmentResponses[0]?.actualStartDateTime },
             { name: 'actualEndDateTime', type: 'datetime', sample: segmentResponses[0]?.actualEndDateTime },
           ],
