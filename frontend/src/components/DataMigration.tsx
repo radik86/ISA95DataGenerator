@@ -4893,6 +4893,9 @@ const DataMigration: React.FC = () => {
         try {
           await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge);
           log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
+          
+          // Small delay between file saves to prevent directory handle staleness
+          await new Promise(resolve => setTimeout(resolve, 100));
         } catch (csvError) {
           console.error(`[CSV Save Error] Failed to save ${entityDisplayName}:`, csvError);
           log(`❌ Error saving CSV for ${entityDisplayName}: ${csvError.message}`);
@@ -5381,6 +5384,17 @@ const DataMigration: React.FC = () => {
       if (isBridge) {
         // @ts-ignore - File System Access API
         targetDirectoryHandle = await directoryHandle.getDirectoryHandle('mapping', { create: true });
+      }
+      
+      // Verify permission before file operation (helps prevent stale handle errors)
+      // @ts-ignore - File System Access API
+      const permission = await targetDirectoryHandle.queryPermission({ mode: 'readwrite' });
+      if (permission !== 'granted') {
+        // @ts-ignore
+        const requestResult = await targetDirectoryHandle.requestPermission({ mode: 'readwrite' });
+        if (requestResult !== 'granted') {
+          throw new Error('Write permission denied');
+        }
       }
       
       // @ts-ignore - File System Access API
