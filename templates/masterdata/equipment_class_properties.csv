@@ -1,22 +1,27 @@
-EquipmentClassPropertyId,EquipmentClassId,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue
-ECP-MIX-CUR,MIXER,MixerMotorCurrentA,Mixer motor electrical current,DECIMAL,A,12,45
-ECP-MIX-VISC,MIXER,DoughViscosityIndex,Estimated dough viscosity index,DECIMAL,index,0.6,1.4
-ECP-MIX-TORQ,MIXER,MixerTorqueNm,Mixer shaft torque,DECIMAL,Nm,200,900
-ECP-OVEN-TEMP,OVEN,OvenChamberTempC,Oven chamber temperature,DECIMAL,C,180,260
-ECP-OVEN-HUM,OVEN,OvenHumidityPct,Oven chamber humidity,DECIMAL,%,5,80
-ECP-OVEN-PWR,OVEN,OvenPowerKW,Oven power consumption,DECIMAL,kW,20,120
-ECP-TEMPERATURE,OVEN,OperatingTemperature,Operating Temperature,DECIMAL,Celsius,180,250
-ECP-PRESSURE,MIXER,OperatingPressure,Operating Pressure,DECIMAL,Bar,1.3,1.7
-ECP-VIB,MIXER,EquipmentVibrationRMS,Equipment vibration RMS,DECIMAL,mm/s,0.2,6
-ECP-OVEN-CTRL,OVEN,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
-ECP-OVEN-STATE,OVEN,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
-ECP-MIX-CTRL,MIXER,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
-ECP-MIX-STATE,MIXER,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
-ECP-PACK-CTRL,PACK,ControlOutputPct,Controller output signal,DECIMAL,%,0,100
-ECP-PACK-STATE,PACK,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run
-ECP-OVEN-ZONE-HEAT,UTILOVEN,Oven Zone Heat,Oven Zone Heat,DECIMAL,Celsius,0,250
-ECP-MIX-MOTORSPEED,UTILMIXER,MixerMotorSpeed,Mixer Motor Speed,DECIMAL,RPM,40,80
-ECP-SIZE,GENERAL,SizeOfTheObject,Size of the object,INTEGER,m2,1,10000
-ECP-AREATHROUGHPUT,GENERAL,AreaThroughput,Area Throughput,INTEGER,EA/h,100,1000
-ECP-HUMIDITY,GENERAL,Humidity,Humidity,INTEGER,%,50,70
-ECP-REGION,GENERAL,Region,Region,STRING,NA,EUROPE,EUROPE
+EquipmentClassPropertyId,EquipmentClassId,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue,EquipmentClassPropertyParentId
+ECP-MIX-CUR,MIXER,MixerMotorCurrentA,Mixer motor electrical current,DECIMAL,A,12,45,ECP-SENSORS
+ECP-MIX-VISC,MIXER,DoughViscosityIndex,Estimated dough viscosity index,DECIMAL,index,0.6,1.4,ECP-SENSORS
+ECP-MIX-TORQ,MIXER,MixerTorqueNm,Mixer shaft torque,DECIMAL,Nm,200,900,ECP-SENSORS
+ECP-OVEN-TEMP,OVEN,OvenChamberTempC,Oven chamber temperature,DECIMAL,C,180,260,ECP-SENSORS
+ECP-OVEN-HUM,OVEN,OvenHumidityPct,Oven chamber humidity,DECIMAL,%,5,80,ECP-SENSORS
+ECP-OVEN-PWR,OVEN,OvenPowerKW,Oven power consumption,DECIMAL,kW,20,120,ECP-SENSORS
+ECP-TEMPERATURE,OVEN,OperatingTemperature,Operating Temperature,DECIMAL,Celsius,180,250,ECP-SENSORS
+ECP-PRESSURE,MIXER,OperatingPressure,Operating Pressure,DECIMAL,Bar,1.3,1.7,ECP-SENSORS
+ECP-VIB,MIXER,EquipmentVibrationRMS,Equipment vibration RMS,DECIMAL,mm/s,0.2,6,ECP-SENSORS
+ECP-OVEN-CTRL,OVEN,ControlOutputPct,Controller output signal,DECIMAL,%,0,100,ECP-SENSORS
+ECP-OVEN-STATE,OVEN,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run,ECP-AVAILABILITY
+ECP-MIX-CTRL,MIXER,ControlOutputPct,Controller output signal,DECIMAL,%,0,100,ECP-SENSORS
+ECP-MIX-STATE,MIXER,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run,ECP-AVAILABILITY
+ECP-PACK-CTRL,PACK,ControlOutputPct,Controller output signal,DECIMAL,%,0,100,ECP-SENSORS
+ECP-PACK-STATE,PACK,MachineState,"Machine State 0=stop, 1 = run, 2 = pause",STRING,EA,run,run,ECP-AVAILABILITY
+ECP-OVEN-ZONE-HEAT,UTILOVEN,Oven Zone Heat,Oven Zone Heat,DECIMAL,Celsius,0,250,ECP-SENSORS
+ECP-MIX-MOTORSPEED,UTILMIXER,MixerMotorSpeed,Mixer Motor Speed,DECIMAL,RPM,40,80,ECP-SENSORS
+ECP-SIZE,GENERAL,SizeOfTheObject,Size of the object,INTEGER,m2,1,10000,
+ECP-AREATHROUGHPUT,GENERAL,AreaThroughput,Area Throughput,INTEGER,EA/h,100,1000,
+ECP-HUMIDITY,GENERAL,Humidity,Humidity,INTEGER,%,50,70,
+ECP-REGION,GENERAL,Region,Region,STRING,NA,EUROPE,EUROPE,
+ECP-SENSORS,GENERAL,Sensors,Sensors,STRING,,,,
+ECP-CONSUMPTION,GENERAL,Consumption,Consumption,STRING,,,,
+ECP-THROUGHPUTS,GENERAL,Throughputs,Throughputs,STRING,,,,
+ECP-QUALITY,GENERAL,Quality,Quality,STRING,,,,
+ECP-AVAILABILITY,GENERAL,Availability,Availability,STRING,,,,
