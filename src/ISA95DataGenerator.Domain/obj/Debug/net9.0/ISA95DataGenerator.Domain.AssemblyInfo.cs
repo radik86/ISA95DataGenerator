@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ISA95DataGenerator.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e942aa3ca74a332090cf5b04356f7e11c08cd7f2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9a5c8f0c8c01f3decd8f20b5653cf2a25375d14a")]
 [assembly: System.Reflection.AssemblyProductAttribute("ISA95DataGenerator.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ISA95DataGenerator.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

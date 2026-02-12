@@ -1,5 +1,7 @@
 using ISA95DataGenerator.Application.Interfaces;
 using ISA95DataGenerator.Infrastructure.Services;
+using ISA95DataGenerator.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +25,10 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Configure Database
+builder.Services.AddDbContext<MigrationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("MigrationDb")));
+
 // Get metadata path from configuration
 var metadataPath = builder.Configuration.GetValue<string>("MetadataPath") 
     ?? Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "InbuiltEntitiesDTDL");
@@ -39,6 +45,7 @@ builder.Services.AddSingleton<IFieldRuleService, FieldRuleService>();
 builder.Services.AddSingleton<IScenarioService, ScenarioService>();
 builder.Services.AddScoped<ITestDataGeneratorService, TestDataGeneratorService>();
 builder.Services.AddScoped<IMappingFileService, MappingFileService>();
+builder.Services.AddScoped<MigrationProcessorService>();
 
 var app = builder.Build();
 
@@ -52,6 +59,19 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowFrontend");
 app.UseAuthorization();
 app.MapControllers();
+
+// Ensure upload and output directories exist
+var uploadPath = builder.Configuration.GetValue<string>("MigrationSettings:UploadPath") ?? "Data/Uploads";
+var outputPath = builder.Configuration.GetValue<string>("MigrationSettings:OutputPath") ?? "Data/Outputs";
+Directory.CreateDirectory(uploadPath);
+Directory.CreateDirectory(outputPath);
+
+// Apply database migrations
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<MigrationDbContext>();
+    dbContext.Database.Migrate();
+}
 
 // Load metadata on startup
 var metadataLoader = app.Services.GetRequiredService<IMetadataLoaderService>();
