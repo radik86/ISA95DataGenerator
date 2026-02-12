@@ -80,7 +80,8 @@ export enum RuleType {
   Coalesce = 'Coalesce',
   Concat = 'Concat',
   CompositeConcat = 'CompositeConcat',
-  Lookup = 'Lookup'
+  Lookup = 'Lookup',
+  MultipleLookups = 'MultipleLookups'
 }
 
 export type RuleParameters = 
@@ -96,7 +97,8 @@ export type RuleParameters =
   | CoalesceParameters
   | ConcatParameters
   | CompositeConcatParameters
-  | LookupParameters;
+  | LookupParameters
+  | MultipleLookupsParameters;
 
 export interface RangeParameters {
   min: number;
@@ -191,6 +193,19 @@ export interface JoinCondition {
   // For 'concatenation' type:
   localExpression?: string; // Expression like "{field1}-{field2}"
   sourceExpression?: string; // Expression for source table
+}
+
+export interface LookupStep {
+  lookupTable: string; // Table to lookup from
+  joinConditions: JoinCondition[]; // Join conditions for this step
+  returnField: string; // Field to return OR field to use for next lookup
+  isIntermediateStep: boolean; // If true, returnField value is used as input for next step
+}
+
+export interface MultipleLookupsParameters {
+  lookupSteps: LookupStep[]; // Chain of lookup operations
+  defaultValue?: any; // Value if any lookup fails
+  multipleMatchBehavior?: 'first' | 'last' | 'random' | 'error';
 }
 
 export interface DataGenerationRequest {

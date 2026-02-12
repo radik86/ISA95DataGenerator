@@ -272,6 +272,33 @@ const DataMigration: React.FC = () => {
   const [lookupDefaultValue, setLookupDefaultValue] = useState('');
   const [lookupMultipleMatchBehavior, setLookupMultipleMatchBehavior] = useState<'first' | 'last' | 'random' | 'error'>('first');
   
+  // Multiple Lookups rule parameters
+  const [multipleLookupSteps, setMultipleLookupSteps] = useState<Array<{
+    lookupTable: string;
+    joinType: 'field' | 'composite' | 'concatenation';
+    localField: string;
+    sourceField: string;
+    localFields: string[];
+    sourceFields: string[];
+    localExpression: string;
+    sourceExpression: string;
+    returnField: string;
+    isIntermediateStep: boolean;
+  }>>([{
+    lookupTable: '',
+    joinType: 'field',
+    localField: '',
+    sourceField: '',
+    localFields: [''],
+    sourceFields: [''],
+    localExpression: '',
+    sourceExpression: '',
+    returnField: '',
+    isIntermediateStep: true
+  }]);
+  const [multipleLookupsDefaultValue, setMultipleLookupsDefaultValue] = useState('');
+  const [multipleLookupsMultipleMatchBehavior, setMultipleLookupsMultipleMatchBehavior] = useState<'first' | 'last' | 'random' | 'error'>('first');
+  
   // Preview state
   const [previewDialog, setPreviewDialog] = useState(false);
   const [previewMappingIndex, setPreviewMappingIndex] = useState<number | null>(null);
@@ -2501,6 +2528,47 @@ const DataMigration: React.FC = () => {
               : ['']);
           }
           break;
+        case RuleType.MultipleLookups:
+          // Load multiple lookup steps
+          if (params?.lookupSteps && Array.isArray(params.lookupSteps) && params.lookupSteps.length > 0) {
+            const loadedSteps = params.lookupSteps.map((step: any) => {
+              const joinCond = step.joinConditions?.[0];
+              return {
+                lookupTable: step.lookupTable || '',
+                joinType: joinCond?.type || 'field',
+                localField: joinCond?.type === 'field' ? (joinCond.localField || '') : '',
+                sourceField: joinCond?.type === 'field' ? (joinCond.sourceField || '') : '',
+                localFields: joinCond?.type === 'composite' 
+                  ? (Array.isArray(joinCond.localFields) ? joinCond.localFields.filter((f: any) => f) : [''])
+                  : [''],
+                sourceFields: joinCond?.type === 'composite'
+                  ? (Array.isArray(joinCond.sourceFields) ? joinCond.sourceFields.filter((f: any) => f) : [''])
+                  : [''],
+                localExpression: joinCond?.type === 'concatenation' ? (joinCond.localExpression || '') : '',
+                sourceExpression: joinCond?.type === 'concatenation' ? (joinCond.sourceExpression || '') : '',
+                returnField: step.returnField || '',
+                isIntermediateStep: step.isIntermediateStep !== false,
+              };
+            });
+            setMultipleLookupSteps(loadedSteps);
+          } else {
+            // Default to one empty step
+            setMultipleLookupSteps([{
+              lookupTable: '',
+              joinType: 'field',
+              localField: '',
+              sourceField: '',
+              localFields: [''],
+              sourceFields: [''],
+              localExpression: '',
+              sourceExpression: '',
+              returnField: '',
+              isIntermediateStep: true
+            }]);
+          }
+          setMultipleLookupsDefaultValue(params?.defaultValue || '');
+          setMultipleLookupsMultipleMatchBehavior(params?.multipleMatchBehavior || 'first');
+          break;
       }
     } else {
       // Auto-select Enumeration if field is Enum type
@@ -2730,6 +2798,77 @@ const DataMigration: React.FC = () => {
           returnField: lookupReturnField,
           defaultValue: lookupDefaultValue || undefined,
           multipleMatchBehavior: lookupMultipleMatchBehavior,
+        };
+        break;
+      case RuleType.MultipleLookups:
+        if (multipleLookupSteps.length === 0) {
+          showSnackbar('Please add at least one lookup step', 'error');
+          return;
+        }
+        // Validate each step
+        for (let i = 0; i < multipleLookupSteps.length; i++) {
+          const step = multipleLookupSteps[i];
+          if (!step.lookupTable.trim()) {
+            showSnackbar(`Step ${i + 1}: Please select a lookup table`, 'error');
+            return;
+          }
+          if (!step.returnField.trim()) {
+            showSnackbar(`Step ${i + 1}: Please select a return field`, 'error');
+            return;
+          }
+          // Validate join conditions
+          if (step.joinType === 'field') {
+            if (!step.localField || !step.sourceField) {
+              showSnackbar(`Step ${i + 1}: Please configure field join`, 'error');
+              return;
+            }
+          } else if (step.joinType === 'composite') {
+            const validLocal = step.localFields.filter(f => f && f.trim());
+            const validSource = step.sourceFields.filter(f => f && f.trim());
+            if (validLocal.length === 0 || validSource.length === 0) {
+              showSnackbar(`Step ${i + 1}: Please configure composite join`, 'error');
+              return;
+            }
+          } else if (step.joinType === 'concatenation') {
+            if (!step.localExpression || !step.sourceExpression) {
+              showSnackbar(`Step ${i + 1}: Please configure concatenation expressions`, 'error');
+              return;
+            }
+          }
+        }
+        // Build lookup steps array
+        const lookupSteps = multipleLookupSteps.map((step, index) => {
+          const joinConditions: JoinCondition[] = [];
+          if (step.joinType === 'field') {
+            joinConditions.push({
+              type: 'field',
+              localField: step.localField,
+              sourceField: step.sourceField,
+            });
+          } else if (step.joinType === 'composite') {
+            joinConditions.push({
+              type: 'composite',
+              localFields: step.localFields.filter(f => f && f.trim()),
+              sourceFields: step.sourceFields.filter(f => f && f.trim()),
+            });
+          } else if (step.joinType === 'concatenation') {
+            joinConditions.push({
+              type: 'concatenation',
+              localExpression: step.localExpression,
+              sourceExpression: step.sourceExpression,
+            });
+          }
+          return {
+            lookupTable: step.lookupTable,
+            joinConditions,
+            returnField: step.returnField,
+            isIntermediateStep: index < multipleLookupSteps.length - 1,
+          };
+        });
+        parameters = {
+          lookupSteps,
+          defaultValue: multipleLookupsDefaultValue || undefined,
+          multipleMatchBehavior: multipleLookupsMultipleMatchBehavior,
         };
         break;
       default:
@@ -3140,6 +3279,10 @@ const DataMigration: React.FC = () => {
         return `CompositeConcat(${fieldNames})`;
       case RuleType.Lookup:
         return `Lookup(${params?.sourceTable}.${params?.returnField})`;
+      case RuleType.MultipleLookups:
+        const stepCount = params?.lookupSteps?.length || 0;
+        const tables = params?.lookupSteps?.map((s: any) => s.lookupTable).slice(0, 2).join(' → ') || '';
+        return `${stepCount} Chained: ${tables}${stepCount > 2 ? '...' : ''}`;
       default:
         return ruleType as string;
     }
@@ -3191,6 +3334,10 @@ const DataMigration: React.FC = () => {
         return `Concat: ${concatFields}${params?.sourceFields?.length > 3 ? '...' : ''}${sep}`;
       case RuleType.Lookup:
         return `Lookup: ${params?.sourceTable}.${params?.returnField}`;
+      case RuleType.MultipleLookups:
+        const stepCount = params?.lookupSteps?.length || 0;
+        const tables = params?.lookupSteps?.map((s: any) => s.lookupTable).slice(0, 2).join(' → ') || '';
+        return `${stepCount} Chained Lookup${stepCount !== 1 ? 's' : ''}: ${tables}${stepCount > 2 ? '...' : ''}`;
       default:
         return fieldRule.ruleType;
     }
@@ -3722,6 +3869,14 @@ const DataMigration: React.FC = () => {
         const concatenated = concatValues.join(params?.separator || '');
         return `${params?.prefix || ''}${concatenated}${params?.suffix || ''}`;
       
+      case RuleType.Lookup:
+        // Lookup preview is handled separately in generateFieldRulePreview
+        return '[Lookup preview - see below]';
+      
+      case RuleType.MultipleLookups:
+        // MultipleLookups preview is handled separately in generateFieldRulePreview
+        return '[Multiple Lookups preview - see below]';
+      
       default:
         return '';
     }
@@ -3959,10 +4114,48 @@ const DataMigration: React.FC = () => {
             multipleMatchBehavior: lookupMultipleMatchBehavior
           };
           break;
+        case RuleType.MultipleLookups:
+          // Build lookup steps from current state
+          const lookupSteps = multipleLookupSteps.map((step, index) => {
+            const joinConditions: any[] = [];
+            if (step.joinType === 'field') {
+              joinConditions.push({
+                type: 'field',
+                localField: step.localField,
+                sourceField: step.sourceField,
+              });
+            } else if (step.joinType === 'composite') {
+              joinConditions.push({
+                type: 'composite',
+                localFields: step.localFields.filter(f => f && f.trim()),
+                sourceFields: step.sourceFields.filter(f => f && f.trim()),
+              });
+            } else if (step.joinType === 'concatenation') {
+              joinConditions.push({
+                type: 'concatenation',
+                localExpression: step.localExpression,
+                sourceExpression: step.sourceExpression,
+              });
+            }
+            return {
+              lookupTable: step.lookupTable,
+              joinConditions,
+              returnField: step.returnField,
+              isIntermediateStep: index < multipleLookupSteps.length - 1,
+            };
+          });
+          tempRule.parameters = {
+            lookupSteps,
+            defaultValue: multipleLookupsDefaultValue,
+            multipleMatchBehavior: multipleLookupsMultipleMatchBehavior,
+          };
+          break;
       }
 
       // For Lookup rules, pre-load the lookup table data
       let lookupData: any[] = [];
+      const lookupTables = new Map<string, any[]>();
+      
       if (tempRule.ruleType === RuleType.Lookup && tempRule.parameters?.lookupTable) {
         try {
           lookupData = await getTableDataFunc(tempRule.parameters.lookupTable);
@@ -3973,6 +4166,24 @@ const DataMigration: React.FC = () => {
           });
         } catch (error) {
           console.error('[Field Rule Preview] Error loading lookup table:', error);
+        }
+      }
+      
+      // For MultipleLookups rules, pre-load all lookup tables
+      if (tempRule.ruleType === RuleType.MultipleLookups && tempRule.parameters?.lookupSteps) {
+        try {
+          for (const step of tempRule.parameters.lookupSteps) {
+            if (step.lookupTable && !lookupTables.has(step.lookupTable)) {
+              const data = await getTableDataFunc(step.lookupTable);
+              lookupTables.set(step.lookupTable, data);
+              console.log('[Field Rule Preview] Loaded lookup table for chained lookup:', {
+                table: step.lookupTable,
+                rowCount: data.length
+              });
+            }
+          }
+        } catch (error) {
+          console.error('[Field Rule Preview] Error loading lookup tables for chained lookup:', error);
         }
       }
 
@@ -4020,6 +4231,139 @@ const DataMigration: React.FC = () => {
           } else {
             transformed = params.defaultValue || '';
             console.log(`[Preview Lookup ${idx}] Empty source value, using default:`, transformed);
+          }
+        } else if (tempRule.ruleType === RuleType.MultipleLookups && lookupTables.size > 0) {
+          // Handle Multiple Lookups (chained) preview
+          const params = tempRule.parameters as MultipleLookupsParameters;
+          let currentValue: any = null;
+          let success = true;
+
+          // Execute lookups sequentially
+          for (let stepIdx = 0; stepIdx < params.lookupSteps.length; stepIdx++) {
+            const step = params.lookupSteps[stepIdx];
+            const lookupData = lookupTables.get(step.lookupTable);
+
+            if (!lookupData || lookupData.length === 0) {
+              if (idx === 0) {
+                console.log(`[Preview MultipleLookups ${idx}] Step ${stepIdx + 1} - Lookup table empty:`, step.lookupTable);
+              }
+              success = false;
+              break;
+            }
+
+            let matchValue: any;
+
+            // For first step, use source record fields
+            // For subsequent steps, use previous lookup result
+            if (stepIdx === 0) {
+              // Extract match value from source record
+              const joinConditions = step.joinConditions || [];
+              
+              if (joinConditions.length === 1 && joinConditions[0].type === 'field') {
+                // Single field join
+                const localField = joinConditions[0].localField;
+                matchValue = row[localField];
+              } else if (joinConditions.length > 1 && joinConditions.every(jc => jc.type === 'field')) {
+                // Composite join
+                const keyParts = joinConditions.map(jc => {
+                  const val = row[jc.localField];
+                  return val !== null && val !== undefined ? String(val) : '';
+                });
+                matchValue = keyParts.join('|||');
+              } else if (joinConditions.length === 1 && joinConditions[0].type === 'concatenation') {
+                // Concatenation join
+                const localExpr = joinConditions[0].localExpression;
+                if (localExpr) {
+                  const parts = localExpr.split('+').map(p => p.trim());
+                  matchValue = parts.map(part => {
+                    if (part.startsWith('{') && part.endsWith('}')) {
+                      const fieldName = part.slice(1, -1);
+                      return row[fieldName] || '';
+                    } else {
+                      return part.replace(/['"]/g, '');
+                    }
+                  }).join('');
+                }
+              }
+            } else {
+              // Use previous lookup result
+              matchValue = currentValue;
+            }
+
+            if (idx === 0) {
+              console.log(`[Preview MultipleLookups ${idx}] Step ${stepIdx + 1} - Match value:`, matchValue);
+            }
+
+            if (!matchValue) {
+              success = false;
+              if (idx === 0) {
+                console.log(`[Preview MultipleLookups ${idx}] Step ${stepIdx + 1} - Empty match value`);
+              }
+              break;
+            }
+
+            // Find matching record in lookup table
+            let matchedRecord: any = null;
+            const joinConditions = step.joinConditions || [];
+
+            if (joinConditions.length === 1 && joinConditions[0].type === 'field') {
+              // Single field join
+              const sourceField = joinConditions[0].sourceField;
+              matchedRecord = lookupData.find((record: any) => 
+                String(record[sourceField]) === String(matchValue)
+              );
+            } else if (joinConditions.length > 1 && joinConditions.every(jc => jc.type === 'field')) {
+              // Composite join
+              matchedRecord = lookupData.find((record: any) => {
+                const recordKeyParts = joinConditions.map(jc => {
+                  const val = record[jc.sourceField];
+                  return val !== null && val !== undefined ? String(val) : '';
+                });
+                const recordKey = recordKeyParts.join('|||');
+                return recordKey === matchValue;
+              });
+            } else if (joinConditions.length === 1 && joinConditions[0].type === 'concatenation') {
+              // Concatenation join
+              const sourceExpr = joinConditions[0].sourceExpression;
+              if (sourceExpr) {
+                matchedRecord = lookupData.find((record: any) => {
+                  const parts = sourceExpr.split('+').map(p => p.trim());
+                  const recordValue = parts.map(part => {
+                    if (part.startsWith('{') && part.endsWith('}')) {
+                      const fieldName = part.slice(1, -1);
+                      return record[fieldName] || '';
+                    } else {
+                      return part.replace(/['"]/g, '');
+                    }
+                  }).join('');
+                  return recordValue === matchValue;
+                });
+              }
+            }
+
+            if (matchedRecord) {
+              currentValue = matchedRecord[step.returnField];
+              if (idx === 0) {
+                console.log(`[Preview MultipleLookups ${idx}] Step ${stepIdx + 1} - Match found, return value:`, currentValue);
+              }
+            } else {
+              success = false;
+              if (idx === 0) {
+                console.log(`[Preview MultipleLookups ${idx}] Step ${stepIdx + 1} - No match found`);
+              }
+              break;
+            }
+          }
+
+          // Set final transformed value
+          if (success && currentValue !== null && currentValue !== undefined) {
+            transformed = currentValue;
+          } else {
+            transformed = params.defaultValue || '';
+          }
+
+          if (idx === 0) {
+            console.log(`[Preview MultipleLookups ${idx}] Final result:`, transformed);
           }
         } else {
           transformed = applyFieldRuleForPreview(tempRule, row, idx);
@@ -4603,6 +4947,20 @@ const DataMigration: React.FC = () => {
                   console.log(`[Lookup] Pre-loaded lookup table: ${lookupTableName} (${lookupData.length} records)`);
                 }
               }
+              // Pre-load all lookup tables for MultipleLookups rule
+              if (fm.generate && fm.fieldRule?.ruleType === RuleType.MultipleLookups) {
+                const params = fm.fieldRule.parameters as any;
+                if (params?.lookupSteps && Array.isArray(params.lookupSteps)) {
+                  for (const step of params.lookupSteps) {
+                    const lookupTableName = step.lookupTable;
+                    if (lookupTableName && !lookupTables.has(lookupTableName)) {
+                      const lookupData = await loadSourceData(lookupTableName);
+                      lookupTables.set(lookupTableName, lookupData);
+                      console.log(`[MultipleLookups] Pre-loaded lookup table: ${lookupTableName} (${lookupData.length} records)`);
+                    }
+                  }
+                }
+              }
             }
             // Also pre-load lookup table for PK rule if it's a Lookup
             if (mapping.primaryKeyRule?.ruleType === RuleType.Lookup) {
@@ -4701,6 +5059,103 @@ const DataMigration: React.FC = () => {
                         if (recordIndex < 3) {
                           console.warn(`[Lookup] No match found for: ${sourceValue} in ${lookupTableName}.${matchField}`);
                         }
+                      }
+                    }
+                  } else if (fm.fieldRule.ruleType === RuleType.MultipleLookups) {
+                    // Handle Multiple Lookups (chained lookups)
+                    const params = fm.fieldRule.parameters as any;
+                    let currentValue: any = null;
+                    let lookupSuccess = true;
+                    
+                    if (!params?.lookupSteps || params.lookupSteps.length === 0) {
+                      console.warn(`[MultipleLookups] No lookup steps defined for field: ${fm.fieldName}`);
+                      transformed[fm.fieldName] = params?.defaultValue || '';
+                    } else {
+                      // Execute each lookup step in sequence
+                      for (let stepIndex = 0; stepIndex < params.lookupSteps.length; stepIndex++) {
+                        const step = params.lookupSteps[stepIndex];
+                        const lookupData = lookupTables.get(step.lookupTable);
+                        
+                        if (!lookupData) {
+                          console.warn(`[MultipleLookups Step ${stepIndex + 1}] Table not loaded: ${step.lookupTable}`);
+                          lookupSuccess = false;
+                          break;
+                        }
+                        
+                        // Determine the value to use for matching
+                        let matchValue: any;
+                        if (stepIndex === 0) {
+                          // First step: use value from source record
+                          const joinCond = step.joinConditions?.[0];
+                          if (joinCond?.type === 'field') {
+                            matchValue = record[joinCond.localField];
+                          } else if (joinCond?.type === 'composite') {
+                            // For composite, build composite key from source fields
+                            matchValue = joinCond.localFields?.map((f: string) => record[f]).join('|');
+                          } else if (joinCond?.type === 'concatenation') {
+                            // Evaluate local expression against source record
+                            matchValue = joinCond.localExpression;
+                            for (const key in record) {
+                              matchValue = matchValue.replace(new RegExp(`\\{${key}\\}`, 'g'), record[key] || '');
+                            }
+                          }
+                        } else {
+                          // Subsequent steps: use result from previous lookup
+                          matchValue = currentValue;
+                        }
+                        
+                        if (recordIndex < 3) {
+                          console.log(`[MultipleLookups Step ${stepIndex + 1}] Looking up:`, {
+                            table: step.lookupTable,
+                            matchValue,
+                            returnField: step.returnField
+                          });
+                        }
+                        
+                        // Perform the lookup
+                        const joinCond = step.joinConditions?.[0];
+                        let matchingRecord: any = null;
+                        
+                        if (joinCond?.type === 'field') {
+                          const sourceField = joinCond.sourceField;
+                          matchingRecord = lookupData.find((r: any) =>
+                            String(r[sourceField] || '').toLowerCase().trim() === String(matchValue).toLowerCase().trim()
+                          );
+                        } else if (joinCond?.type === 'composite') {
+                          const sourceFields = joinCond.sourceFields || [];
+                          matchingRecord = lookupData.find((r: any) => {
+                            const compositeKey = sourceFields.map((sf: string) => r[sf] || '').join('|');
+                            return compositeKey.toLowerCase().trim() === String(matchValue).toLowerCase().trim();
+                          });
+                        } else if (joinCond?.type === 'concatenation') {
+                          matchingRecord = lookupData.find((r: any) => {
+                            let sourceExpression = joinCond.sourceExpression || '';
+                            for (const key in r) {
+                              sourceExpression = sourceExpression.replace(new RegExp(`\\{${key}\\}`, 'g'), r[key] || '');
+                            }
+                            return sourceExpression.toLowerCase().trim() === String(matchValue).toLowerCase().trim();
+                          });
+                        }
+                        
+                        if (matchingRecord && matchingRecord[step.returnField] !== undefined) {
+                          currentValue = matchingRecord[step.returnField];
+                          if (recordIndex < 3) {
+                            console.log(`[MultipleLookups Step ${stepIndex + 1}] Match found: ${matchValue} -> ${currentValue}`);
+                          }
+                        } else {
+                          if (recordIndex < 3) {
+                            console.warn(`[MultipleLookups Step ${stepIndex + 1}] No match found for: ${matchValue} in ${step.lookupTable}`);
+                          }
+                          lookupSuccess = false;
+                          break;
+                        }
+                      }
+                      
+                      // Set final value
+                      if (lookupSuccess && currentValue !== null) {
+                        transformed[fm.fieldName] = currentValue;
+                      } else {
+                        transformed[fm.fieldName] = params?.defaultValue || '';
                       }
                     }
                   } else {
@@ -6935,6 +7390,7 @@ const DataMigration: React.FC = () => {
                 <MenuItem value={RuleType.Coalesce}>Coalesce (First Non-Empty)</MenuItem>
                 <MenuItem value={RuleType.Concat}>Concatenate Fields</MenuItem>
                 <MenuItem value={RuleType.Lookup}>Lookup (From Table)</MenuItem>
+                <MenuItem value={RuleType.MultipleLookups}>Multiple Lookups (Chained)</MenuItem>
               </Select>
             </FormControl>
 
@@ -7785,6 +8241,336 @@ const DataMigration: React.FC = () => {
                     <Select
                       value={lookupMultipleMatchBehavior}
                       onChange={(e) => setLookupMultipleMatchBehavior(e.target.value as 'first' | 'last' | 'error')}
+                      label="If Multiple Matches"
+                    >
+                      <MenuItem value="first">Use First Match</MenuItem>
+                      <MenuItem value="last">Use Last Match</MenuItem>
+                      <MenuItem value="error">Throw Error</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              );
+            })()}
+
+            {/* Multiple Lookups Rule Configuration */}
+            {fieldRuleType === RuleType.MultipleLookups && selectedFieldForRule && (() => {
+              const mappingIndex = selectedFieldForRule.mappingIndex;
+              const currentSourceTable = dataSource?.tables.find(t => t.name === tableMappings[mappingIndex]?.sourceTable);
+              
+              return (
+                <Box sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Multiple Lookups Configuration (Chained Lookups)
+                  </Typography>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <strong>Chain multiple lookup operations:</strong> The result of one lookup is used as the input for the next lookup.
+                    <br />
+                    Example: Source Table → Lookup Table 1 → Lookup Table 2 → Final Value
+                  </Alert>
+                  
+                  {/* Lookup Steps */}
+                  {multipleLookupSteps.map((step, stepIndex) => (
+                    <Paper key={stepIndex} sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="subtitle2">
+                          {stepIndex === 0 ? 'Step 1 (Initial Lookup)' : `Step ${stepIndex + 1}`}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const newSteps = multipleLookupSteps.filter((_, i) => i !== stepIndex);
+                            setMultipleLookupSteps(newSteps.length > 0 ? newSteps : [{
+                              lookupTable: '',
+                              joinType: 'field',
+                              localField: '',
+                              sourceField: '',
+                              localFields: [''],
+                              sourceFields: [''],
+                              localExpression: '',
+                              sourceExpression: '',
+                              returnField: '',
+                              isIntermediateStep: true
+                            }]);
+                          }}
+                          disabled={multipleLookupSteps.length === 1}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+                      
+                      {/* Source Table Selection */}
+                      <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel>Lookup Table</InputLabel>
+                        <Select
+                          value={step.lookupTable}
+                          onChange={(e) => {
+                            const newSteps = [...multipleLookupSteps];
+                            newSteps[stepIndex].lookupTable = e.target.value;
+                            setMultipleLookupSteps(newSteps);
+                          }}
+                          label="Lookup Table"
+                        >
+                          {(dataSource?.tables || []).map((table) => (
+                            <MenuItem key={table.name} value={table.name}>
+                              {table.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      {/* Join Type Selection */}
+                      <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel>Join Type</InputLabel>
+                        <Select
+                          value={step.joinType}
+                          onChange={(e) => {
+                            const newSteps = [...multipleLookupSteps];
+                            newSteps[stepIndex].joinType = e.target.value as 'field' | 'composite' | 'concatenation';
+                            setMultipleLookupSteps(newSteps);
+                          }}
+                          label="Join Type"
+                        >
+                          <MenuItem value="field">Single Field</MenuItem>
+                          <MenuItem value="composite">Composite (Multiple Fields)</MenuItem>
+                          <MenuItem value="concatenation">Concatenation (Expression)</MenuItem>
+                        </Select>
+                      </FormControl>
+
+                      {/* Single Field Join */}
+                      {step.joinType === 'field' && (
+                        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>{stepIndex === 0 ? 'Local Field (from source table)' : 'Field from Previous Step'}</InputLabel>
+                            <Select
+                              value={step.localField}
+                              onChange={(e) => {
+                                const newSteps = [...multipleLookupSteps];
+                                newSteps[stepIndex].localField = e.target.value;
+                                setMultipleLookupSteps(newSteps);
+                              }}
+                              label={stepIndex === 0 ? 'Local Field (from source table)' : 'Field from Previous Step'}
+                            >
+                              {stepIndex === 0 ? (
+                                (currentSourceTable?.columns || []).map((col) => (
+                                  <MenuItem key={col.name} value={col.name}>
+                                    {col.name}
+                                  </MenuItem>
+                                ))
+                              ) : (
+                                <MenuItem value="_PREVIOUS_RESULT_">
+                                  [Use Previous Lookup Result]
+                                </MenuItem>
+                              )}
+                            </Select>
+                          </FormControl>
+                          <FormControl fullWidth>
+                            <InputLabel>Match Field (in lookup table)</InputLabel>
+                            <Select
+                              value={step.sourceField}
+                              onChange={(e) => {
+                                const newSteps = [...multipleLookupSteps];
+                                newSteps[stepIndex].sourceField = e.target.value;
+                                setMultipleLookupSteps(newSteps);
+                              }}
+                              label="Match Field (in lookup table)"
+                            >
+                              {(step.lookupTable ? dataSource?.tables
+                                .find(t => t.name === step.lookupTable)?.columns || [] : []).map((col) => (
+                                  <MenuItem key={col.name} value={col.name}>
+                                    {col.name}
+                                  </MenuItem>
+                                ))}
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
+
+                      {/* Composite Join */}
+                      {step.joinType === 'composite' && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            Configure multiple field pairs for the join condition:
+                          </Typography>
+                          {step.localFields.map((localField, fieldIndex) => (
+                            <Box key={fieldIndex} sx={{ display: 'flex', gap: 2, mb: 1 }}>
+                              <FormControl fullWidth>
+                                <InputLabel>{stepIndex === 0 ? `Local Field ${fieldIndex + 1}` : 'Previous Result'}</InputLabel>
+                                <Select
+                                  value={localField || ''}
+                                  onChange={(e) => {
+                                    const newSteps = [...multipleLookupSteps];
+                                    newSteps[stepIndex].localFields[fieldIndex] = e.target.value;
+                                    setMultipleLookupSteps(newSteps);
+                                  }}
+                                  label={stepIndex === 0 ? `Local Field ${fieldIndex + 1}` : 'Previous Result'}
+                                >
+                                  {stepIndex === 0 ? (
+                                    (currentSourceTable?.columns || []).map((col) => (
+                                      <MenuItem key={col.name} value={col.name}>
+                                        {col.name}
+                                      </MenuItem>
+                                    ))
+                                  ) : (
+                                    <MenuItem value="_PREVIOUS_RESULT_">
+                                      [Use Previous Lookup Result]
+                                    </MenuItem>
+                                  )}
+                                </Select>
+                              </FormControl>
+                              <FormControl fullWidth>
+                                <InputLabel>Lookup Field {fieldIndex + 1}</InputLabel>
+                                <Select
+                                  value={step.sourceFields[fieldIndex] || ''}
+                                  onChange={(e) => {
+                                    const newSteps = [...multipleLookupSteps];
+                                    newSteps[stepIndex].sourceFields[fieldIndex] = e.target.value;
+                                    setMultipleLookupSteps(newSteps);
+                                  }}
+                                  label={`Lookup Field ${fieldIndex + 1}`}
+                                >
+                                  {(step.lookupTable ? dataSource?.tables
+                                    .find(t => t.name === step.lookupTable)?.columns || [] : []).map((col) => (
+                                      <MenuItem key={col.name} value={col.name}>
+                                        {col.name}
+                                      </MenuItem>
+                                    ))}
+                                </Select>
+                              </FormControl>
+                              <IconButton 
+                                onClick={() => {
+                                  const newSteps = [...multipleLookupSteps];
+                                  newSteps[stepIndex].localFields = newSteps[stepIndex].localFields.filter((_, i) => i !== fieldIndex);
+                                  newSteps[stepIndex].sourceFields = newSteps[stepIndex].sourceFields.filter((_, i) => i !== fieldIndex);
+                                  if (newSteps[stepIndex].localFields.length === 0) {
+                                    newSteps[stepIndex].localFields = [''];
+                                    newSteps[stepIndex].sourceFields = [''];
+                                  }
+                                  setMultipleLookupSteps(newSteps);
+                                }}
+                                disabled={step.localFields.length === 1}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Box>
+                          ))}
+                          <Button 
+                            startIcon={<AddIcon />} 
+                            onClick={() => {
+                              const newSteps = [...multipleLookupSteps];
+                              newSteps[stepIndex].localFields.push('');
+                              newSteps[stepIndex].sourceFields.push('');
+                              setMultipleLookupSteps(newSteps);
+                            }}
+                            size="small"
+                          >
+                            Add Field Pair
+                          </Button>
+                        </Box>
+                      )}
+
+                      {/* Concatenation Join */}
+                      {step.joinType === 'concatenation' && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            Use expressions with field placeholders (e.g., {'{field1}'}-{'{field2}'}):
+                          </Typography>
+                          <TextField
+                            fullWidth
+                            label={stepIndex === 0 ? 'Local Expression' : 'Expression (use {_PREVIOUS_RESULT_} for previous value)'}
+                            value={step.localExpression}
+                            onChange={(e) => {
+                              const newSteps = [...multipleLookupSteps];
+                              newSteps[stepIndex].localExpression = e.target.value;
+                              setMultipleLookupSteps(newSteps);
+                            }}
+                            placeholder={stepIndex === 0 ? "{equipmentId}-{timestamp}" : "{_PREVIOUS_RESULT_}-{field}"}
+                            sx={{ mb: 1 }}
+                          />
+                          <TextField
+                            fullWidth
+                            label="Lookup Table Expression"
+                            value={step.sourceExpression}
+                            onChange={(e) => {
+                              const newSteps = [...multipleLookupSteps];
+                              newSteps[stepIndex].sourceExpression = e.target.value;
+                              setMultipleLookupSteps(newSteps);
+                            }}
+                            placeholder="{id}-{date}"
+                          />
+                        </Box>
+                      )}
+
+                      {/* Return Field */}
+                      <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel>{stepIndex === multipleLookupSteps.length - 1 ? 'Final Return Field' : 'Return Field (for next step)'}</InputLabel>
+                        <Select
+                          value={step.returnField}
+                          onChange={(e) => {
+                            const newSteps = [...multipleLookupSteps];
+                            newSteps[stepIndex].returnField = e.target.value;
+                            // Automatically mark as intermediate if not last step
+                            newSteps[stepIndex].isIntermediateStep = stepIndex < multipleLookupSteps.length - 1;
+                            setMultipleLookupSteps(newSteps);
+                          }}
+                          label={stepIndex === multipleLookupSteps.length - 1 ? 'Final Return Field' : 'Return Field (for next step)'}
+                        >
+                          {(step.lookupTable ? dataSource?.tables
+                            .find(t => t.name === step.lookupTable)?.columns || [] : []).map((col) => (
+                              <MenuItem key={col.name} value={col.name}>
+                                {col.name}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                      
+                      {stepIndex < multipleLookupSteps.length - 1 && (
+                        <Alert severity="info" icon={<ArrowForwardIcon />}>
+                          The value from <strong>{step.returnField || '[Return Field]'}</strong> will be used as input for the next lookup step.
+                        </Alert>
+                      )}
+                    </Paper>
+                  ))}
+
+                  {/* Add Step Button */}
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => {
+                      setMultipleLookupSteps([...multipleLookupSteps, {
+                        lookupTable: '',
+                        joinType: 'field',
+                        localField: '_PREVIOUS_RESULT_',
+                        sourceField: '',
+                        localFields: ['_PREVIOUS_RESULT_'],
+                        sourceFields: [''],
+                        localExpression: '{_PREVIOUS_RESULT_}',
+                        sourceExpression: '',
+                        returnField: '',
+                        isIntermediateStep: true
+                      }]);
+                    }}
+                    fullWidth
+                    sx={{ mb: 2 }}
+                  >
+                    Add Another Lookup Step
+                  </Button>
+
+                  {/* Default Value */}
+                  <TextField
+                    fullWidth
+                    label="Default Value (if any lookup fails)"
+                    value={multipleLookupsDefaultValue}
+                    onChange={(e) => setMultipleLookupsDefaultValue(e.target.value)}
+                    placeholder="N/A"
+                    sx={{ mb: 2 }}
+                  />
+
+                  {/* Multiple Match Behavior */}
+                  <FormControl fullWidth>
+                    <InputLabel>If Multiple Matches</InputLabel>
+                    <Select
+                      value={multipleLookupsMultipleMatchBehavior}
+                      onChange={(e) => setMultipleLookupsMultipleMatchBehavior(e.target.value as 'first' | 'last' | 'error')}
                       label="If Multiple Matches"
                     >
                       <MenuItem value="first">Use First Match</MenuItem>
