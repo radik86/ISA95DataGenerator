@@ -40,7 +40,7 @@ import {
   Upload as UploadIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { masterDataDB } from '../services/masterDataDB';
+import { masterDataApi } from '../services/masterDataApi';
 import { templateLoader } from '../services/templateLoader';
 
 // Data Interfaces
@@ -488,7 +488,7 @@ const MasterDataManager: React.FC = () => {
       setLoading(true);
       
       // Check if database has data
-      const materialClassesData = await masterDataDB.getAll('materialClasses');
+      const materialClassesData = await masterDataApi.getAll('materialClasses');
       
       // If no data, load from templates
       if (materialClassesData.length === 0) {
@@ -498,37 +498,37 @@ const MasterDataManager: React.FC = () => {
 
       // Load all data from database
       const [mc, m, ml, ms, mdp, mdpa, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
-        masterDataDB.getAll('materialClasses'),
-        masterDataDB.getAll('materials'),
-        masterDataDB.getAll('materialLots'),
-        masterDataDB.getAll('materialSublots'),
-        masterDataDB.getAll('materialDefinitionProperties'),
-        masterDataDB.getAll('materialDefinitionPropertyAssignments'),
-        masterDataDB.getAll('equipmentClasses'),
-        masterDataDB.getAll('equipment'),
-        masterDataDB.getAll('equipmentProperties'),
-        masterDataDB.getAll('equipmentPropertyAssignments'),
-        masterDataDB.getAll('processSegments'),
-        masterDataDB.getAll('segmentBOMs'),
-        masterDataDB.getAll('equipmentUsages'),
-        masterDataDB.getAll('plants'),
-        masterDataDB.getAll('productionLines'),
-        masterDataDB.getAll('lineEquipment'),
-        masterDataDB.getAll('hierarchyScopes'),
-        masterDataDB.getAll('hierarchyScopesFlat'),
-        masterDataDB.getAll('hierarchyScopeParentChild'),
-        masterDataDB.getAll('operationEventDefinitions'),
-        masterDataDB.getAll('operationEventDefSegmentAssignments'),
-        masterDataDB.getAll('operationEventDefinitionProperties'),
-        masterDataDB.getAll('operationEventDefinitionPropertyAssignments'),
-        masterDataDB.getAll('shifts'),
-        masterDataDB.getAll('crews'),
-        masterDataDB.getAll('shiftCrewAssignments'),
-        masterDataDB.getAll('operationsEventClasses'),
-        masterDataDB.getAll('operationsEventRecords'),
-        masterDataDB.getAll('operationsEventEntries'),
-        masterDataDB.getAll('equipmentClassProperties'),
-        masterDataDB.getAll('equipmentClassPropertiesAssignments'),
+        masterDataApi.getAll('materialClasses'),
+        masterDataApi.getAll('materials'),
+        masterDataApi.getAll('materialLots'),
+        masterDataApi.getAll('materialSublots'),
+        masterDataApi.getAll('materialDefinitionProperties'),
+        masterDataApi.getAll('materialDefinitionPropertyAssignments'),
+        masterDataApi.getAll('equipmentClasses'),
+        masterDataApi.getAll('equipment'),
+        masterDataApi.getAll('equipmentProperties'),
+        masterDataApi.getAll('equipmentPropertyAssignments'),
+        masterDataApi.getAll('processSegments'),
+        masterDataApi.getAll('segmentBOMs'),
+        masterDataApi.getAll('equipmentUsages'),
+        masterDataApi.getAll('plants'),
+        masterDataApi.getAll('productionLines'),
+        masterDataApi.getAll('lineEquipment'),
+        masterDataApi.getAll('hierarchyScopes'),
+        masterDataApi.getAll('hierarchyScopesFlat'),
+        masterDataApi.getAll('hierarchyScopeParentChild'),
+        masterDataApi.getAll('operationEventDefinitions'),
+        masterDataApi.getAll('operationEventDefSegmentAssignments'),
+        masterDataApi.getAll('operationEventDefinitionProperties'),
+        masterDataApi.getAll('operationEventDefinitionPropertyAssignments'),
+        masterDataApi.getAll('shifts'),
+        masterDataApi.getAll('crews'),
+        masterDataApi.getAll('shiftCrewAssignments'),
+        masterDataApi.getAll('operationsEventClasses'),
+        masterDataApi.getAll('operationsEventRecords'),
+        masterDataApi.getAll('operationsEventEntries'),
+        masterDataApi.getAll('equipmentClassProperties'),
+        masterDataApi.getAll('equipmentClassPropertiesAssignments'),
       ]);
 
       setMaterialClasses(mc);
@@ -737,11 +737,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveMaterialClass = async (data: MaterialClass) => {
     try {
       if (editingMaterialClass) {
-        await masterDataDB.update('materialClasses', data);
+        await masterDataApi.update('materialClasses', data);
         setMaterialClasses(prev => prev.map(mc => mc.id === data.id ? data : mc));
         showSnackbar('Material class updated', 'success');
       } else {
-        await masterDataDB.add('materialClasses', data);
+        await masterDataApi.add('materialClasses', data);
         setMaterialClasses(prev => [...prev, data]);
         showSnackbar('Material class added', 'success');
       }
@@ -756,7 +756,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteMaterialClass = async (id: string) => {
     if (!confirm('Delete this material class?')) return;
     try {
-      await masterDataDB.delete('materialClasses', id);
+      await masterDataApi.delete('materialClasses', id);
       setMaterialClasses(prev => prev.filter(mc => mc.id !== id));
       showSnackbar('Material class deleted', 'success');
     } catch (error) {
@@ -769,11 +769,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveMaterial = async (data: Material) => {
     try {
       if (editingMaterial) {
-        await masterDataDB.update('materials', data);
+        await masterDataApi.update('materials', data);
         setMaterials(prev => prev.map(m => m.id === data.id ? data : m));
         showSnackbar('Material updated', 'success');
       } else {
-        await masterDataDB.add('materials', data);
+        await masterDataApi.add('materials', data);
         setMaterials(prev => [...prev, data]);
         showSnackbar('Material added', 'success');
       }
@@ -788,7 +788,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteMaterial = async (id: string) => {
     if (!confirm('Delete this material?')) return;
     try {
-      await masterDataDB.delete('materials', id);
+      await masterDataApi.delete('materials', id);
       setMaterials(prev => prev.filter(m => m.id !== id));
       showSnackbar('Material deleted', 'success');
     } catch (error) {
@@ -801,11 +801,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveMaterialLot = async (data: MaterialLot) => {
     try {
       if (editingMaterialLot) {
-        await masterDataDB.update('materialLots', data);
+        await masterDataApi.update('materialLots', data);
         setMaterialLots(prev => prev.map(ml => ml.id === data.id ? data : ml));
         showSnackbar('Material lot updated', 'success');
       } else {
-        await masterDataDB.add('materialLots', data);
+        await masterDataApi.add('materialLots', data);
         setMaterialLots(prev => [...prev, data]);
         showSnackbar('Material lot added', 'success');
       }
@@ -820,7 +820,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteMaterialLot = async (id: string) => {
     if (!confirm('Delete this material lot?')) return;
     try {
-      await masterDataDB.delete('materialLots', id);
+      await masterDataApi.delete('materialLots', id);
       setMaterialLots(prev => prev.filter(ml => ml.id !== id));
       showSnackbar('Material lot deleted', 'success');
     } catch (error) {
@@ -833,11 +833,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveMaterialSublot = async (data: MaterialSublot) => {
     try {
       if (editingMaterialSublot) {
-        await masterDataDB.update('materialSublots', data);
+        await masterDataApi.update('materialSublots', data);
         setMaterialSublots(prev => prev.map(ms => ms.id === data.id ? data : ms));
         showSnackbar('Material sublot updated', 'success');
       } else {
-        await masterDataDB.add('materialSublots', data);
+        await masterDataApi.add('materialSublots', data);
         setMaterialSublots(prev => [...prev, data]);
         showSnackbar('Material sublot added', 'success');
       }
@@ -852,7 +852,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteMaterialSublot = async (id: string) => {
     if (!confirm('Delete this material sublot?')) return;
     try {
-      await masterDataDB.delete('materialSublots', id);
+      await masterDataApi.delete('materialSublots', id);
       setMaterialSublots(prev => prev.filter(ms => ms.id !== id));
       showSnackbar('Material sublot deleted', 'success');
     } catch (error) {
@@ -865,11 +865,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveMaterialDefinitionProperty = async (data: MaterialDefinitionProperty) => {
     try {
       if (editingMaterialDefinitionProperty) {
-        await masterDataDB.update('materialDefinitionProperties', data);
+        await masterDataApi.update('materialDefinitionProperties', data);
         setMaterialDefinitionProperties(prev => prev.map(mdp => mdp.id === data.id ? data : mdp));
         showSnackbar('Material definition property updated', 'success');
       } else {
-        await masterDataDB.add('materialDefinitionProperties', data);
+        await masterDataApi.add('materialDefinitionProperties', data);
         setMaterialDefinitionProperties(prev => [...prev, data]);
         showSnackbar('Material definition property added', 'success');
       }
@@ -884,7 +884,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteMaterialDefinitionProperty = async (id: string) => {
     if (!confirm('Delete this material definition property?')) return;
     try {
-      await masterDataDB.delete('materialDefinitionProperties', id);
+      await masterDataApi.delete('materialDefinitionProperties', id);
       setMaterialDefinitionProperties(prev => prev.filter(mdp => mdp.id !== id));
       showSnackbar('Material definition property deleted', 'success');
     } catch (error) {
@@ -897,11 +897,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveMaterialDefinitionPropertyAssignment = async (data: MaterialDefinitionPropertyAssignment) => {
     try {
       if (editingMaterialDefinitionPropertyAssignment) {
-        await masterDataDB.update('materialDefinitionPropertyAssignments', data);
+        await masterDataApi.update('materialDefinitionPropertyAssignments', data);
         setMaterialDefinitionPropertyAssignments(prev => prev.map(mdpa => mdpa.pk === data.pk ? data : mdpa));
         showSnackbar('Material definition property assignment updated', 'success');
       } else {
-        await masterDataDB.add('materialDefinitionPropertyAssignments', data);
+        await masterDataApi.add('materialDefinitionPropertyAssignments', data);
         setMaterialDefinitionPropertyAssignments(prev => [...prev, data]);
         showSnackbar('Material definition property assignment added', 'success');
       }
@@ -916,7 +916,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteMaterialDefinitionPropertyAssignment = async (pk: string) => {
     if (!confirm('Delete this material definition property assignment?')) return;
     try {
-      await masterDataDB.delete('materialDefinitionPropertyAssignments', pk);
+      await masterDataApi.delete('materialDefinitionPropertyAssignments', pk);
       setMaterialDefinitionPropertyAssignments(prev => prev.filter(mdpa => mdpa.pk !== pk));
       showSnackbar('Material definition property assignment deleted', 'success');
     } catch (error) {
@@ -929,11 +929,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveEquipmentClass = async (data: EquipmentClass) => {
     try {
       if (editingEquipmentClass) {
-        await masterDataDB.update('equipmentClasses', data);
+        await masterDataApi.update('equipmentClasses', data);
         setEquipmentClasses(prev => prev.map(ec => ec.id === data.id ? data : ec));
         showSnackbar('Equipment class updated', 'success');
       } else {
-        await masterDataDB.add('equipmentClasses', data);
+        await masterDataApi.add('equipmentClasses', data);
         setEquipmentClasses(prev => [...prev, data]);
         showSnackbar('Equipment class added', 'success');
       }
@@ -948,7 +948,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteEquipmentClass = async (id: string) => {
     if (!confirm('Delete this equipment class?')) return;
     try {
-      await masterDataDB.delete('equipmentClasses', id);
+      await masterDataApi.delete('equipmentClasses', id);
       setEquipmentClasses(prev => prev.filter(ec => ec.id !== id));
       showSnackbar('Equipment class deleted', 'success');
     } catch (error) {
@@ -961,11 +961,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveEquipment = async (data: Equipment) => {
     try {
       if (editingEquipment) {
-        await masterDataDB.update('equipment', data);
+        await masterDataApi.update('equipment', data);
         setEquipment(prev => prev.map(e => e.id === data.id ? data : e));
         showSnackbar('Equipment updated', 'success');
       } else {
-        await masterDataDB.add('equipment', data);
+        await masterDataApi.add('equipment', data);
         setEquipment(prev => [...prev, data]);
         showSnackbar('Equipment added', 'success');
       }
@@ -980,7 +980,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteEquipment = async (id: string) => {
     if (!confirm('Delete this equipment?')) return;
     try {
-      await masterDataDB.delete('equipment', id);
+      await masterDataApi.delete('equipment', id);
       setEquipment(prev => prev.filter(e => e.id !== id));
       showSnackbar('Equipment deleted', 'success');
     } catch (error) {
@@ -993,11 +993,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveEquipmentProperty = async (data: EquipmentProperty) => {
     try {
       if (editingEquipmentProperty) {
-        await masterDataDB.update('equipmentProperties', data);
+        await masterDataApi.update('equipmentProperties', data);
         setEquipmentProperties(prev => prev.map(ep => ep.id === data.id ? data : ep));
         showSnackbar('Equipment property updated', 'success');
       } else {
-        await masterDataDB.add('equipmentProperties', data);
+        await masterDataApi.add('equipmentProperties', data);
         setEquipmentProperties(prev => [...prev, data]);
         showSnackbar('Equipment property added', 'success');
       }
@@ -1012,7 +1012,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteEquipmentProperty = async (id: string) => {
     if (!confirm('Delete this equipment property?')) return;
     try {
-      await masterDataDB.delete('equipmentProperties', id);
+      await masterDataApi.delete('equipmentProperties', id);
       setEquipmentProperties(prev => prev.filter(ep => ep.id !== id));
       showSnackbar('Equipment property deleted', 'success');
     } catch (error) {
@@ -1025,11 +1025,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveEquipmentPropertyAssignment = async (data: EquipmentPropertyAssignment) => {
     try {
       if (editingEquipmentPropertyAssignment) {
-        await masterDataDB.update('equipmentPropertyAssignments', data);
+        await masterDataApi.update('equipmentPropertyAssignments', data);
         setEquipmentPropertyAssignments(prev => prev.map(epa => epa.id === data.id ? data : epa));
         showSnackbar('Equipment property assignment updated', 'success');
       } else {
-        await masterDataDB.add('equipmentPropertyAssignments', data);
+        await masterDataApi.add('equipmentPropertyAssignments', data);
         setEquipmentPropertyAssignments(prev => [...prev, data]);
         showSnackbar('Equipment property assignment added', 'success');
       }
@@ -1044,7 +1044,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteEquipmentPropertyAssignment = async (id: string) => {
     if (!confirm('Delete this equipment property assignment?')) return;
     try {
-      await masterDataDB.delete('equipmentPropertyAssignments', id);
+      await masterDataApi.delete('equipmentPropertyAssignments', id);
       setEquipmentPropertyAssignments(prev => prev.filter(epa => epa.id !== id));
       showSnackbar('Equipment property assignment deleted', 'success');
     } catch (error) {
@@ -1057,11 +1057,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveProcessSegment = async (data: ProcessSegment) => {
     try {
       if (editingProcessSegment) {
-        await masterDataDB.update('processSegments', data);
+        await masterDataApi.update('processSegments', data);
         setProcessSegments(prev => prev.map(ps => ps.id === data.id ? data : ps));
         showSnackbar('Process segment updated', 'success');
       } else {
-        await masterDataDB.add('processSegments', data);
+        await masterDataApi.add('processSegments', data);
         setProcessSegments(prev => [...prev, data]);
         showSnackbar('Process segment added', 'success');
       }
@@ -1076,7 +1076,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteProcessSegment = async (id: string) => {
     if (!confirm('Delete this process segment?')) return;
     try {
-      await masterDataDB.delete('processSegments', id);
+      await masterDataApi.delete('processSegments', id);
       setProcessSegments(prev => prev.filter(ps => ps.id !== id));
       showSnackbar('Process segment deleted', 'success');
     } catch (error) {
@@ -1089,11 +1089,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveBOM = async (data: SegmentMaterialBOM) => {
     try {
       if (editingBOM) {
-        await masterDataDB.update('segmentBOMs', data);
+        await masterDataApi.update('segmentBOMs', data);
         setSegmentBOMs(prev => prev.map(bom => bom.id === data.id ? data : bom));
         showSnackbar('BOM line updated', 'success');
       } else {
-        await masterDataDB.add('segmentBOMs', data);
+        await masterDataApi.add('segmentBOMs', data);
         setSegmentBOMs(prev => [...prev, data]);
         showSnackbar('BOM line added', 'success');
       }
@@ -1108,7 +1108,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteBOM = async (id: string) => {
     if (!confirm('Delete this BOM line?')) return;
     try {
-      await masterDataDB.delete('segmentBOMs', id);
+      await masterDataApi.delete('segmentBOMs', id);
       setSegmentBOMs(prev => prev.filter(bom => bom.id !== id));
       showSnackbar('BOM line deleted', 'success');
     } catch (error) {
@@ -1121,11 +1121,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveEquipmentUsage = async (data: EquipmentUsage) => {
     try {
       if (editingEquipmentUsage) {
-        await masterDataDB.update('equipmentUsages', data);
+        await masterDataApi.update('equipmentUsages', data);
         setEquipmentUsages(prev => prev.map(eu => eu.id === data.id ? data : eu));
         showSnackbar('Equipment usage updated', 'success');
       } else {
-        await masterDataDB.add('equipmentUsages', data);
+        await masterDataApi.add('equipmentUsages', data);
         setEquipmentUsages(prev => [...prev, data]);
         showSnackbar('Equipment usage added', 'success');
       }
@@ -1140,7 +1140,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteEquipmentUsage = async (id: string) => {
     if (!confirm('Delete this equipment usage?')) return;
     try {
-      await masterDataDB.delete('equipmentUsages', id);
+      await masterDataApi.delete('equipmentUsages', id);
       setEquipmentUsages(prev => prev.filter(eu => eu.id !== id));
       showSnackbar('Equipment usage deleted', 'success');
     } catch (error) {
@@ -1153,7 +1153,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationEventDefinition = async (id: string) => {
     if (!confirm('Delete this operation event definition?')) return;
     try {
-      await masterDataDB.delete('operationEventDefinitions', id);
+      await masterDataApi.delete('operationEventDefinitions', id);
       setOperationEventDefinitions(prev => prev.filter(oed => oed.id !== id));
       showSnackbar('Operation event definition deleted', 'success');
     } catch (error) {
@@ -1166,7 +1166,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationEventDefSegmentAssignment = async (id: string) => {
     if (!confirm('Delete this event-segment assignment?')) return;
     try {
-      await masterDataDB.delete('operationEventDefSegmentAssignments', id);
+      await masterDataApi.delete('operationEventDefSegmentAssignments', id);
       setOperationEventDefSegmentAssignments(prev => prev.filter(oedsa => oedsa.id !== id));
       showSnackbar('Event-segment assignment deleted', 'success');
     } catch (error) {
@@ -1179,7 +1179,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationEventDefinitionProperty = async (id: string) => {
     if (!confirm('Delete this event definition property?')) return;
     try {
-      await masterDataDB.delete('operationEventDefinitionProperties', id);
+      await masterDataApi.delete('operationEventDefinitionProperties', id);
       setOperationEventDefinitionProperties(prev => prev.filter(p => p.id !== id));
       showSnackbar('Event definition property deleted', 'success');
     } catch (error) {
@@ -1192,7 +1192,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationEventDefinitionPropertyAssignment = async (id: string) => {
     if (!confirm('Delete this property assignment?')) return;
     try {
-      await masterDataDB.delete('operationEventDefinitionPropertyAssignments', id);
+      await masterDataApi.delete('operationEventDefinitionPropertyAssignments', id);
       setOperationEventDefinitionPropertyAssignments(prev => prev.filter(a => a.id !== id));
       showSnackbar('Property assignment deleted', 'success');
     } catch (error) {
@@ -1205,11 +1205,11 @@ const MasterDataManager: React.FC = () => {
   const handleSavePlant = async (data: Plant) => {
     try {
       if (editingPlant) {
-        await masterDataDB.update('plants', data);
+        await masterDataApi.update('plants', data);
         setPlants(prev => prev.map(p => p.id === data.id ? data : p));
         showSnackbar('Plant updated', 'success');
       } else {
-        await masterDataDB.add('plants', data);
+        await masterDataApi.add('plants', data);
         setPlants(prev => [...prev, data]);
         showSnackbar('Plant added', 'success');
       }
@@ -1224,7 +1224,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeletePlant = async (id: string) => {
     if (!confirm('Delete this plant?')) return;
     try {
-      await masterDataDB.delete('plants', id);
+      await masterDataApi.delete('plants', id);
       setPlants(prev => prev.filter(p => p.id !== id));
       showSnackbar('Plant deleted', 'success');
     } catch (error) {
@@ -1237,11 +1237,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveProductionLine = async (data: ProductionLine) => {
     try {
       if (editingProductionLine) {
-        await masterDataDB.update('productionLines', data);
+        await masterDataApi.update('productionLines', data);
         setProductionLines(prev => prev.map(pl => pl.id === data.id ? data : pl));
         showSnackbar('Production line updated', 'success');
       } else {
-        await masterDataDB.add('productionLines', data);
+        await masterDataApi.add('productionLines', data);
         setProductionLines(prev => [...prev, data]);
         showSnackbar('Production line added', 'success');
       }
@@ -1256,7 +1256,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteProductionLine = async (id: string) => {
     if (!confirm('Delete this production line?')) return;
     try {
-      await masterDataDB.delete('productionLines', id);
+      await masterDataApi.delete('productionLines', id);
       setProductionLines(prev => prev.filter(pl => pl.id !== id));
       showSnackbar('Production line deleted', 'success');
     } catch (error) {
@@ -1269,11 +1269,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveLineEquipment = async (data: LineEquipment) => {
     try {
       if (editingLineEquipment) {
-        await masterDataDB.update('lineEquipment', data);
+        await masterDataApi.update('lineEquipment', data);
         setLineEquipment(prev => prev.map(le => le.id === data.id ? data : le));
         showSnackbar('Line equipment updated', 'success');
       } else {
-        await masterDataDB.add('lineEquipment', data);
+        await masterDataApi.add('lineEquipment', data);
         setLineEquipment(prev => [...prev, data]);
         showSnackbar('Line equipment added', 'success');
       }
@@ -1288,7 +1288,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteLineEquipment = async (id: string) => {
     if (!confirm('Delete this line equipment?')) return;
     try {
-      await masterDataDB.delete('lineEquipment', id);
+      await masterDataApi.delete('lineEquipment', id);
       setLineEquipment(prev => prev.filter(le => le.id !== id));
       showSnackbar('Line equipment deleted', 'success');
     } catch (error) {
@@ -1301,11 +1301,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveShift = async (data: Shift) => {
     try {
       if (editingShift) {
-        await masterDataDB.update('shifts', data);
+        await masterDataApi.update('shifts', data);
         setShifts(prev => prev.map(s => s.id === data.id ? data : s));
         showSnackbar('Shift updated', 'success');
       } else {
-        await masterDataDB.add('shifts', data);
+        await masterDataApi.add('shifts', data);
         setShifts(prev => [...prev, data]);
         showSnackbar('Shift added', 'success');
       }
@@ -1320,7 +1320,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteShift = async (id: string) => {
     if (!confirm('Delete this shift?')) return;
     try {
-      await masterDataDB.delete('shifts', id);
+      await masterDataApi.delete('shifts', id);
       setShifts(prev => prev.filter(s => s.id !== id));
       showSnackbar('Shift deleted', 'success');
     } catch (error) {
@@ -1333,11 +1333,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveCrew = async (data: Crew) => {
     try {
       if (editingCrew) {
-        await masterDataDB.update('crews', data);
+        await masterDataApi.update('crews', data);
         setCrews(prev => prev.map(c => c.id === data.id ? data : c));
         showSnackbar('Crew updated', 'success');
       } else {
-        await masterDataDB.add('crews', data);
+        await masterDataApi.add('crews', data);
         setCrews(prev => [...prev, data]);
         showSnackbar('Crew added', 'success');
       }
@@ -1352,7 +1352,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteCrew = async (id: string) => {
     if (!confirm('Delete this crew?')) return;
     try {
-      await masterDataDB.delete('crews', id);
+      await masterDataApi.delete('crews', id);
       setCrews(prev => prev.filter(c => c.id !== id));
       showSnackbar('Crew deleted', 'success');
     } catch (error) {
@@ -1365,11 +1365,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveOperationEventDefinition = async (data: OperationEventDefinition) => {
     try {
       if (editingOperationEventDefinition) {
-        await masterDataDB.update('operationEventDefinitions', data);
+        await masterDataApi.update('operationEventDefinitions', data);
         setOperationEventDefinitions(prev => prev.map(oed => oed.id === data.id ? data : oed));
         showSnackbar('Operation Event Definition updated', 'success');
       } else {
-        await masterDataDB.add('operationEventDefinitions', data);
+        await masterDataApi.add('operationEventDefinitions', data);
         setOperationEventDefinitions(prev => [...prev, data]);
         showSnackbar('Operation Event Definition added', 'success');
       }
@@ -1385,11 +1385,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveOperationsEventClass = async (data: OperationsEventClass) => {
     try {
       if (editingOperationsEventClass) {
-        await masterDataDB.update('operationsEventClasses', data);
+        await masterDataApi.update('operationsEventClasses', data);
         setOperationsEventClasses(prev => prev.map(o => o.OperationsEventClassID === data.OperationsEventClassID ? data : o));
         showSnackbar('Operations Event Class updated', 'success');
       } else {
-        await masterDataDB.add('operationsEventClasses', data);
+        await masterDataApi.add('operationsEventClasses', data);
         setOperationsEventClasses(prev => [...prev, data]);
         showSnackbar('Operations Event Class added', 'success');
       }
@@ -1404,7 +1404,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationsEventClass = async (id: string) => {
     if (!confirm('Delete this operations event class?')) return;
     try {
-      await masterDataDB.delete('operationsEventClasses', id);
+      await masterDataApi.delete('operationsEventClasses', id);
       setOperationsEventClasses(prev => prev.filter(o => o.OperationsEventClassID !== id));
       showSnackbar('Operations Event Class deleted', 'success');
     } catch (error) {
@@ -1417,11 +1417,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveOperationsEventRecord = async (data: OperationsEventRecord) => {
     try {
       if (editingOperationsEventRecord) {
-        await masterDataDB.update('operationsEventRecords', data);
+        await masterDataApi.update('operationsEventRecords', data);
         setOperationsEventRecords(prev => prev.map(o => o.id === data.id ? data : o));
         showSnackbar('Operations Event Record updated', 'success');
       } else {
-        await masterDataDB.add('operationsEventRecords', data);
+        await masterDataApi.add('operationsEventRecords', data);
         setOperationsEventRecords(prev => [...prev, data]);
         showSnackbar('Operations Event Record added', 'success');
       }
@@ -1436,7 +1436,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationsEventRecord = async (id: string) => {
     if (!confirm('Delete this operations event record?')) return;
     try {
-      await masterDataDB.delete('operationsEventRecords', id);
+      await masterDataApi.delete('operationsEventRecords', id);
       setOperationsEventRecords(prev => prev.filter(o => o.id !== id));
       showSnackbar('Operations Event Record deleted', 'success');
     } catch (error) {
@@ -1449,11 +1449,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveOperationsEventEntry = async (data: OperationsEventEntry) => {
     try {
       if (editingOperationsEventEntry) {
-        await masterDataDB.update('operationsEventEntries', data);
+        await masterDataApi.update('operationsEventEntries', data);
         setOperationsEventEntries(prev => prev.map(o => o.id === data.id ? data : o));
         showSnackbar('Operations Event Entry updated', 'success');
       } else {
-        await masterDataDB.add('operationsEventEntries', data);
+        await masterDataApi.add('operationsEventEntries', data);
         setOperationsEventEntries(prev => [...prev, data]);
         showSnackbar('Operations Event Entry added', 'success');
       }
@@ -1468,7 +1468,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteOperationsEventEntry = async (id: string) => {
     if (!confirm('Delete this operations event entry?')) return;
     try {
-      await masterDataDB.delete('operationsEventEntries', id);
+      await masterDataApi.delete('operationsEventEntries', id);
       setOperationsEventEntries(prev => prev.filter(o => o.id !== id));
       showSnackbar('Operations Event Entry deleted', 'success');
     } catch (error) {
@@ -1481,11 +1481,11 @@ const MasterDataManager: React.FC = () => {
   const handleSaveShiftCrewAssignment = async (data: ShiftCrewAssignment) => {
     try {
       if (editingShiftCrewAssignment) {
-        await masterDataDB.update('shiftCrewAssignments', data);
+        await masterDataApi.update('shiftCrewAssignments', data);
         setShiftCrewAssignments(prev => prev.map(sca => sca.id === data.id ? data : sca));
         showSnackbar('Shift-crew assignment updated', 'success');
       } else {
-        await masterDataDB.add('shiftCrewAssignments', data);
+        await masterDataApi.add('shiftCrewAssignments', data);
         setShiftCrewAssignments(prev => [...prev, data]);
         showSnackbar('Shift-crew assignment added', 'success');
       }
@@ -1500,7 +1500,7 @@ const MasterDataManager: React.FC = () => {
   const handleDeleteShiftCrewAssignment = async (id: string) => {
     if (!confirm('Delete this shift-crew assignment?')) return;
     try {
-      await masterDataDB.delete('shiftCrewAssignments', id);
+      await masterDataApi.delete('shiftCrewAssignments', id);
       setShiftCrewAssignments(prev => prev.filter(sca => sca.id !== id));
       showSnackbar('Shift-crew assignment deleted', 'success');
     } catch (error) {
@@ -2315,7 +2315,7 @@ const MasterDataManager: React.FC = () => {
                             </IconButton>
                             <IconButton size="small" color="error" onClick={async () => {
                               if (window.confirm('Are you sure you want to delete this hierarchy scope?')) {
-                                await masterDataDB.delete('hierarchyScopes', row.id);
+                                await masterDataApi.delete('hierarchyScopes', row.id);
                                 setHierarchyScopes(prev => prev.filter(h => h.id !== row.id));
                               }
                             }}>
@@ -2346,8 +2346,8 @@ const MasterDataManager: React.FC = () => {
                           
                           if (result.success) {
                             // Reload hierarchy scopes and parent-child
-                            const hs = await masterDataDB.getAll('hierarchyScopes');
-                            const hspc = await masterDataDB.getAll('hierarchyScopeParentChild');
+                            const hs = await masterDataApi.getAll('hierarchyScopes');
+                            const hspc = await masterDataApi.getAll('hierarchyScopeParentChild');
                             setHierarchyScopes(hs);
                             setHierarchyScopeParentChild(hspc);
                             setSnackbar({
@@ -3221,10 +3221,10 @@ const MasterDataManager: React.FC = () => {
         }}
         onSave={async (data) => {
           if (editingHierarchyScope) {
-            await masterDataDB.update('hierarchyScopes', data);
+            await masterDataApi.update('hierarchyScopes', data);
             setHierarchyScopes(prev => prev.map(h => h.id === data.id ? data : h));
           } else {
-            await masterDataDB.add('hierarchyScopes', data);
+            await masterDataApi.add('hierarchyScopes', data);
             setHierarchyScopes(prev => [...prev, data]);
           }
           setHierarchyScopeDialog(false);

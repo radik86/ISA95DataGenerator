@@ -1,5 +1,5 @@
 import { csvParser, ParsedCSVData } from './csvParser';
-import { masterDataDB } from './masterDataDB';
+import { masterDataApi } from './masterDataApi';
 
 export class TemplateDataLoader {
     /**
@@ -188,14 +188,14 @@ export class TemplateDataLoader {
   }
 
   /**
-   * Loads all templates and imports them into the IndexedDB database.
+   * Loads all templates and imports them into the SQL Server database via API.
    * @returns Promise that resolves when all data has been imported
    */
   async importTemplatesIntoDB(): Promise<void> {
     console.log('[TemplateLoader] Starting template import to DB');
     const csvData = await this.loadAllTemplates();
     console.log('[TemplateLoader] Loaded all templates, importing to DB');
-    await masterDataDB.importFromCSV(csvData);
+    await masterDataApi.importFromCSV(csvData);
     console.log('[TemplateLoader] Template import to DB completed');
   }
 
@@ -205,7 +205,7 @@ export class TemplateDataLoader {
    */
   async resetToTemplateData(): Promise<void> {
     console.log('[TemplateLoader] Starting data reset to templates');
-    await masterDataDB.clearAll();
+    await masterDataApi.clearAll();
     console.log('[TemplateLoader] Database cleared, importing templates');
     await this.importTemplatesIntoDB();
     console.log('[TemplateLoader] Data reset to templates completed');

@@ -301,15 +301,15 @@ class CSVParser {
     console.log('Parsing equipment properties, raw records:', records.length);
     console.log('First raw record:', records[0]);
     const parsed = records.map((r, index) => {
-      const isNumericType = r.ValueDataType === 'DECIMAL' || r.ValueDataType === 'INTEGER';
+      // Keep minValue and maxValue as strings - backend expects string type
       const prop = {
         id: r.EquipmentPropertyID,
         name: r.PropertyName,
         description: r.Description || '',
         valueDataType: r.ValueDataType,
         unit: r.Unit || '',
-        minValue: r.MinValue ? (isNumericType ? parseFloat(r.MinValue) : r.MinValue) : undefined,
-        maxValue: r.MaxValue ? (isNumericType ? parseFloat(r.MaxValue) : r.MaxValue) : undefined,
+        minValue: r.MinValue || undefined,
+        maxValue: r.MaxValue || undefined,
       };
       if (!prop.id) {
         console.error(`Record ${index} missing id:`, r);
