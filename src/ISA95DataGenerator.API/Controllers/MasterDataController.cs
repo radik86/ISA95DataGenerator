@@ -2155,6 +2155,76 @@ public class MasterDataController : ControllerBase
 
     #endregion
 
+    #region HierarchyScopeParentChild
+
+    [HttpGet("hierarchy-scope-parent-child")]
+    public async Task<IActionResult> GetHierarchyScopeParentChilds()
+    {
+        var data = await _context.HierarchyScopeParentChilds.OrderBy(x => x.Id).ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("hierarchy-scope-parent-child/{id}")]
+    public async Task<IActionResult> GetHierarchyScopeParentChild(string id)
+    {
+        var entity = await _context.HierarchyScopeParentChilds.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("hierarchy-scope-parent-child")]
+    public async Task<IActionResult> CreateHierarchyScopeParentChild([FromBody] HierarchyScopeParentChild entity)
+    {
+        var existing = await _context.HierarchyScopeParentChilds.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.ParentEquipmentLevel = entity.ParentEquipmentLevel;
+            existing.ParentEquipmentID = entity.ParentEquipmentID;
+            existing.ChildEquipmentLevel = entity.ChildEquipmentLevel;
+            existing.ChildEquipmentID = entity.ChildEquipmentID;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.HierarchyScopeParentChilds.Add(entity);
+        }
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("hierarchy-scope-parent-child/{id}")]
+    public async Task<IActionResult> UpdateHierarchyScopeParentChild(string id, [FromBody] HierarchyScopeParentChild entity)
+    {
+        var existing = await _context.HierarchyScopeParentChilds.FindAsync(id);
+        if (existing == null) return NotFound();
+        
+        existing.ParentEquipmentLevel = entity.ParentEquipmentLevel;
+        existing.ParentEquipmentID = entity.ParentEquipmentID;
+        existing.ChildEquipmentLevel = entity.ChildEquipmentLevel;
+        existing.ChildEquipmentID = entity.ChildEquipmentID;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+        
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("hierarchy-scope-parent-child/{id}")]
+    public async Task<IActionResult> DeleteHierarchyScopeParentChild(string id)
+    {
+        var entity = await _context.HierarchyScopeParentChilds.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.HierarchyScopeParentChilds.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
     #region Bulk Delete
 
     /// <summary>
@@ -2201,6 +2271,7 @@ public class MasterDataController : ControllerBase
             _context.ProductionLines.RemoveRange(_context.ProductionLines);
             _context.Plants.RemoveRange(_context.Plants);
             
+            _context.HierarchyScopeParentChilds.RemoveRange(_context.HierarchyScopeParentChilds);
             _context.HierarchyScopesFlat.RemoveRange(_context.HierarchyScopesFlat);
             _context.HierarchyScopes.RemoveRange(_context.HierarchyScopes);
 

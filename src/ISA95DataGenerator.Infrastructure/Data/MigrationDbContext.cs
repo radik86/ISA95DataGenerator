@@ -46,6 +46,7 @@ public class MigrationDbContext : DbContext
     public DbSet<OperationsEventEntry> OperationsEventEntries { get; set; }
     public DbSet<HierarchyScope> HierarchyScopes { get; set; }
     public DbSet<HierarchyScopeFlat> HierarchyScopesFlat { get; set; }
+    public DbSet<HierarchyScopeParentChild> HierarchyScopeParentChilds { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -530,6 +531,19 @@ public class MigrationDbContext : DbContext
             entity.Property(e => e.StorageUnit).HasMaxLength(100);
             entity.HasIndex(e => e.Enterprise);
             entity.HasIndex(e => e.Site);
+        });
+
+        // HierarchyScopeParentChild
+        modelBuilder.Entity<HierarchyScopeParentChild>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(200);
+            entity.Property(e => e.ParentEquipmentLevel).HasMaxLength(100);
+            entity.Property(e => e.ParentEquipmentID).HasMaxLength(100);
+            entity.Property(e => e.ChildEquipmentLevel).HasMaxLength(100);
+            entity.Property(e => e.ChildEquipmentID).HasMaxLength(100);
+            entity.HasIndex(e => e.ParentEquipmentID);
+            entity.HasIndex(e => e.ChildEquipmentID);
         });
     }
 }
