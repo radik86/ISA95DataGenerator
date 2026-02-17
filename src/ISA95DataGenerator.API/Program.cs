@@ -47,6 +47,7 @@ builder.Services.AddSingleton<IScenarioService, ScenarioService>();
 builder.Services.AddScoped<ITestDataGeneratorService, TestDataGeneratorService>();
 builder.Services.AddScoped<IMappingFileService, MappingFileService>();
 builder.Services.AddScoped<MigrationProcessorService>();
+builder.Services.AddScoped<ProcessDataGenerationService>();
 
 var app = builder.Build();
 

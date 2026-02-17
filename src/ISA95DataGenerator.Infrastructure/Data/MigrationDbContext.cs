@@ -1,5 +1,6 @@
 using ISA95DataGenerator.Domain.Entities;
 using ISA95DataGenerator.Domain.Entities.MasterData;
+using ISA95DataGenerator.Domain.Entities.ProcessData;
 using Microsoft.EntityFrameworkCore;
 
 namespace ISA95DataGenerator.Infrastructure.Data;
@@ -47,6 +48,14 @@ public class MigrationDbContext : DbContext
     public DbSet<HierarchyScope> HierarchyScopes { get; set; }
     public DbSet<HierarchyScopeFlat> HierarchyScopesFlat { get; set; }
     public DbSet<HierarchyScopeParentChild> HierarchyScopeParentChilds { get; set; }
+
+    // Process Data entities
+    public DbSet<WorkRequest> WorkRequests { get; set; }
+    public DbSet<JobOrder> JobOrders { get; set; }
+    public DbSet<JobResponse> JobResponses { get; set; }
+    public DbSet<SegmentResponse> SegmentResponses { get; set; }
+    public DbSet<MaterialActual> MaterialActuals { get; set; }
+    public DbSet<EquipmentActual> EquipmentActuals { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -544,6 +553,149 @@ public class MigrationDbContext : DbContext
             entity.Property(e => e.ChildEquipmentID).HasMaxLength(100);
             entity.HasIndex(e => e.ParentEquipmentID);
             entity.HasIndex(e => e.ChildEquipmentID);
+        });
+
+        // ============================================
+        // PROCESS DATA ENTITIES CONFIGURATION
+        // ============================================
+
+        // WorkRequest
+        modelBuilder.Entity<WorkRequest>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.WorkType).HasMaxLength(50);
+            entity.Property(e => e.HierarchyScope).HasMaxLength(100);
+            entity.Property(e => e.Priority).HasMaxLength(50);
+            entity.Property(e => e.RequestState).HasMaxLength(50);
+            entity.Property(e => e.WorkScheduleId).HasMaxLength(100);
+            entity.HasIndex(e => e.HierarchyScope);
+            entity.HasIndex(e => e.RequestState);
+            entity.HasIndex(e => e.StartTime);
+        });
+
+        // JobOrder
+        modelBuilder.Entity<JobOrder>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.WorkType).HasMaxLength(50);
+            entity.Property(e => e.HierarchyScope).HasMaxLength(100);
+            entity.Property(e => e.WorkMasterId).HasMaxLength(100);
+            entity.Property(e => e.WorkMasterVersion).HasMaxLength(50);
+            entity.Property(e => e.Priority).HasMaxLength(50);
+            entity.Property(e => e.DispatchStatus).HasMaxLength(50);
+            entity.Property(e => e.Command).HasMaxLength(50);
+            entity.Property(e => e.ProcessSegmentId).HasMaxLength(100);
+            entity.Property(e => e.MaterialId).HasMaxLength(100);
+            entity.Property(e => e.QuantityUOM).HasMaxLength(20);
+            entity.Property(e => e.EquipmentId).HasMaxLength(100);
+            entity.Property(e => e.WorkRequestId).HasMaxLength(100);
+            entity.HasIndex(e => e.HierarchyScope);
+            entity.HasIndex(e => e.DispatchStatus);
+            entity.HasIndex(e => e.MaterialId);
+            entity.HasIndex(e => e.EquipmentId);
+            entity.HasIndex(e => e.WorkRequestId);
+            entity.HasOne(e => e.WorkRequest)
+                .WithMany(w => w.JobOrders)
+                .HasForeignKey(e => e.WorkRequestId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // JobResponse
+        modelBuilder.Entity<JobResponse>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.WorkType).HasMaxLength(50);
+            entity.Property(e => e.HierarchyScope).HasMaxLength(100);
+            entity.Property(e => e.JobState).HasMaxLength(50);
+            entity.Property(e => e.JobOrderId).HasMaxLength(100);
+            entity.Property(e => e.MaterialId).HasMaxLength(100);
+            entity.Property(e => e.MaterialLotId).HasMaxLength(100);
+            entity.Property(e => e.QuantityUOM).HasMaxLength(20);
+            entity.Property(e => e.EquipmentId).HasMaxLength(100);
+            entity.Property(e => e.ShiftId).HasMaxLength(100);
+            entity.Property(e => e.CrewId).HasMaxLength(100);
+            entity.HasIndex(e => e.JobOrderId);
+            entity.HasIndex(e => e.JobState);
+            entity.HasIndex(e => e.MaterialId);
+            entity.HasOne(e => e.JobOrder)
+                .WithMany(j => j.JobResponses)
+                .HasForeignKey(e => e.JobOrderId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // SegmentResponse
+        modelBuilder.Entity<SegmentResponse>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.ProcessSegmentId).HasMaxLength(100);
+            entity.Property(e => e.HierarchyScope).HasMaxLength(100);
+            entity.Property(e => e.SegmentState).HasMaxLength(50);
+            entity.Property(e => e.JobResponseId).HasMaxLength(100);
+            entity.Property(e => e.EquipmentId).HasMaxLength(100);
+            entity.HasIndex(e => e.ProcessSegmentId);
+            entity.HasIndex(e => e.JobResponseId);
+            entity.HasOne(e => e.JobResponse)
+                .WithMany(j => j.SegmentResponses)
+                .HasForeignKey(e => e.JobResponseId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // MaterialActual
+        modelBuilder.Entity<MaterialActual>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.HierarchyScope).HasMaxLength(100);
+            entity.Property(e => e.MaterialUse).HasMaxLength(50);
+            entity.Property(e => e.MaterialId).HasMaxLength(100);
+            entity.Property(e => e.MaterialClassId).HasMaxLength(100);
+            entity.Property(e => e.MaterialLotId).HasMaxLength(100);
+            entity.Property(e => e.MaterialSublotId).HasMaxLength(100);
+            entity.Property(e => e.QuantityUOM).HasMaxLength(20);
+            entity.Property(e => e.StorageLocation).HasMaxLength(200);
+            entity.Property(e => e.StorageLocationType).HasMaxLength(50);
+            entity.Property(e => e.JobOrderId).HasMaxLength(100);
+            entity.Property(e => e.SegmentResponseId).HasMaxLength(100);
+            entity.Property(e => e.ProcessSegmentId).HasMaxLength(100);
+            entity.Property(e => e.EquipmentId).HasMaxLength(100);
+            entity.HasIndex(e => e.MaterialUse);
+            entity.HasIndex(e => e.MaterialId);
+            entity.HasIndex(e => e.MaterialLotId);
+            entity.HasIndex(e => e.JobOrderId);
+            entity.HasOne(e => e.JobOrder)
+                .WithMany(j => j.MaterialActuals)
+                .HasForeignKey(e => e.JobOrderId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // EquipmentActual
+        modelBuilder.Entity<EquipmentActual>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.HierarchyScope).HasMaxLength(100);
+            entity.Property(e => e.EquipmentUse).HasMaxLength(50);
+            entity.Property(e => e.EquipmentId).HasMaxLength(100);
+            entity.Property(e => e.EquipmentClassId).HasMaxLength(100);
+            entity.Property(e => e.EquipmentState).HasMaxLength(50);
+            entity.Property(e => e.JobOrderId).HasMaxLength(100);
+            entity.Property(e => e.SegmentResponseId).HasMaxLength(100);
+            entity.HasIndex(e => e.EquipmentId);
+            entity.HasIndex(e => e.JobOrderId);
+            entity.HasOne(e => e.JobOrder)
+                .WithMany(j => j.EquipmentActuals)
+                .HasForeignKey(e => e.JobOrderId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }
