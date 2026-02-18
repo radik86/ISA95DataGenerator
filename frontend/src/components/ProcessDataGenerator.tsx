@@ -2185,7 +2185,17 @@ const ProcessDataGenerator: React.FC = () => {
         const firstRunEnd = new Date(segmentStartTime.getTime() + segmentDuration * 60 * 60 * 1000);
         
         // Calculate when ALL runs complete (considering all runs take place sequentially on same equipment)
-        const allRunsEnd = new Date(segmentStartTime.getTime() + totalDuration * 60 * 60 * 1000);
+        let allRunsEnd = new Date(segmentStartTime.getTime() + totalDuration * 60 * 60 * 1000);
+        
+        // IMPORTANT: Ensure this segment cannot complete before the previous segment completes all its runs
+        // This enforces proper sequential dependencies in production (can't package before all baking is done)
+        // When previous segment finishes later, the last batch from that segment still needs processing time in this segment
+        if (index > 0 && currentTime > allRunsEnd) {
+          console.log(`[Plan Generation] Adjusting end time: Segment ${segment.id} would end at ${allRunsEnd.toISOString()}, but previous segment ends at ${currentTime.toISOString()}`);
+          // Add this segment's duration for processing the last batch from the previous segment
+          allRunsEnd = new Date(currentTime.getTime() + segmentDuration * 60 * 60 * 1000);
+          console.log(`[Plan Generation] Adjusted end time to ${allRunsEnd.toISOString()} (previous end + ${segmentDuration}h for last batch processing)`);
+        }
 
         console.log(`[Plan Generation] Segment ${segment.id} (Seq ${(index + 1) * 10}): ${formData.plannedQuantity} units, capacity ${equipmentCapacity}/run, ${requiredRuns} runs needed`);
         console.log(`[Plan Generation]   Start: ${segmentStartTime.toISOString()}, First run ends: ${firstRunEnd.toISOString()}, All runs end: ${allRunsEnd.toISOString()}, Total duration: ${totalDuration}h`);
@@ -2273,8 +2283,8 @@ const ProcessDataGenerator: React.FC = () => {
           generatedEqReqs.push(eqReq);
 
           // Update segment requirement with equipment ID (first equipment)
-          if (eqIndex === 0 && !segReqs[index].equipmentId) {
-            segReqs[index].equipmentId = usage.equipmentId;
+          if (eqIndex === 0 && !generatedSegReqs[index].equipmentId) {
+            generatedSegReqs[index].equipmentId = usage.equipmentId;
           }
         });
 
