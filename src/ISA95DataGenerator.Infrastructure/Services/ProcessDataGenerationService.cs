@@ -45,6 +45,20 @@ public class ProcessDataGenerationConfig
     /// Clear existing process data before generating new data
     /// </summary>
     public bool ClearExisting { get; set; } = true;
+
+    /// <summary>
+    /// Offset in minutes to apply to actual start times relative to planned start times.
+    /// Positive values = actual starts later than planned, negative = actual starts earlier.
+    /// If null, actual start time will match the planned start time exactly.
+    /// </summary>
+    public int? ActualStartTimeOffsetMinutes { get; set; }
+
+    /// <summary>
+    /// Additional downtime/delay in minutes to add to the production duration.
+    /// This simulates unplanned delays, equipment breakdowns, or other downtime events.
+    /// If null, no additional delay is added (only the random duration between 30-240 minutes).
+    /// </summary>
+    public int? DowntimeDelayMinutes { get; set; }
 }
 
 /// <summary>
@@ -341,9 +355,26 @@ public class ProcessDataGenerationService
             var shift = _shifts.Count > 0 ? _shifts[_random.Next(_shifts.Count)] : null;
             var crew = _crews.Count > 0 ? _crews[_random.Next(_crews.Count)] : null;
 
-            // Generate actual times with some variance
-            var actualStartTime = jobOrder.StartTime?.AddMinutes(_random.Next(-30, 30));
+            // Generate actual times with configured offset
+            DateTime? actualStartTime;
+            if (config.ActualStartTimeOffsetMinutes.HasValue)
+            {
+                actualStartTime = jobOrder.StartTime?.AddMinutes(config.ActualStartTimeOffsetMinutes.Value);
+            }
+            else
+            {
+                // No offset: use exact planned start time
+                actualStartTime = jobOrder.StartTime;
+            }
+            
             var durationMinutes = _random.Next(30, 240);
+            
+            // Add downtime delay if configured
+            if (config.DowntimeDelayMinutes.HasValue)
+            {
+                durationMinutes += config.DowntimeDelayMinutes.Value;
+            }
+            
             var actualEndTime = jobOrder.DispatchStatus == "Completed" 
                 ? actualStartTime?.AddMinutes(durationMinutes) 
                 : null;

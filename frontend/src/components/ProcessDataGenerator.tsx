@@ -246,6 +246,7 @@ const ProcessDataGenerator: React.FC = () => {
   });
   const [scrapProducedPercent, setScrapProducedPercent] = useState<number>(0);
   const [productionDelayMinutes, setProductionDelayMinutes] = useState<number>(0);
+  const [downtimeDelayMinutes, setDowntimeDelayMinutes] = useState<number>(0);
 
   // Generated data
   const [generatedOperationsRequest, setGeneratedOperationsRequest] = useState<OperationsRequest | null>(null);
@@ -606,7 +607,15 @@ const ProcessDataGenerator: React.FC = () => {
           const runQuantity = Math.min(equipmentCapacity, remainingQty);
           
           // Calculate duration for this run
-          const runDuration = segmentDuration;
+          let runDuration = segmentDuration;
+          
+          // Apply downtime delay to extend the duration
+          if (downtimeDelayMinutes > 0) {
+            const downtimeDelayHours = downtimeDelayMinutes / 60;
+            runDuration += downtimeDelayHours;
+            console.log(`[Seq ${segReq.sequence} Run ${run + 1}] Applied downtime delay of ${downtimeDelayMinutes} minutes (${downtimeDelayHours.toFixed(2)}h). New duration: ${runDuration}h`);
+          }
+          
           const endTime = new Date(runStartTime.getTime() + runDuration * 60 * 60 * 1000);
           
           console.log(`[Seq ${segReq.sequence} Run ${run + 1}] FINAL: Start=${runStartTime.toISOString()}, End=${endTime.toISOString()}, Duration=${runDuration}h`);
@@ -1548,6 +1557,7 @@ const ProcessDataGenerator: React.FC = () => {
     setSelectedOperationsRequestId('');
     setActualProductQuantity(0);
     setProductionDelayMinutes(0);
+    setDowntimeDelayMinutes(0);
     setGeneratedOperationsResponse(null);
     setSegmentResponses([]);
     setMaterialActuals([]);
@@ -3613,12 +3623,24 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Grid size={{ xs: 12, sm: 4 }}>
                           <TextField
                             fullWidth
-                            label="Production Delay (minutes)"
+                            label="Start Delay (minutes)"
                             type="number"
                             value={productionDelayMinutes}
                             onChange={(e) => setProductionDelayMinutes(parseInt(e.target.value) || 0)}
                             inputProps={{ min: 0, step: 1 }}
                             helperText="Delay before starting production"
+                          />
+                        </Grid>
+
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                          <TextField
+                            fullWidth
+                            label="Downtime Delay (minutes)"
+                            type="number"
+                            value={downtimeDelayMinutes}
+                            onChange={(e) => setDowntimeDelayMinutes(parseInt(e.target.value) || 0)}
+                            inputProps={{ min: 0, step: 1 }}
+                            helperText="Additional delay during production"
                           />
                         </Grid>
 
