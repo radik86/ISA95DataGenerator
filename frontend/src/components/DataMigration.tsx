@@ -174,6 +174,7 @@ const DataMigration: React.FC = () => {
   const [selectedTargetEntity, setSelectedTargetEntity] = useState('');
   const [mappingDialog, setMappingDialog] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [isa95Entities, setIsa95Entities] = useState<ISA95Entity[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(true);
@@ -409,8 +410,31 @@ const DataMigration: React.FC = () => {
   const steps = ['Select Data Source', 'Source to Entity Mapping', 'Entity to Entity Mapping', 'Migrate Data'];
 
   useEffect(() => {
-    loadCurrentDataAsSource();
-    loadSavedMappings();
+    // Load data with retry mechanism
+    const loadWithRetry = async (retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          await loadCurrentDataAsSource();
+          await loadSavedMappings();
+          break; // Success, exit retry loop
+        } catch (error) {
+          console.error(`Data loading attempt ${i + 1} failed:`, error);
+          if (i === retries - 1) {
+            // Last attempt failed
+            setSnackbar({
+              open: true,
+              message: 'Failed to load data sources. Please refresh the page.',
+              severity: 'error',
+            });
+          } else {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+          }
+        }
+      }
+    };
+
+    loadWithRetry();
   }, []);
 
   // Load saved mappings from IndexedDB
@@ -473,6 +497,7 @@ const DataMigration: React.FC = () => {
   const loadCurrentDataAsSource = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       console.log('[DataMigration] Loading all tables from Master Data and Process Data databases...');
       
       // Get all available stores dynamically from both databases
@@ -1199,9 +1224,11 @@ const DataMigration: React.FC = () => {
 
       setDataSource(source);
       setLoading(false);
+      setLoadError(false);
       console.log(`[DataMigration] Data source refreshed with ${source.tables.length} total tables`);
     } catch (error) {
       console.error('Failed to load data source:', error);
+      setLoadError(true);
       showSnackbar('Failed to load data source', 'error');
       setLoading(false);
     }
@@ -4540,19 +4567,28 @@ const DataMigration: React.FC = () => {
         }
       };
       
-      // CRITICAL: Reorder mappings to process bridge tables LAST
-      // Bridge tables require joins and consume more memory
+      // CRITICAL: Reorder mappings to process tables by size (smallest first)
+      // This prevents memory crashes from processing huge tables early
+      // Bridge tables are processed last as they require joins and consume more memory
       const sortedMappings = [...tableMappings].sort((a, b) => {
-        // Non-bridge tables first (0), bridge tables last (1)
+        // Step 1: Non-bridge tables first (0), bridge tables last (1)
         const aOrder = a.isBridge ? 1 : 0;
         const bOrder = b.isBridge ? 1 : 0;
-        return aOrder - bOrder;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        
+        // Step 2: Within each category (regular or bridge), sort by table size (smallest first)
+        const aTable = dataSource?.tables.find(t => t.name === a.sourceTable);
+        const bTable = dataSource?.tables.find(t => t.name === b.sourceTable);
+        const aSize = aTable?.rowCount || 0;
+        const bSize = bTable?.rowCount || 0;
+        return aSize - bSize; // Ascending order: small tables first
       });
       
-      log('Processing order: Regular tables first, then bridge tables');
+      log('Processing order: Small tables first, large tables last, bridge tables at the end');
       const bridgeCount = sortedMappings.filter(m => m.isBridge).length;
       const regularCount = sortedMappings.length - bridgeCount;
       log(`  → ${regularCount} regular table(s), ${bridgeCount} bridge table(s)`);
+      log(`  → Sorted by row count to minimize memory usage`);
 
       for (let i = 0; i < sortedMappings.length; i++) {
         const mapping = sortedMappings[i];
@@ -5824,6 +5860,41 @@ const DataMigration: React.FC = () => {
       return;
     }
 
+    // Define threshold for splitting large tables into multiple CSV files
+    const FILE_SPLIT_THRESHOLD = 50000; // Split if more than 50k records
+    const RECORDS_PER_FILE = 50000; // Each file will contain max 50k records
+    
+    // Check if we need to split into multiple files
+    if (data.length > FILE_SPLIT_THRESHOLD) {
+      const fileCount = Math.ceil(data.length / RECORDS_PER_FILE);
+      console.log(`[CSV Save] Large table detected (${data.length} records). Splitting into ${fileCount} files...`);
+      
+      // Save each chunk as a separate file
+      for (let fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+        const startIdx = fileIndex * RECORDS_PER_FILE;
+        const endIdx = Math.min(startIdx + RECORDS_PER_FILE, data.length);
+        const chunk = data.slice(startIdx, endIdx);
+        
+        // Add suffix to filename: EntityName_01, EntityName_02, etc.
+        const fileSuffix = String(fileIndex + 1).padStart(2, '0');
+        const chunkEntityName = `${entityName}_${fileSuffix}`;
+        
+        console.log(`[CSV Save] Saving chunk ${fileIndex + 1}/${fileCount}: ${chunkEntityName} (${chunk.length} records)`);
+        
+        // Save this chunk (using the same logic as below but for the chunk)
+        await saveToISA95CSVSingleFile(chunkEntityName, chunk, directoryHandle, isBridge);
+      }
+      
+      console.log(`[CSV Save] Successfully split ${entityName} into ${fileCount} files`);
+      return;
+    }
+    
+    // For tables under threshold, save as single file
+    await saveToISA95CSVSingleFile(entityName, data, directoryHandle, isBridge);
+  };
+
+  // Helper function to save a single CSV file (no splitting)
+  const saveToISA95CSVSingleFile = async (entityName: string, data: any[], directoryHandle: any, isBridge: boolean = false): Promise<void> => {
     // Use smaller chunks for very large datasets to avoid memory pressure
     const CHUNK_SIZE = data.length > 50000 ? 500 : 1000;
     
@@ -6142,7 +6213,28 @@ const DataMigration: React.FC = () => {
                 Data Source
               </Typography>
           
-          {dataSource ? (
+          {loading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+              <CircularProgress />
+              <Typography sx={{ ml: 2 }}>Loading data sources...</Typography>
+            </Box>
+          )}
+          
+          {loadError && !loading && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Failed to load data sources. 
+              <Button 
+                color="inherit" 
+                size="small" 
+                onClick={() => loadCurrentDataAsSource()}
+                sx={{ ml: 2 }}
+              >
+                Retry
+              </Button>
+            </Alert>
+          )}
+          
+          {dataSource && !loading ? (
             <Box>
               <Alert severity="success" sx={{ mb: 2 }}>
                 Data source loaded: {dataSource.name} ({dataSource.tables.length} tables)
@@ -6278,11 +6370,19 @@ const DataMigration: React.FC = () => {
                 </Button>
               </Box>
             </Box>
-          ) : (
+          ) : !loading && !loadError ? (
             <Alert severity="info">
-              Loading data source...
+              No data source available. Click "Reload Data Source" below.
+              <Button 
+                color="inherit" 
+                size="small" 
+                onClick={() => loadCurrentDataAsSource()}
+                sx={{ ml: 2 }}
+              >
+                Load Now
+              </Button>
             </Alert>
-          )}
+          ) : null}
         </Paper>
       )}
 
