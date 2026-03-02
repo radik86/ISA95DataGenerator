@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -165,9 +165,11 @@ interface SourceColumn {
 }
 
 const DataMigration: React.FC = () => {
+  const hasLoadedMappingsRef = useRef(false);
   const [activeStep, setActiveStep] = useState(0);
   const [dataSource, setDataSource] = useState<DataSource | null>(null);
   const [tableMappings, setTableMappings] = useState<TableMapping[]>([]);
+  const [loadedMappingsCount, setLoadedMappingsCount] = useState<number | null>(null);
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [migrationLog, setMigrationLog] = useState<string[]>([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
@@ -468,15 +470,24 @@ const DataMigration: React.FC = () => {
         });
         
         setTableMappings(updatedMappings);
+        setLoadedMappingsCount(updatedMappings.length);
         console.log(`Loaded ${updatedMappings.length} saved mappings from database (updated with sourceTimeStamp field)`);
+      } else {
+        setLoadedMappingsCount(0);
       }
     } catch (error) {
       console.error('Error loading saved mappings:', error);
+    } finally {
+      hasLoadedMappingsRef.current = true;
     }
   };
 
   // Save mappings to IndexedDB whenever they change
   useEffect(() => {
+    if (!hasLoadedMappingsRef.current) {
+      return;
+    }
+
     const saveMappings = async () => {
       try {
         await migrationConfigApi.saveCurrentMappings(tableMappings);
@@ -6707,6 +6718,12 @@ const DataMigration: React.FC = () => {
               </Button>
             </Box>
           </Box>
+
+          {loadedMappingsCount !== null && (
+            <Alert severity={loadedMappingsCount > 0 ? 'success' : 'info'} sx={{ mb: 2 }}>
+              Loaded {loadedMappingsCount} saved mapping{loadedMappingsCount === 1 ? '' : 's'} from database.
+            </Alert>
+          )}
 
           {/* Mapping filter and sort controls */}
           <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
