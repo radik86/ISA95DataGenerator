@@ -37,8 +37,8 @@ import {
   Delete as DeleteIcon,
   Upload as UploadIcon,
 } from '@mui/icons-material';
-import { masterDataDB } from '../services/masterDataDB';
-import { processDataDB } from '../services/processDataDB';
+import { masterDataApi } from '../services/masterDataApi';
+import { processDataApi } from '../services/processDataApi';
 import * as XLSX from 'xlsx';
 
 // Interfaces
@@ -299,7 +299,7 @@ const ProcessDataGenerator: React.FC = () => {
 
   const loadSavedOperationsRequests = async () => {
     try {
-      const requests = await processDataDB.getAll('operationsRequests');
+      const requests = await processDataApi.getAll('operationsRequests');
       setSavedOperationsRequests(requests);
     } catch (error) {
       console.error('Failed to load operations requests:', error);
@@ -309,16 +309,16 @@ const ProcessDataGenerator: React.FC = () => {
   const loadStoredActualData = async () => {
     try {
       const [opsResp, segResp, matAct, eqAct, opsEvt, opsEvtRec, opsEvtEnt, segData, tests, eqProp] = await Promise.all([
-        processDataDB.getAll('operationsResponses'),
-        processDataDB.getAll('segmentResponses'),
-        processDataDB.getAll('segmentMaterialActuals'),
-        processDataDB.getAll('segmentEquipmentActuals'),
-        processDataDB.getAll('operationsEvents'),
-        processDataDB.getAll('operationsEventRecords'),
-        processDataDB.getAll('operationsEventEntries'),
-        processDataDB.getAll('segmentData'),
-        processDataDB.getAll('testResults'),
-        processDataDB.getAll('equipmentPropertyTracking'),
+        processDataApi.getAll('operationsResponses'),
+        processDataApi.getAll('segmentResponses'),
+        processDataApi.getAll('segmentMaterialActuals'),
+        processDataApi.getAll('segmentEquipmentActuals'),
+        processDataApi.getAll('operationsEvents'),
+        processDataApi.getAll('operationsEventRecords'),
+        processDataApi.getAll('operationsEventEntries'),
+        processDataApi.getAll('segmentData'),
+        processDataApi.getAll('testResults'),
+        processDataApi.getAll('equipmentPropertyTracking'),
       ]);
 
       setStoredOperationsResponses(opsResp);
@@ -353,27 +353,27 @@ const ProcessDataGenerator: React.FC = () => {
     try {
       setLoading(true);
       const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs] = await Promise.all([
-        masterDataDB.getAll('materials'),
-        masterDataDB.getAll('equipment'),
-        masterDataDB.getAll('processSegments'),
-        masterDataDB.getAll('segmentBOMs'),
-        masterDataDB.getAll('equipmentUsages'),
-        masterDataDB.getAll('lineEquipment'),
-        masterDataDB.getAll('productionLines'),
-        masterDataDB.getAll('plants'),
-        masterDataDB.getAll('equipmentProperties'),
-        masterDataDB.getAll('equipmentPropertyAssignments'),
-        masterDataDB.getAll('equipmentClassPropertiesAssignments'),
-        masterDataDB.getAll('operationEventDefinitions'),
-        masterDataDB.getAll('operationEventDefSegmentAssignments'),
-        masterDataDB.getAll('operationEventDefinitionProperties'),
-        masterDataDB.getAll('operationEventDefinitionPropertyAssignments'),
-        masterDataDB.getAll('operationsEventRecords'),
-        masterDataDB.getAll('operationsEventEntries'),
-        masterDataDB.getAll('shifts'),
-        masterDataDB.getAll('crews'),
-        masterDataDB.getAll('shiftCrewAssignments'),
-        masterDataDB.getAll('hierarchyScopes'),
+        masterDataApi.getAll('materials'),
+        masterDataApi.getAll('equipment'),
+        masterDataApi.getAll('processSegments'),
+        masterDataApi.getAll('segmentBOMs'),
+        masterDataApi.getAll('equipmentUsages'),
+        masterDataApi.getAll('lineEquipment'),
+        masterDataApi.getAll('productionLines'),
+        masterDataApi.getAll('plants'),
+        masterDataApi.getAll('equipmentProperties'),
+        masterDataApi.getAll('equipmentPropertyAssignments'),
+        masterDataApi.getAll('equipmentClassPropertiesAssignments'),
+        masterDataApi.getAll('operationEventDefinitions'),
+        masterDataApi.getAll('operationEventDefSegmentAssignments'),
+        masterDataApi.getAll('operationEventDefinitionProperties'),
+        masterDataApi.getAll('operationEventDefinitionPropertyAssignments'),
+        masterDataApi.getAll('operationsEventRecords'),
+        masterDataApi.getAll('operationsEventEntries'),
+        masterDataApi.getAll('shifts'),
+        masterDataApi.getAll('crews'),
+        masterDataApi.getAll('shiftCrewAssignments'),
+        masterDataApi.getAll('hierarchyScopes'),
       ]);
 
       setMaterials(mat);
@@ -453,7 +453,7 @@ const ProcessDataGenerator: React.FC = () => {
       setLoading(true);
       
       // Load the operations request and its requirements
-      const orData = await processDataDB.getOperationsRequestWithRequirements(selectedOperationsRequestId);
+      const orData = await processDataApi.getOperationsRequestWithRequirements(selectedOperationsRequestId);
       if (!orData) {
         showSnackbar('Operations request not found', 'error');
         setLoading(false);
@@ -1581,7 +1581,7 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     try {
-      const orData = await processDataDB.getOperationsRequestWithRequirements(selectedOperationsRequestId);
+      const orData = await processDataApi.getOperationsRequestWithRequirements(selectedOperationsRequestId);
       if (!orData) {
         showSnackbar('Operations request not found in database', 'error');
         return;
@@ -1642,7 +1642,7 @@ const ProcessDataGenerator: React.FC = () => {
       setLoading(true);
       
       // Save actual data to process data DB
-      await processDataDB.saveActualData(
+      await processDataApi.saveActualData(
         generatedOperationsResponse,
         segmentResponses,
         materialActuals,
@@ -1661,11 +1661,11 @@ const ProcessDataGenerator: React.FC = () => {
         for (const lot of generatedMaterialLotsForDisplay) {
           try {
             // Use put to update if exists, insert if not
-            const existing = await masterDataDB.get('materialLots', lot.id);
+            const existing = await masterDataApi.get('materialLots', lot.id);
             if (existing) {
-              await masterDataDB.update('materialLots', lot);
+              await masterDataApi.update('materialLots', lot);
             } else {
-              await masterDataDB.add('materialLots', lot);
+              await masterDataApi.add('materialLots', lot);
             }
           } catch (err) {
             console.error(`Error saving material lot ${lot.id}:`, err);
@@ -1679,11 +1679,11 @@ const ProcessDataGenerator: React.FC = () => {
         for (const sublot of generatedMaterialSublotsForDisplay) {
           try {
             // Use put to update if exists, insert if not
-            const existing = await masterDataDB.get('materialSublots', sublot.id);
+            const existing = await masterDataApi.get('materialSublots', sublot.id);
             if (existing) {
-              await masterDataDB.update('materialSublots', sublot);
+              await masterDataApi.update('materialSublots', sublot);
             } else {
-              await masterDataDB.add('materialSublots', sublot);
+              await masterDataApi.add('materialSublots', sublot);
             }
           } catch (err) {
             console.error(`Error saving material sublot ${sublot.id}:`, err);
@@ -1723,7 +1723,7 @@ const ProcessDataGenerator: React.FC = () => {
       
       for (const store of planStores) {
         try {
-          await processDataDB.clear(store as any);
+          await processDataApi.clear(store as any);
           console.log(`[Cleanup Plan] Cleared ${store}`);
         } catch (error) {
           console.error(`[Cleanup Plan] Failed to clear ${store}:`, error);
@@ -1758,26 +1758,26 @@ const ProcessDataGenerator: React.FC = () => {
       console.log('[Process Data Generator] Cleaning up orphaned plan records...');
       
       // Get all segment requirements
-      const segmentReqs = await processDataDB.getAll('segmentRequirements');
+      const segmentReqs = await processDataApi.getAll('segmentRequirements');
       const validSegReqIds = new Set(segmentReqs.map((sr: any) => sr.id));
       
       console.log(`[Cleanup Orphans] Found ${validSegReqIds.size} valid segment requirements`);
       
       // Clean up orphaned material requirements
-      const allMatReqs = await processDataDB.getAll('segmentMaterialRequirements');
+      const allMatReqs = await processDataApi.getAll('segmentMaterialRequirements');
       const orphanedMatReqs = allMatReqs.filter((mr: any) => !validSegReqIds.has(mr.segmentRequirementId));
       
       for (const matReq of orphanedMatReqs) {
-        await processDataDB.delete('segmentMaterialRequirements', matReq.id);
+        await processDataApi.delete('segmentMaterialRequirements', matReq.id);
       }
       console.log(`[Cleanup Orphans] Deleted ${orphanedMatReqs.length} orphaned material requirements`);
       
       // Clean up orphaned equipment requirements
-      const allEqReqs = await processDataDB.getAll('segmentEquipmentRequirements');
+      const allEqReqs = await processDataApi.getAll('segmentEquipmentRequirements');
       const orphanedEqReqs = allEqReqs.filter((er: any) => !validSegReqIds.has(er.segmentRequirementId));
       
       for (const eqReq of orphanedEqReqs) {
-        await processDataDB.delete('segmentEquipmentRequirements', eqReq.id);
+        await processDataApi.delete('segmentEquipmentRequirements', eqReq.id);
       }
       console.log(`[Cleanup Orphans] Deleted ${orphanedEqReqs.length} orphaned equipment requirements`);
       
@@ -1816,7 +1816,7 @@ const ProcessDataGenerator: React.FC = () => {
       
       for (const store of actualStores) {
         try {
-          await processDataDB.clear(store as any);
+          await processDataApi.clear(store as any);
           console.log(`[Cleanup Actual] Cleared ${store}`);
         } catch (error) {
           console.error(`[Cleanup Actual] Failed to clear ${store}:`, error);
@@ -1860,7 +1860,7 @@ const ProcessDataGenerator: React.FC = () => {
       console.log(`[Delete Plan] Deleting operations request: ${operationsRequestId}`);
       
       // Load all related data for this operations request
-      const orData = await processDataDB.getOperationsRequestWithRequirements(operationsRequestId);
+      const orData = await processDataApi.getOperationsRequestWithRequirements(operationsRequestId);
       if (!orData) {
         showSnackbar('Operations request not found', 'error');
         setLoading(false);
@@ -1876,24 +1876,24 @@ const ProcessDataGenerator: React.FC = () => {
       // Delete all related data in order
       // 1. Delete segment material requirements
       for (const mr of materialReqs) {
-        await processDataDB.delete('segmentMaterialRequirements', mr.id);
+        await processDataApi.delete('segmentMaterialRequirements', mr.id);
       }
       console.log(`[Delete Plan] Deleted ${materialReqs.length} segment material requirements`);
       
       // 2. Delete segment equipment requirements
       for (const er of equipmentReqs) {
-        await processDataDB.delete('segmentEquipmentRequirements', er.id);
+        await processDataApi.delete('segmentEquipmentRequirements', er.id);
       }
       console.log(`[Delete Plan] Deleted ${equipmentReqs.length} segment equipment requirements`);
       
       // 3. Delete segment requirements
       for (const sr of segmentReqs) {
-        await processDataDB.delete('segmentRequirements', sr.id);
+        await processDataApi.delete('segmentRequirements', sr.id);
       }
       console.log(`[Delete Plan] Deleted ${segmentReqs.length} segment requirements`);
       
       // 4. Delete the operations request itself
-      await processDataDB.delete('operationsRequests', operationsRequestId);
+      await processDataApi.delete('operationsRequests', operationsRequestId);
       console.log(`[Delete Plan] Deleted operations request ${operationsRequestId}`);
       
       // Reload saved operations requests to update the overview
@@ -1928,7 +1928,7 @@ const ProcessDataGenerator: React.FC = () => {
       for (const segId of segmentResponseIds) {
         const matActuals = storedMaterialActuals.filter(ma => ma.segmentResponseId === segId);
         for (const ma of matActuals) {
-          await processDataDB.delete('segmentMaterialActuals', ma.id);
+          await processDataApi.delete('segmentMaterialActuals', ma.id);
         }
         console.log(`[Delete] Deleted ${matActuals.length} material actuals for segment ${segId}`);
       }
@@ -1937,7 +1937,7 @@ const ProcessDataGenerator: React.FC = () => {
       for (const segId of segmentResponseIds) {
         const eqActuals = storedEquipmentActuals.filter(ea => ea.segmentResponseId === segId);
         for (const ea of eqActuals) {
-          await processDataDB.delete('segmentEquipmentActuals', ea.id);
+          await processDataApi.delete('segmentEquipmentActuals', ea.id);
         }
         console.log(`[Delete] Deleted ${eqActuals.length} equipment actuals for segment ${segId}`);
       }
@@ -1946,7 +1946,7 @@ const ProcessDataGenerator: React.FC = () => {
       for (const segId of segmentResponseIds) {
         const events = storedOperationsEvents.filter(oe => oe.segmentResponseId === segId);
         for (const evt of events) {
-          await processDataDB.delete('operationsEvents', evt.id);
+          await processDataApi.delete('operationsEvents', evt.id);
         }
         console.log(`[Delete] Deleted ${events.length} operations events for segment ${segId}`);
       }
@@ -1955,7 +1955,7 @@ const ProcessDataGenerator: React.FC = () => {
       for (const segId of segmentResponseIds) {
         const segData = storedSegmentData.filter(sd => sd.segmentResponseId === segId);
         for (const sd of segData) {
-          await processDataDB.delete('segmentData', sd.id);
+          await processDataApi.delete('segmentData', sd.id);
         }
         console.log(`[Delete] Deleted ${segData.length} segment data records for segment ${segId}`);
       }
@@ -1964,19 +1964,19 @@ const ProcessDataGenerator: React.FC = () => {
       for (const segId of segmentResponseIds) {
         const tracking = storedEquipmentPropertyTracking.filter(ept => ept.segmentResponseId === segId);
         for (const t of tracking) {
-          await processDataDB.delete('equipmentPropertyTracking', t.id);
+          await processDataApi.delete('equipmentPropertyTracking', t.id);
         }
         console.log(`[Delete] Deleted ${tracking.length} equipment property tracking records for segment ${segId}`);
       }
       
       // 6. Delete segment responses
       for (const sr of segmentResponsesToDelete) {
-        await processDataDB.delete('segmentResponses', sr.id);
+        await processDataApi.delete('segmentResponses', sr.id);
       }
       console.log(`[Delete] Deleted ${segmentResponsesToDelete.length} segment responses`);
       
       // 7. Delete the operations response itself
-      await processDataDB.delete('operationsResponses', operationsResponseId);
+      await processDataApi.delete('operationsResponses', operationsResponseId);
       console.log(`[Delete] Deleted operations response ${operationsResponseId}`);
       
       // Reload stored data to update the overview
@@ -2333,7 +2333,7 @@ const ProcessDataGenerator: React.FC = () => {
       console.log('Material requirements count:', materialRequirements.length);
       console.log('Equipment requirements count:', equipmentRequirements.length);
       
-      await processDataDB.saveGeneratedData(
+      await processDataApi.saveGeneratedData(
         generatedOperationsRequest,
         segmentRequirements,
         materialRequirements,
@@ -2425,9 +2425,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
     try {
       // Load all segment requirements, material requirements, and equipment requirements from database
-      const allSegmentRequirements = await processDataDB.getAll('segmentRequirements');
-      const allMaterialRequirements = await processDataDB.getAll('segmentMaterialRequirements');
-      const allEquipmentRequirements = await processDataDB.getAll('segmentEquipmentRequirements');
+      const allSegmentRequirements = await processDataApi.getAll('segmentRequirements');
+      const allMaterialRequirements = await processDataApi.getAll('segmentMaterialRequirements');
+      const allEquipmentRequirements = await processDataApi.getAll('segmentEquipmentRequirements');
 
       // Export Operations Requests
       const orHeaders = 'OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,Status';
@@ -2478,9 +2478,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
     try {
       // Load all plan data from database
-      const allSegmentRequirements = await processDataDB.getAll('segmentRequirements');
-      const allMaterialRequirements = await processDataDB.getAll('segmentMaterialRequirements');
-      const allEquipmentRequirements = await processDataDB.getAll('segmentEquipmentRequirements');
+      const allSegmentRequirements = await processDataApi.getAll('segmentRequirements');
+      const allMaterialRequirements = await processDataApi.getAll('segmentMaterialRequirements');
+      const allEquipmentRequirements = await processDataApi.getAll('segmentEquipmentRequirements');
 
       // Create a single JSON object with all plan data
       const planDataExport = {
@@ -2526,22 +2526,22 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
 
       // Import operations requests
       for (const req of planDataImport.operationsRequests) {
-        await processDataDB.add('operationsRequests', req);
+        await processDataApi.add('operationsRequests', req);
       }
 
       // Import segment requirements
       for (const sr of planDataImport.segmentRequirements) {
-        await processDataDB.add('segmentRequirements', sr);
+        await processDataApi.add('segmentRequirements', sr);
       }
 
       // Import material requirements
       for (const mr of planDataImport.segmentMaterialRequirements) {
-        await processDataDB.add('segmentMaterialRequirements', mr);
+        await processDataApi.add('segmentMaterialRequirements', mr);
       }
 
       // Import equipment requirements
       for (const er of planDataImport.segmentEquipmentRequirements) {
-        await processDataDB.add('segmentEquipmentRequirements', er);
+        await processDataApi.add('segmentEquipmentRequirements', er);
       }
 
       // Reload saved operations requests

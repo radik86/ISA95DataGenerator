@@ -15,12 +15,18 @@ public class MigrationDbContext : DbContext
     public DbSet<MigrationSession> MigrationSessions { get; set; }
     public DbSet<SourceDataTable> SourceDataTables { get; set; }
     public DbSet<EntityMapping> EntityMappings { get; set; }
+    public DbSet<MigrationSourceData> MigrationSourceDatas { get; set; }
+
+    // Generic data store (replaces IndexedDB)
+    public DbSet<GenericDataStore> GenericDataStores { get; set; }
 
     // Master Data entities
     public DbSet<MaterialClass> MaterialClasses { get; set; }
     public DbSet<Material> Materials { get; set; }
     public DbSet<MaterialLot> MaterialLots { get; set; }
     public DbSet<MaterialSublot> MaterialSublots { get; set; }
+    public DbSet<MaterialClassProperty> MaterialClassProperties { get; set; }
+    public DbSet<MaterialClassPropertyAssignment> MaterialClassPropertyAssignments { get; set; }
     public DbSet<MaterialDefinitionProperty> MaterialDefinitionProperties { get; set; }
     public DbSet<MaterialDefinitionPropertyAssignment> MaterialDefinitionPropertyAssignments { get; set; }
     public DbSet<EquipmentClass> EquipmentClasses { get; set; }
@@ -99,6 +105,32 @@ public class MigrationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // Configure MigrationSourceData
+        modelBuilder.Entity<MigrationSourceData>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StoreName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DataJson).IsRequired(); // NVARCHAR(MAX) by default
+            entity.HasIndex(e => new { e.MigrationSessionId, e.StoreName }).IsUnique();
+            
+            entity.HasOne(e => e.MigrationSession)
+                .WithMany(m => m.SourceDatas)
+                .HasForeignKey(e => e.MigrationSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure GenericDataStore
+        modelBuilder.Entity<GenericDataStore>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).UseIdentityColumn();
+            entity.Property(e => e.StoreName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.RecordId).IsRequired().HasMaxLength(400);
+            entity.Property(e => e.DataJson).IsRequired(); // NVARCHAR(MAX)
+            entity.HasIndex(e => new { e.StoreName, e.RecordId }).IsUnique();
+            entity.HasIndex(e => e.StoreName);
+        });
+
         // ============================================
         // MASTER DATA ENTITIES CONFIGURATION
         // ============================================
@@ -168,6 +200,30 @@ public class MigrationDbContext : DbContext
                 .WithMany(ml => ml.MaterialSublots)
                 .HasForeignKey(e => e.MaterialLotId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // MaterialClassProperty
+        modelBuilder.Entity<MaterialClassProperty>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.PropertyName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.ValueDataType).HasMaxLength(50);
+            entity.Property(e => e.Unit).HasMaxLength(50);
+            entity.Property(e => e.MinValue).HasMaxLength(100);
+            entity.Property(e => e.MaxValue).HasMaxLength(100);
+        });
+
+        // MaterialClassPropertyAssignment
+        modelBuilder.Entity<MaterialClassPropertyAssignment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(200);
+            entity.Property(e => e.MaterialClassPropertyId).HasMaxLength(100);
+            entity.Property(e => e.MaterialDefinitionPropertyId).HasMaxLength(100);
+            entity.HasIndex(e => e.MaterialClassPropertyId);
+            entity.HasIndex(e => e.MaterialDefinitionPropertyId);
         });
 
         // MaterialDefinitionProperty

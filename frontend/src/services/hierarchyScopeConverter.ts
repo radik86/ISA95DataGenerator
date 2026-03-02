@@ -1,4 +1,5 @@
-import { masterDataDB, HierarchyScopeFlatRecord, HierarchyScopeRecord, HierarchyScopeParentChildRecord } from './masterDataDB';
+import type { HierarchyScopeFlatRecord, HierarchyScopeRecord, HierarchyScopeParentChildRecord } from './masterDataDB';
+import { masterDataApi } from './masterDataApi';
 
 /**
  * Parent-child relationship for equipment levels
@@ -266,7 +267,7 @@ export class HierarchyScopeConverter {
   async convertAndSave(): Promise<{ success: boolean; recordCount: number; message: string }> {
     try {
       // Load flat records from database
-      const flatRecords = await masterDataDB.getAll('hierarchyScopesFlat');
+      const flatRecords = await masterDataApi.getAll('hierarchyScopesFlat');
       
       if (!flatRecords || flatRecords.length === 0) {
         return {
@@ -277,8 +278,8 @@ export class HierarchyScopeConverter {
       }
 
       // Load plants and production lines for mapping
-      const plants = await masterDataDB.getAll('plants');
-      const productionLines = await masterDataDB.getAll('productionLines');
+      const plants = await masterDataApi.getAll('plants');
+      const productionLines = await masterDataApi.getAll('productionLines');
 
       console.log('[Converter] Loaded', flatRecords.length, 'flat records,', plants.length, 'plants,', productionLines.length, 'production lines');
 
@@ -294,18 +295,18 @@ export class HierarchyScopeConverter {
       }
 
       // Clear existing hierarchy scopes
-      await masterDataDB.clear('hierarchyScopes');
+      await masterDataApi.clear('hierarchyScopes');
       console.log('[Converter] Cleared existing hierarchy scopes');
 
       // Save row-based records
-      await masterDataDB.bulkAdd('hierarchyScopes', rowBasedRecords);
+      await masterDataApi.bulkAdd('hierarchyScopes', rowBasedRecords);
       console.log('[Converter] Saved', rowBasedRecords.length, 'row-based records');
 
       // Generate parent-child relationships using the equipment ID mapping
       const relationships = this.generateParentChildRelationships(flatRecords, equipmentIdMapping);
       
       // Save parent-child relationships to database
-      await masterDataDB.clear('hierarchyScopeParentChild');
+      await masterDataApi.clear('hierarchyScopeParentChild');
       console.log('[Converter] Cleared existing parent-child relationships');
       
       const relationshipRecords: HierarchyScopeParentChildRecord[] = relationships.map(r => ({
@@ -315,7 +316,7 @@ export class HierarchyScopeConverter {
         updatedAt: new Date()
       }));
       
-      await masterDataDB.bulkAdd('hierarchyScopeParentChild', relationshipRecords);
+      await masterDataApi.bulkAdd('hierarchyScopeParentChild', relationshipRecords);
       console.log('[Converter] Saved', relationshipRecords.length, 'parent-child relationships');
       
       // Download parent-child CSV

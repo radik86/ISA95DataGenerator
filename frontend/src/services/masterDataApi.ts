@@ -5,6 +5,46 @@
 
 const API_BASE_URL = 'http://localhost:5237/api';
 
+function normalizeHierarchyScopeFlatForApi(record: any): any {
+  if (!record || typeof record !== 'object') return record;
+
+  return {
+    ...record,
+    enterprise: record.enterprise ?? record.Enterprise ?? '',
+    site: record.site ?? record.Site ?? '',
+    area: record.area ?? record.Area ?? '',
+    workCenter: record.workCenter ?? record['Work Center'] ?? '',
+    workUnit: record.workUnit ?? record['Work Unit'] ?? '',
+    processCell: record.processCell ?? record['Process Cell'] ?? '',
+    unit: record.unit ?? record.Unit ?? '',
+    productionLine: record.productionLine ?? record['Production Line'] ?? '',
+    productionUnit: record.productionUnit ?? record['Production Unit'] ?? '',
+    workCell: record.workCell ?? record['Work Cell'] ?? '',
+    storageZone: record.storageZone ?? record['Storage Zone'] ?? '',
+    storageUnit: record.storageUnit ?? record['Storage Unit'] ?? '',
+  };
+}
+
+function normalizeHierarchyScopeFlatFromApi(record: any): any {
+  if (!record || typeof record !== 'object') return record;
+
+  return {
+    ...record,
+    Enterprise: record.Enterprise ?? record.enterprise ?? '',
+    Site: record.Site ?? record.site ?? '',
+    Area: record.Area ?? record.area ?? '',
+    'Work Center': record['Work Center'] ?? record.workCenter ?? '',
+    'Work Unit': record['Work Unit'] ?? record.workUnit ?? '',
+    'Process Cell': record['Process Cell'] ?? record.processCell ?? '',
+    Unit: record.Unit ?? record.unit ?? '',
+    'Production Line': record['Production Line'] ?? record.productionLine ?? '',
+    'Production Unit': record['Production Unit'] ?? record.productionUnit ?? '',
+    'Work Cell': record['Work Cell'] ?? record.workCell ?? '',
+    'Storage Zone': record['Storage Zone'] ?? record.storageZone ?? '',
+    'Storage Unit': record['Storage Unit'] ?? record.storageUnit ?? '',
+  };
+}
+
 // Helper function for API calls
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -33,6 +73,8 @@ const storeToEndpoint: Record<string, string> = {
   materials: '/masterdata/materials',
   materialLots: '/masterdata/material-lots',
   materialSublots: '/masterdata/material-sublots',
+  materialClassProperties: '/masterdata/material-class-properties',
+  materialClassPropertiesAssignments: '/masterdata/material-class-property-assignments',
   equipmentClasses: '/masterdata/equipment-classes',
   equipment: '/masterdata/equipment',
   equipmentProperties: '/masterdata/equipment-properties',
@@ -96,7 +138,13 @@ export const masterDataApi = {
     
     try {
       const result = await apiCall<T[]>(endpoint);
-      return Array.isArray(result) ? result : [];
+      if (!Array.isArray(result)) return [];
+
+      if (storeName === 'hierarchyScopesFlat') {
+        return result.map(item => normalizeHierarchyScopeFlatFromApi(item)) as T[];
+      }
+
+      return result;
     } catch (error) {
       console.error(`Failed to get ${storeName}:`, error);
       return [];
@@ -130,9 +178,13 @@ export const masterDataApi = {
       throw new Error(`No endpoint mapping for store: ${storeName}`);
     }
     
+    const payload = storeName === 'hierarchyScopesFlat'
+      ? normalizeHierarchyScopeFlatForApi(data)
+      : data;
+
     return await apiCall<T>(endpoint, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
   },
 
@@ -145,9 +197,13 @@ export const masterDataApi = {
       throw new Error(`No endpoint mapping for store: ${storeName}`);
     }
     
+    const payload = storeName === 'hierarchyScopesFlat'
+      ? normalizeHierarchyScopeFlatForApi(data)
+      : data;
+
     return await apiCall<T>(`${endpoint}/${encodeURIComponent(data.id)}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
   },
 
@@ -237,6 +293,8 @@ export const masterDataApi = {
       'materials',
       'materialLots',
       'materialSublots',
+      'materialClassProperties',
+      'materialClassPropertiesAssignments',
       'materialDefinitionProperties',
       'materialDefinitionPropertyAssignments',
       'equipmentClasses',

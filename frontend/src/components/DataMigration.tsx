@@ -60,9 +60,10 @@ import {
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
-import { masterDataDB } from '../services/masterDataDB';
-import { processDataDB } from '../services/processDataDB';
-import { migrationConfigDB } from '../services/migrationConfigDB';
+import { masterDataApi } from '../services/masterDataApi';
+import { processDataApi } from '../services/processDataApi';
+import { migrationConfigApi } from '../services/migrationConfigApi';
+import { migrationApi } from '../services/migrationApi';
 import { entitiesApi } from '../api/client';
 import { EntityDefinition, AttributeDefinition, RuleType, FieldRule, JoinCondition } from '../types';
 
@@ -440,7 +441,7 @@ const DataMigration: React.FC = () => {
   // Load saved mappings from IndexedDB
   const loadSavedMappings = async () => {
     try {
-      const savedMappings = await migrationConfigDB.loadCurrentMappings();
+      const savedMappings = await migrationConfigApi.loadCurrentMappings();
       if (savedMappings.length > 0) {
         // Ensure each mapping has sourceTimeStamp field if it doesn't already
         const updatedMappings = savedMappings.map(mapping => {
@@ -478,7 +479,7 @@ const DataMigration: React.FC = () => {
   useEffect(() => {
     const saveMappings = async () => {
       try {
-        await migrationConfigDB.saveCurrentMappings(tableMappings);
+        await migrationConfigApi.saveCurrentMappings(tableMappings);
         console.log(`Saved ${tableMappings.length} mappings to database`);
       } catch (error) {
         console.error('Error saving mappings:', error);
@@ -503,6 +504,7 @@ const DataMigration: React.FC = () => {
       // Get all available stores dynamically from both databases
       const masterDataStores = [
         'materialClasses', 'materials', 'materialLots', 'materialSublots',
+        'materialClassProperties', 'materialClassPropertiesAssignments',
         'materialDefinitionProperties', 'materialDefinitionPropertyAssignments',
         'equipmentClasses', 'equipment', 'equipmentProperties', 
         'equipmentPropertyAssignments', 'plants', 'productionLines',
@@ -528,7 +530,7 @@ const DataMigration: React.FC = () => {
       console.log('[DataMigration] Loading master data stores...');
       for (const storeName of masterDataStores) {
         try {
-          const data = await masterDataDB.getAll(storeName as any);
+          const data = await masterDataApi.getAll(storeName as any);
           masterDataResults[storeName] = data || [];
           console.log(`[DataMigration] Loaded ${storeName}: ${data?.length || 0} records`);
         } catch (error) {
@@ -541,7 +543,7 @@ const DataMigration: React.FC = () => {
       const processDataResults: { [key: string]: any[] } = {};
       for (const storeName of processDataStores) {
         try {
-          const data = await processDataDB.getAll(storeName as any);
+          const data = await processDataApi.getAll(storeName as any);
           processDataResults[storeName] = data || [];
           console.log(`[DataMigration] Loaded ${storeName}: ${data?.length || 0} records`);
         } catch (error) {
@@ -564,6 +566,8 @@ const DataMigration: React.FC = () => {
       });
       const materialDefinitionProperties = masterDataResults['materialDefinitionProperties'];
       const materialDefinitionPropertyAssignments = masterDataResults['materialDefinitionPropertyAssignments'];
+      const materialClassProperties = masterDataResults['materialClassProperties'];
+      const materialClassPropertiesAssignments = masterDataResults['materialClassPropertiesAssignments'];
       const equipmentClasses = masterDataResults['equipmentClasses'];
       const equipment = masterDataResults['equipment'];
       const equipmentProperties = masterDataResults['equipmentProperties'];
@@ -648,6 +652,28 @@ const DataMigration: React.FC = () => {
             { name: 'value', type: 'string', sample: materialDefinitionProperties?.[0]?.value },
             { name: 'description', type: 'string', sample: materialDefinitionProperties?.[0]?.description },
             { name: 'valueUnitOfMeasure', type: 'string', sample: materialDefinitionProperties?.[0]?.valueUnitOfMeasure },
+          ],
+        },
+        {
+          name: 'material_class_properties',
+          rowCount: materialClassProperties?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: materialClassProperties?.[0]?.id },
+            { name: 'propertyName', type: 'string', sample: materialClassProperties?.[0]?.propertyName },
+            { name: 'description', type: 'string', sample: materialClassProperties?.[0]?.description },
+            { name: 'valueDataType', type: 'string', sample: materialClassProperties?.[0]?.valueDataType },
+            { name: 'unit', type: 'string', sample: materialClassProperties?.[0]?.unit },
+            { name: 'minValue', type: 'string', sample: materialClassProperties?.[0]?.minValue },
+            { name: 'maxValue', type: 'string', sample: materialClassProperties?.[0]?.maxValue },
+          ],
+        },
+        {
+          name: 'material_class_properties_assignments',
+          rowCount: materialClassPropertiesAssignments?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: materialClassPropertiesAssignments?.[0]?.id },
+            { name: 'materialClassPropertyId', type: 'string', sample: materialClassPropertiesAssignments?.[0]?.materialClassPropertyId },
+            { name: 'materialDefinitionPropertyId', type: 'string', sample: materialClassPropertiesAssignments?.[0]?.materialDefinitionPropertyId },
           ],
         },
         {
@@ -1684,6 +1710,8 @@ const DataMigration: React.FC = () => {
         const masterStoreMap: { [key: string]: string } = {
           'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
           'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
+          'material_class_properties': 'materialClassProperties',
+          'material_class_properties_assignments': 'materialClassPropertiesAssignments',
           'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
           'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
           'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
@@ -1719,12 +1747,12 @@ const DataMigration: React.FC = () => {
         };
         const masterStoreName = masterStoreMap[tableName];
         if (masterStoreName) {
-          const data = await masterDataDB.getAll(masterStoreName);
+          const data = await masterDataApi.getAll(masterStoreName);
           if (data.length > 0) return data;
         }
         const processStoreName = processStoreMap[tableName];
         if (processStoreName) {
-          const data = await processDataDB.getAll(processStoreName);
+          const data = await processDataApi.getAll(processStoreName);
           if (data.length > 0) return data;
         }
         
@@ -3393,6 +3421,8 @@ const DataMigration: React.FC = () => {
           'material_lots': 'materialLots',
           'material_sublots': 'materialSublots',
           'material_definition_properties': 'materialDefinitionProperties',
+          'material_class_properties': 'materialClassProperties',
+          'material_class_properties_assignments': 'materialClassPropertiesAssignments',
           'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
           'equipment_classes': 'equipmentClasses',
           'equipment': 'equipment',
@@ -3436,12 +3466,12 @@ const DataMigration: React.FC = () => {
 
         const masterStoreName = masterStoreMap[tableName];
         if (masterStoreName) {
-          return await masterDataDB.getAll(masterStoreName);
+          return await masterDataApi.getAll(masterStoreName);
         }
 
         const processStoreName = processStoreMap[tableName];
         if (processStoreName) {
-          return await processDataDB.getAll(processStoreName);
+          return await processDataApi.getAll(processStoreName);
         }
 
         // Check imported tables
@@ -3492,6 +3522,8 @@ const DataMigration: React.FC = () => {
                   const masterStoreMap: { [key: string]: string } = {
                     'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
                     'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
+                    'material_class_properties': 'materialClassProperties',
+                    'material_class_properties_assignments': 'materialClassPropertiesAssignments',
                     'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
                     'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
                     'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
@@ -3518,9 +3550,9 @@ const DataMigration: React.FC = () => {
                     'segment_data': 'segmentData',
                   };
                   const masterStoreName = masterStoreMap[tableName];
-                  if (masterStoreName) return await masterDataDB.getAll(masterStoreName);
+                  if (masterStoreName) return await masterDataApi.getAll(masterStoreName);
                   const processStoreName = processStoreMap[tableName];
-                  if (processStoreName) return await processDataDB.getAll(processStoreName);
+                  if (processStoreName) return await processDataApi.getAll(processStoreName);
                   if (importedTablesData[tableName]) return importedTablesData[tableName];
                   return [];
                 };
@@ -3566,6 +3598,8 @@ const DataMigration: React.FC = () => {
                   const masterStoreMap: { [key: string]: string } = {
                     'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
                     'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
+                    'material_class_properties': 'materialClassProperties',
+                    'material_class_properties_assignments': 'materialClassPropertiesAssignments',
                     'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
                     'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
                     'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
@@ -3592,9 +3626,9 @@ const DataMigration: React.FC = () => {
                     'segment_data': 'segmentData',
                   };
                   const masterStoreName = masterStoreMap[tableName];
-                  if (masterStoreName) return await masterDataDB.getAll(masterStoreName);
+                  if (masterStoreName) return await masterDataApi.getAll(masterStoreName);
                   const processStoreName = processStoreMap[tableName];
-                  if (processStoreName) return await processDataDB.getAll(processStoreName);
+                  if (processStoreName) return await processDataApi.getAll(processStoreName);
                   if (importedTablesData[tableName]) return importedTablesData[tableName];
                   return [];
                 };
@@ -3991,6 +4025,8 @@ const DataMigration: React.FC = () => {
           'material_lots': 'materialLots',
           'material_sublots': 'materialSublots',
           'material_definition_properties': 'materialDefinitionProperties',
+          'material_class_properties': 'materialClassProperties',
+          'material_class_properties_assignments': 'materialClassPropertiesAssignments',
           'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
           'equipment_classes': 'equipmentClasses',
           'equipment': 'equipment',
@@ -4039,12 +4075,12 @@ const DataMigration: React.FC = () => {
 
         const processStoreName = processStoreMap[tableName];
         if (processStoreName) {
-          return await processDataDB.getAll(processStoreName);
+          return await processDataApi.getAll(processStoreName);
         }
 
         const masterStoreName = masterStoreMap[tableName];
         if (masterStoreName) {
-          return await masterDataDB.getAll(masterStoreName);
+          return await masterDataApi.getAll(masterStoreName);
         }
 
         return [];
@@ -5515,6 +5551,224 @@ const DataMigration: React.FC = () => {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  //  SERVER-SIDE MIGRATION (V2) — All heavy processing on backend
+  // ═══════════════════════════════════════════════════════════════
+  const executeServerMigration = async () => {
+    setMigrationProgress(0);
+    setMigrationLog([]);
+    setLoading(true);
+
+    const log = (message: string) => {
+      setMigrationLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+    };
+
+    let sessionId: string | null = null;
+
+    try {
+      // 1. Create migration session on server
+      log('Creating migration session on server...');
+      const session = await migrationApi.createSession(`Migration_${new Date().toISOString()}`);
+      sessionId = session.id;
+      log(`✓ Session created: ${sessionId}`);
+
+      // 2. Collect and upload ALL source data from IndexedDB to SQL Server
+      log('Uploading source data to SQL Server...');
+
+      const masterStoreMap: Record<string, string> = {
+        'material_classes': 'materialClasses',
+        'materials': 'materials',
+        'material_lots': 'materialLots',
+        'material_sublots': 'materialSublots',
+        'material_definition_properties': 'materialDefinitionProperties',
+        'material_class_properties': 'materialClassProperties',
+        'material_class_properties_assignments': 'materialClassPropertiesAssignments',
+        'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
+        'equipment_classes': 'equipmentClasses',
+        'equipment': 'equipment',
+        'equipment_properties': 'equipmentProperties',
+        'equipment_property_assignments': 'equipmentPropertyAssignments',
+        'equipment_class_properties': 'equipmentClassProperties',
+        'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
+        'plants': 'plants',
+        'production_lines': 'productionLines',
+        'process_segments': 'processSegments',
+        'line_equipment': 'lineEquipment',
+        'segment_boms': 'segmentBOMs',
+        'equipment_usages': 'equipmentUsages',
+        'operation_event_definitions': 'operationEventDefinitions',
+        'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+        'operation_event_definition_properties': 'operationEventDefinitionProperties',
+        'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
+        'hierarchy_scopes': 'hierarchyScopes',
+        'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
+        'shifts': 'shifts',
+        'crews': 'crews',
+        'shift_crew_assignments': 'shiftCrewAssignments',
+        'operations_event_classes': 'operationsEventClasses',
+      };
+
+      const processStoreMap: Record<string, string> = {
+        'operations_requests': 'operationsRequests',
+        'segment_requirements': 'segmentRequirements',
+        'segment_material_requirements': 'segmentMaterialRequirements',
+        'segment_equipment_requirements': 'segmentEquipmentRequirements',
+        'operations_responses': 'operationsResponses',
+        'segment_responses': 'segmentResponses',
+        'segment_material_actuals': 'segmentMaterialActuals',
+        'segment_equipment_actuals': 'segmentEquipmentActuals',
+        'equipment_property_tracking': 'equipmentPropertyTracking',
+        'test_results': 'testResults',
+        'operations_events': 'operationsEvents',
+        'operations_event_records': 'operationsEventRecords',
+        'operations_event_entries': 'operationsEventEntries',
+        'operations_event_properties': 'operationsEventProperties',
+        'segment_data': 'segmentData',
+      };
+
+      // Determine which stores are actually referenced by the mappings
+      const referencedTables = new Set<string>();
+      for (const m of tableMappings) {
+        if (m.enabled && m.sourceTable) referencedTables.add(m.sourceTable);
+        // Also include lookup tables referenced by field rules
+        for (const fm of (m.fieldMappings || [])) {
+          if (fm.fieldRule?.ruleType === 'Lookup') {
+            const p = fm.fieldRule.parameters as any;
+            const lt = p?.sourceTable || p?.lookupTable;
+            if (lt) referencedTables.add(lt);
+          }
+          if (fm.fieldRule?.ruleType === 'MultipleLookups') {
+            const p = fm.fieldRule.parameters as any;
+            for (const step of (p?.lookupSteps || [])) {
+              if (step.lookupTable) referencedTables.add(step.lookupTable);
+            }
+          }
+        }
+        // Include PK lookup tables
+        if (m.primaryKeyRule?.ruleType === 'Lookup') {
+          const p = m.primaryKeyRule.parameters as any;
+          const lt = p?.sourceTable || p?.lookupTable;
+          if (lt) referencedTables.add(lt);
+        }
+      }
+
+      log(`${referencedTables.size} source table(s) needed`);
+
+      // Upload each referenced store
+      let uploadedCount = 0;
+      let totalUploadedRecords = 0;
+      for (const tableName of referencedTables) {
+        try {
+          let data: any[] = [];
+
+          // Try master data store
+          const masterStoreName = masterStoreMap[tableName];
+          if (masterStoreName) {
+            data = await masterDataApi.getAll(masterStoreName as any);
+          }
+
+          // Try process data store
+          if (data.length === 0) {
+            const processStoreName = processStoreMap[tableName];
+            if (processStoreName) {
+              data = await processDataApi.getAll(processStoreName as any);
+            }
+          }
+
+          // Try imported tables
+          if (data.length === 0 && importedTablesData[tableName]) {
+            data = importedTablesData[tableName];
+          }
+
+          if (data.length > 0) {
+            await migrationApi.uploadStoreData(sessionId, tableName, data);
+            uploadedCount++;
+            totalUploadedRecords += data.length;
+            log(`  ↑ ${tableName}: ${data.length} records`);
+          } else {
+            log(`  ⚠ ${tableName}: no data found`);
+          }
+        } catch (uploadErr: any) {
+          log(`  ❌ ${tableName}: upload failed — ${uploadErr.message}`);
+          console.error(`Upload failed for ${tableName}:`, uploadErr);
+        }
+
+        // Update progress during upload phase (0-30%)
+        const uploadProgress = (uploadedCount / referencedTables.size) * 30;
+        setMigrationProgress(uploadProgress);
+      }
+
+      log(`✓ Uploaded ${uploadedCount} stores (${totalUploadedRecords} total records) to SQL Server`);
+
+      // 3. Execute migration on the server
+      log('Starting server-side migration processing...');
+      await migrationApi.executeMigration(sessionId, tableMappings);
+      log('Migration processing started on server');
+
+      // 4. Poll for progress
+      let lastLogIndex = 0;
+      const pollInterval = 1000; // 1 second
+      let completed = false;
+
+      while (!completed) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+        try {
+          const status = await migrationApi.getStatus(sessionId);
+
+          // Show new log messages
+          if (status.log && status.log.length > lastLogIndex) {
+            for (let li = lastLogIndex; li < status.log.length; li++) {
+              log(`[Server] ${status.log[li]}`);
+            }
+            lastLogIndex = status.log.length;
+          }
+
+          // Update progress (30-100% range for server processing)
+          const serverProgress = 30 + (status.progressPercentage * 0.7);
+          setMigrationProgress(serverProgress);
+
+          if (status.status === 'Completed' || status.status === 'CompletedWithErrors') {
+            completed = true;
+            if (status.status === 'CompletedWithErrors') {
+              log('⚠ Migration completed with some errors — check the log above');
+              showSnackbar('Migration completed with errors', 'warning');
+            } else {
+              log('✓ Migration completed successfully!');
+              showSnackbar('Migration completed successfully', 'success');
+            }
+          } else if (status.status === 'Failed') {
+            completed = true;
+            throw new Error(status.errorMessage || 'Migration failed on server');
+          } else if (status.status === 'Cancelled') {
+            completed = true;
+            log('Migration was cancelled');
+            showSnackbar('Migration cancelled', 'info');
+          }
+        } catch (pollErr: any) {
+          // If just a network blip, continue polling
+          if (pollErr.message?.includes('Migration failed')) throw pollErr;
+          console.warn('Poll error, retrying...', pollErr);
+        }
+      }
+
+      // 5. Download the result ZIP
+      log('Downloading migration output files...');
+      setMigrationProgress(95);
+      const blob = await migrationApi.downloadZip(sessionId);
+      migrationApi.triggerDownload(blob, `migration_${new Date().toISOString().replace(/[:]/g, '-')}.zip`);
+      log('✓ Output files downloaded');
+      setMigrationProgress(100);
+
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ Error: ${errorMessage}`);
+      showSnackbar(`Migration failed: ${errorMessage}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const generateValueFromRule = (fieldRule: FieldRuleConfig, sourceRecord?: any, index?: number, transformedRecord?: any): any => {
     const params = fieldRule.parameters as any;
     switch (fieldRule.ruleType) {
@@ -5778,6 +6032,8 @@ const DataMigration: React.FC = () => {
       'material_lots': 'materialLots',
       'material_sublots': 'materialSublots',
       'material_definition_properties': 'materialDefinitionProperties',
+      'material_class_properties': 'materialClassProperties',
+      'material_class_properties_assignments': 'materialClassPropertiesAssignments',
       'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
       'equipment_classes': 'equipmentClasses',
       'equipment': 'equipment',
@@ -5823,12 +6079,12 @@ const DataMigration: React.FC = () => {
 
     const masterStoreName = masterStoreMap[tableName];
     if (masterStoreName) {
-      return await masterDataDB.getAll(masterStoreName);
+      return await masterDataApi.getAll(masterStoreName);
     }
 
     const processStoreName = processStoreMap[tableName];
     if (processStoreName) {
-      const data = await processDataDB.getAll(processStoreName);
+      const data = await processDataApi.getAll(processStoreName);
       
       // Add computed fields for segment_requirements
       if (tableName === 'segment_requirements') {
@@ -6415,7 +6671,7 @@ const DataMigration: React.FC = () => {
                 onClick={async () => {
                   if (window.confirm('Clear all mappings? This will remove all configured source-to-entity and bridge table mappings.')) {
                     setTableMappings([]);
-                    await migrationConfigDB.clearCurrentMappings();
+                    await migrationConfigApi.clearCurrentMappings();
                     showSnackbar('All mappings cleared', 'success');
                   }
                 }}
@@ -7368,16 +7624,27 @@ const DataMigration: React.FC = () => {
             </Paper>
           )}
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <Button
               variant="contained"
               color="primary"
               size="large"
               startIcon={<PlayIcon />}
-              onClick={executeMigration}
+              onClick={executeServerMigration}
               disabled={loading}
             >
-              Start Migration
+              Start Migration (Server)
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              size="small"
+              startIcon={<PlayIcon />}
+              onClick={executeMigration}
+              disabled={loading}
+              title="Process entirely in the browser (may crash on large datasets)"
+            >
+              Browser-side (Legacy)
             </Button>
             {migrationProgress === 100 && (
               <Chip icon={<CheckCircleIcon />} label="Migration Complete" color="success" />

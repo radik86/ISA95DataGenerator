@@ -1439,6 +1439,148 @@ public class MasterDataController : ControllerBase
 
     #endregion
 
+    #region Material Class Properties
+
+    [HttpGet("material-class-properties")]
+    public async Task<IActionResult> GetMaterialClassProperties()
+    {
+        var data = await _context.MaterialClassProperties.OrderBy(x => x.Id).ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("material-class-properties/{id}")]
+    public async Task<IActionResult> GetMaterialClassProperty(string id)
+    {
+        var entity = await _context.MaterialClassProperties.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("material-class-properties")]
+    public async Task<IActionResult> CreateMaterialClassProperty([FromBody] MaterialClassProperty entity)
+    {
+        var existing = await _context.MaterialClassProperties.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.PropertyName = entity.PropertyName;
+            existing.Description = entity.Description;
+            existing.ValueDataType = entity.ValueDataType;
+            existing.Unit = entity.Unit;
+            existing.MinValue = entity.MinValue;
+            existing.MaxValue = entity.MaxValue;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.MaterialClassProperties.Add(entity);
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("material-class-properties/{id}")]
+    public async Task<IActionResult> UpdateMaterialClassProperty(string id, [FromBody] MaterialClassProperty entity)
+    {
+        var existing = await _context.MaterialClassProperties.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.PropertyName = entity.PropertyName;
+        existing.Description = entity.Description;
+        existing.ValueDataType = entity.ValueDataType;
+        existing.Unit = entity.Unit;
+        existing.MinValue = entity.MinValue;
+        existing.MaxValue = entity.MaxValue;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("material-class-properties/{id}")]
+    public async Task<IActionResult> DeleteMaterialClassProperty(string id)
+    {
+        var entity = await _context.MaterialClassProperties.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.MaterialClassProperties.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
+    #region Material Class Property Assignments
+
+    [HttpGet("material-class-property-assignments")]
+    public async Task<IActionResult> GetMaterialClassPropertyAssignments()
+    {
+        var data = await _context.MaterialClassPropertyAssignments.OrderBy(x => x.Id).ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("material-class-property-assignments/{id}")]
+    public async Task<IActionResult> GetMaterialClassPropertyAssignment(string id)
+    {
+        var entity = await _context.MaterialClassPropertyAssignments.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("material-class-property-assignments")]
+    public async Task<IActionResult> CreateMaterialClassPropertyAssignment([FromBody] MaterialClassPropertyAssignment entity)
+    {
+        var existing = await _context.MaterialClassPropertyAssignments.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.MaterialClassPropertyId = entity.MaterialClassPropertyId;
+            existing.MaterialDefinitionPropertyId = entity.MaterialDefinitionPropertyId;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.MaterialClassPropertyAssignments.Add(entity);
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("material-class-property-assignments/{id}")]
+    public async Task<IActionResult> UpdateMaterialClassPropertyAssignment(string id, [FromBody] MaterialClassPropertyAssignment entity)
+    {
+        var existing = await _context.MaterialClassPropertyAssignments.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.MaterialClassPropertyId = entity.MaterialClassPropertyId;
+        existing.MaterialDefinitionPropertyId = entity.MaterialDefinitionPropertyId;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("material-class-property-assignments/{id}")]
+    public async Task<IActionResult> DeleteMaterialClassPropertyAssignment(string id)
+    {
+        var entity = await _context.MaterialClassPropertyAssignments.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.MaterialClassPropertyAssignments.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
     #region Material Definition Properties
 
     [HttpGet("material-definition-properties")]
@@ -2261,6 +2403,8 @@ public class MasterDataController : ControllerBase
             _context.EquipmentClassProperties.RemoveRange(_context.EquipmentClassProperties);
             _context.EquipmentClasses.RemoveRange(_context.EquipmentClasses);
             
+            _context.MaterialClassPropertyAssignments.RemoveRange(_context.MaterialClassPropertyAssignments);
+            _context.MaterialClassProperties.RemoveRange(_context.MaterialClassProperties);
             _context.MaterialDefinitionPropertyAssignments.RemoveRange(_context.MaterialDefinitionPropertyAssignments);
             _context.MaterialDefinitionProperties.RemoveRange(_context.MaterialDefinitionProperties);
             _context.MaterialSublots.RemoveRange(_context.MaterialSublots);

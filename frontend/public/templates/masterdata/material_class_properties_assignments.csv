@@ -1,0 +1,15 @@
+MaterialClassPropertyId,MaterialDefinitionPropertyId
+MCP-DefaultUnitOfMeasure,DefaultUnitOfMeasure
+MCP-MaterialCode,MC1-BAGUETTE-250G
+MCP-MaterialCode,MC2-BREAD-750G
+MCP-MaterialCode,MC3-LOAF-750G
+MCP-MaterialCode,MC4-PITA-200G
+MCP-MaterialCode,MC5-Flour_Type_550
+MCP-MaterialCode,MC6-CARTON_400EA
+MCP-MaterialCode,MC7-Paper
+MCP-MaterialCode,MC8-Salt
+MCP-MaterialCode,MC9-Water
+MCP-MaterialCode,MC10-Yeast
+MCP-MaterialCode,MC11-Dough
+MCP-MaterialCode,MC12-EURO_PALLET
+MCP-DefaultUnitOfMeasureEA,DefaultUnitOfMeasureEA

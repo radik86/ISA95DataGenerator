@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IndexedDB → SQL Server Migration</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+    h1 { color: #1976d2; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+    .store { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; }
+    .store:last-child { border-bottom: none; }
+    .count { font-weight: bold; color: #1976d2; min-width: 60px; text-align: right; }
+    .count.zero { color: #999; }
+    .count.done { color: #4caf50; }
+    .count.fail { color: #f44336; }
+    button { background: #1976d2; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #1565c0; }
+    button:disabled { background: #bbb; cursor: not-allowed; }
+    #log { background: #263238; color: #e0e0e0; padding: 16px; border-radius: 8px; max-height: 400px; overflow-y: auto; font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; white-space: pre-wrap; }
+    .ok { color: #4caf50; } .warn { color: #ff9800; } .err { color: #f44336; } .info { color: #42a5f5; }
+    .summary { font-size: 18px; margin: 12px 0; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 8px; }
+    .badge-ok { background: #e8f5e9; color: #2e7d32; }
+    .badge-warn { background: #fff3e0; color: #e65100; }
+  </style>
+</head>
+<body>
+
+<h1>IndexedDB → SQL Server Migration</h1>
+<p>This page reads <strong>all data</strong> from the browser's IndexedDB databases and uploads it to the SQL Server backend via the GenericData API.</p>
+
+<div class="card">
+  <h2>Step 1: Scan IndexedDB</h2>
+  <button id="btnScan" onclick="scanAll()">Scan IndexedDB Databases</button>
+  <div id="scanResults"></div>
+</div>
+
+<div class="card">
+  <h2>Step 2: Migrate to SQL Server</h2>
+  <p>API Base: <code id="apiBase">http://localhost:5237/api/GenericData</code></p>
+  <button id="btnMigrate" onclick="migrateAll()" disabled>Migrate All Data</button>
+  <div id="migrateResults"></div>
+</div>
+
+<div class="card">
+  <h2>Log</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:5237/api/GenericData';
+
+// ── IndexedDB database definitions ──
+const DATABASES = [
+  {
+    name: 'process-data-db',
+    version: 8,
+    stores: [
+      'operationsRequests', 'segmentRequirements', 'segmentMaterialRequirements',
+      'segmentEquipmentRequirements', 'operationsResponses', 'segmentResponses',
+      'segmentMaterialActuals', 'segmentEquipmentActuals', 'testResults',
+      'equipmentPropertyTracking', 'operationsEvents', 'operationsEventRecords',
+      'operationsEventEntries', 'operationsEventProperties', 'segmentData',
+    ],
+  },
+  {
+    name: 'migration-config-db',
+    version: 1,
+    stores: ['configs', 'currentConfig'],
+  },
+];
+
+// Global scan results
+let scanData = {}; // { storeName: records[] }
+
+// ── Logging ──
+function log(msg, cls = '') {
+  const el = document.getElementById('log');
+  const line = document.createElement('span');
+  line.className = cls;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Open an IndexedDB database ──
+function openIDB(dbName, version) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, version);
+    req.onupgradeneeded = (e) => {
+      // Don't create stores — we just want to read existing ones.
+      // If the DB doesn't exist yet this will fire, but that's fine.
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// ── Read all records from an object store ──
+function readAllFromStore(db, storeName) {
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    } catch (e) {
+      // Store doesn't exist in this version
+      resolve([]);
+    }
+  });
+}
+
+// ── Scan all databases ──
+async function scanAll() {
+  document.getElementById('btnScan').disabled = true;
+  document.getElementById('scanResults').innerHTML = '<p>Scanning...</p>';
+  scanData = {};
+  let totalRecords = 0;
+  let html = '';
+
+  for (const dbDef of DATABASES) {
+    try {
+      log(`Opening database: ${dbDef.name} (v${dbDef.version})`, 'info');
+      const db = await openIDB(dbDef.name, dbDef.version);
+
+      // Get actual store names from the database (in case version differs)
+      const actualStores = Array.from(db.objectStoreNames);
+      log(`  Found ${actualStores.length} stores: ${actualStores.join(', ')}`, 'info');
+
+      html += `<h3>${dbDef.name} <span class="badge ${actualStores.length > 0 ? 'badge-ok' : 'badge-warn'}">${actualStores.length} stores</span></h3>`;
+
+      for (const storeName of actualStores) {
+        try {
+          const records = await readAllFromStore(db, storeName);
+          const count = records.length;
+          totalRecords += count;
+
+          // Use a unique key: for migration-config-db stores, prefix to avoid collision
+          const storeKey = dbDef.name === 'migration-config-db'
+            ? `migrationConfig_${storeName}`
+            : storeName;
+
+          scanData[storeKey] = { records, originalStore: storeName, dbName: dbDef.name };
+
+          html += `<div class="store"><span>${storeName}</span><span class="count ${count === 0 ? 'zero' : ''}">${count.toLocaleString()} records</span></div>`;
+          log(`  ${storeName}: ${count} records`, count > 0 ? 'ok' : 'warn');
+        } catch (e) {
+          html += `<div class="store"><span>${storeName}</span><span class="count fail">ERROR</span></div>`;
+          log(`  ${storeName}: ${e.message}`, 'err');
+        }
+      }
+
+      db.close();
+    } catch (e) {
+      html += `<h3>${dbDef.name} <span class="badge badge-warn">Not found</span></h3>`;
+      log(`Database ${dbDef.name}: ${e.message}`, 'warn');
+    }
+  }
+
+  html += `<p class="summary">Total: <strong>${totalRecords.toLocaleString()}</strong> records across all stores</p>`;
+  document.getElementById('scanResults').innerHTML = html;
+
+  if (totalRecords > 0) {
+    document.getElementById('btnMigrate').disabled = false;
+    log(`\nScan complete. ${totalRecords} records ready to migrate.`, 'ok');
+  } else {
+    log('\nScan complete. No data found in IndexedDB.', 'warn');
+  }
+
+  document.getElementById('btnScan').disabled = false;
+}
+
+// ── Migrate all scanned data to SQL Server ──
+async function migrateAll() {
+  document.getElementById('btnMigrate').disabled = true;
+  const resultsEl = document.getElementById('migrateResults');
+  resultsEl.innerHTML = '<p>Migrating...</p>';
+
+  let successStores = 0;
+  let failStores = 0;
+  let totalMigrated = 0;
+  let html = '';
+
+  // Build the bulk-multi payload grouped by target store
+  // Process data stores go directly (same store names as GenericData)
+  // Migration config stores get special handling
+
+  const storeKeys = Object.keys(scanData);
+  log(`\nStarting migration of ${storeKeys.length} stores...`, 'info');
+
+  for (const storeKey of storeKeys) {
+    const { records, originalStore, dbName } = scanData[storeKey];
+    if (records.length === 0) {
+      html += `<div class="store"><span>${originalStore} (${dbName})</span><span class="count zero">0 — skipped</span></div>`;
+      continue;
+    }
+
+    // Determine the target store name in GenericData
+    let targetStore = originalStore;
+    if (dbName === 'migration-config-db') {
+      // Map migration config stores
+      if (originalStore === 'configs') targetStore = 'migrationConfigs';
+      else if (originalStore === 'currentConfig') targetStore = 'migrationCurrent';
+      else targetStore = `migrationConfig_${originalStore}`;
+    }
+
+    try {
+      log(`  Uploading ${originalStore} → ${targetStore} (${records.length} records)...`, 'info');
+
+      // Ensure every record has an "id" field (GenericDataController requires it)
+      const enriched = records.map((rec, idx) => {
+        if (!rec.id && !rec.Id) {
+          return { ...rec, id: `${targetStore}_${idx}_${Date.now()}` };
+        }
+        return rec;
+      });
+
+      // Use the replace endpoint (clears store first, then adds all) to avoid duplicates
+      const batchSize = 5000;
+      if (enriched.length <= batchSize) {
+        const res = await fetch(`${API_BASE}/${encodeURIComponent(targetStore)}/replace`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(enriched),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+      } else {
+        // For very large stores, first clear then bulk-upsert in batches
+        await fetch(`${API_BASE}/${encodeURIComponent(targetStore)}`, { method: 'DELETE' });
+
+        for (let offset = 0; offset < enriched.length; offset += batchSize) {
+          const chunk = enriched.slice(offset, offset + batchSize);
+          const res = await fetch(`${API_BASE}/${encodeURIComponent(targetStore)}/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chunk),
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Batch at offset ${offset}: HTTP ${res.status}: ${errText}`);
+          }
+          log(`    Batch ${Math.floor(offset/batchSize)+1}/${Math.ceil(enriched.length/batchSize)} uploaded`, 'info');
+        }
+      }
+
+      successStores++;
+      totalMigrated += enriched.length;
+      html += `<div class="store"><span>${originalStore} → ${targetStore}</span><span class="count done">✓ ${enriched.length.toLocaleString()}</span></div>`;
+      log(`  ✓ ${targetStore}: ${enriched.length} records migrated`, 'ok');
+    } catch (e) {
+      failStores++;
+      html += `<div class="store"><span>${originalStore} → ${targetStore}</span><span class="count fail">✗ ${e.message}</span></div>`;
+      log(`  ✗ ${targetStore}: ${e.message}`, 'err');
+    }
+  }
+
+  // Verify by checking summary
+  try {
+    const summaryRes = await fetch(`${API_BASE}/summary`);
+    const summary = await summaryRes.json();
+    log(`\nSQL Server summary after migration:`, 'info');
+    for (const [store, count] of Object.entries(summary)) {
+      log(`  ${store}: ${count} records`, 'ok');
+    }
+  } catch (e) {
+    log(`Could not fetch summary: ${e.message}`, 'warn');
+  }
+
+  html += `<p class="summary">Migrated: <strong>${totalMigrated.toLocaleString()}</strong> records | ✓ ${successStores} stores | ✗ ${failStores} failed</p>`;
+  resultsEl.innerHTML = html;
+
+  log(`\nMigration complete! ${totalMigrated} records in ${successStores} stores.`, 'ok');
+  if (failStores > 0) log(`${failStores} store(s) failed — see errors above.`, 'err');
+
+  document.getElementById('btnMigrate').disabled = false;
+}
+</script>
+
+</body>
+</html>

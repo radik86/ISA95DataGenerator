@@ -24,6 +24,8 @@ export class TemplateDataLoader {
       { name: 'material_classes.csv', parser: 'materialClasses' },
       { name: 'materials.csv', parser: 'materials' },
       { name: 'material_lots.csv', parser: 'materialLots' },
+      { name: 'material_class_properties.csv', parser: 'materialClassProperties' },
+      { name: 'material_class_properties_assignments.csv', parser: 'materialClassPropertiesAssignments' },
       { name: 'material_definition_property_template.csv', parser: 'materialDefinitionProperties' },
       { name: 'material_definition_property_assignment_template.csv', parser: 'materialDefinitionPropertyAssignments' },
       { name: 'equipment_classes.csv', parser: 'equipmentClasses' },
@@ -76,6 +78,14 @@ export class TemplateDataLoader {
           case 'materialDefinitionProperties':
             parsed = csvParser.parseMaterialDefinitionProperties(csvText);
             result.materialDefinitionProperties = parsed;
+            break;
+          case 'materialClassProperties':
+            parsed = csvParser.parseMaterialClassProperties(csvText);
+            result.materialClassProperties = parsed;
+            break;
+          case 'materialClassPropertiesAssignments':
+            parsed = csvParser.parseMaterialClassPropertiesAssignments(csvText);
+            result.materialClassPropertiesAssignments = parsed;
             break;
           case 'materialDefinitionPropertyAssignments':
             parsed = csvParser.parseMaterialDefinitionPropertyAssignments(csvText);

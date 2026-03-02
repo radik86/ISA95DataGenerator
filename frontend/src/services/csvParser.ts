@@ -4,6 +4,8 @@ export interface ParsedCSVData {
   materialClasses?: any[];
   materials?: any[];
   materialLots?: any[];
+  materialClassProperties?: any[];
+  materialClassPropertiesAssignments?: any[];
   materialDefinitionProperties?: any[];
   materialDefinitionPropertyAssignments?: any[];
   equipmentClasses?: any[];
@@ -160,6 +162,39 @@ class CSVParser {
     });
     console.log('Parsed material definition properties:', parsed.length);
     return parsed;
+  }
+
+  parseMaterialClassProperties(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.MaterialClassPropertyId || r.id || '',
+      propertyName: r.PropertyName || '',
+      description: r.Description || '',
+      valueDataType: r.ValueDataType || '',
+      unit: r.Unit || '',
+      minValue: r.MinValue || '',
+      maxValue: r.MaxValue || '',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      version: 1,
+    })).filter(r => r.id.trim().length > 0);
+  }
+
+  parseMaterialClassPropertiesAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map((r, index) => {
+      const materialClassPropertyId = r.MaterialClassPropertyId || '';
+      const materialDefinitionPropertyId = r.MaterialDefinitionPropertyId || '';
+      const generatedId = `${materialClassPropertyId}_${materialDefinitionPropertyId}`;
+      return {
+        id: generatedId || `MCPA-${index + 1}`,
+        materialClassPropertyId,
+        materialDefinitionPropertyId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+      };
+    }).filter(r => r.materialClassPropertyId.trim().length > 0 && r.materialDefinitionPropertyId.trim().length > 0);
   }
 
   parseMaterialDefinitionPropertyAssignments(csvText: string): any[] {

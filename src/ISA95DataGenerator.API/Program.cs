@@ -12,6 +12,12 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
+
+// Increase max request body size for large source data uploads (500 MB)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 500_000_000;
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -47,6 +53,7 @@ builder.Services.AddSingleton<IScenarioService, ScenarioService>();
 builder.Services.AddScoped<ITestDataGeneratorService, TestDataGeneratorService>();
 builder.Services.AddScoped<IMappingFileService, MappingFileService>();
 builder.Services.AddScoped<MigrationProcessorService>();
+builder.Services.AddScoped<MigrationProcessorV2Service>();
 builder.Services.AddScoped<ProcessDataGenerationService>();
 
 var app = builder.Build();

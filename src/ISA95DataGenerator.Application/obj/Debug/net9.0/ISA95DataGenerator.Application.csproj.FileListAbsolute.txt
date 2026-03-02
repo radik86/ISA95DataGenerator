@@ -13,3 +13,4 @@ C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Application\obj\Debug\net9.0\refint\ISA95DataGenerator.Application.dll
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Application\obj\Debug\net9.0\ISA95DataGenerator.Application.pdb
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Application\obj\Debug\net9.0\ref\ISA95DataGenerator.Application.dll
+C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Application\obj\Debug\net9.0\ISA95DataGenerator.Application.sourcelink.json

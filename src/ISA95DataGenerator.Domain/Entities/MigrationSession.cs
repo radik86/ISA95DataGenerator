@@ -16,8 +16,10 @@ public class MigrationSession
     public int ProgressPercentage { get; set; }
     public string? ErrorMessage { get; set; }
     public string? ResultFilesPaths { get; set; } // JSON array of output file paths
+    public string? LogMessages { get; set; } // JSON array of log messages
     
     // Navigation properties
     public ICollection<SourceDataTable> SourceTables { get; set; } = new List<SourceDataTable>();
     public ICollection<EntityMapping> EntityMappings { get; set; } = new List<EntityMapping>();
+    public ICollection<MigrationSourceData> SourceDatas { get; set; } = new List<MigrationSourceData>();
 }

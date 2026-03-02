@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Material Sublots Migration</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+    h1 { color: #1976d2; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+    button { background: #1976d2; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #1565c0; }
+    button:disabled { background: #bbb; cursor: not-allowed; }
+    #log { background: #263238; color: #e0e0e0; padding: 16px; border-radius: 8px; max-height: 420px; overflow-y: auto; font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; white-space: pre-wrap; }
+    .ok { color: #4caf50; } .warn { color: #ff9800; } .err { color: #f44336; } .info { color: #42a5f5; }
+  </style>
+</head>
+<body>
+
+<h1>IndexedDB → SQL Migration (Material Sublots only)</h1>
+<p>This utility reads <strong>materialSublots</strong> from browser IndexedDB <code>master-data-db</code> and upserts them to SQL via <code>/api/masterdata/material-sublots</code>.</p>
+
+<div class="card">
+  <h2>Step 1: Scan IndexedDB</h2>
+  <button id="btnScan" onclick="scanSublots()">Scan materialSublots</button>
+  <p id="scanSummary">Not scanned yet.</p>
+</div>
+
+<div class="card">
+  <h2>Step 2: Migrate</h2>
+  <p>Target API: <code>http://localhost:5237/api/masterdata/material-sublots</code></p>
+  <button id="btnMigrate" onclick="migrateSublots()" disabled>Migrate materialSublots</button>
+  <p id="migrateSummary">No migration run yet.</p>
+</div>
+
+<div class="card">
+  <h2>Log</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+const DB_NAME = 'master-data-db';
+const DB_VERSION = 14;
+const STORE_NAME = 'materialSublots';
+const API_URL = 'http://localhost:5237/api/masterdata/material-sublots';
+
+let cachedSublots = [];
+
+function log(msg, cls = '') {
+  const el = document.getElementById('log');
+  const line = document.createElement('span');
+  line.className = cls;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function openIDB(dbName, version) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, version);
+    req.onupgradeneeded = () => { };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function readAllFromStore(db, storeName) {
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    } catch (e) {
+      resolve([]);
+    }
+  });
+}
+
+function toIsoStringOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function mapToApiModel(rec, idx) {
+  const id = rec.id || rec.Id || `materialSublot_${idx}_${Date.now()}`;
+  const materialLotId = rec.materialLotId || rec.MaterialLotId || '';
+  return {
+    id,
+    materialLotId,
+    quantity: Number(rec.quantity ?? rec.Quantity ?? 0),
+    quantityUnitOfMeasure: rec.quantityUnitOfMeasure ?? rec.QuantityUnitOfMeasure ?? '',
+    storageLocation: rec.storageLocation ?? rec.StorageLocation ?? null,
+    status: rec.status ?? rec.Status ?? null,
+    disposition: rec.disposition ?? rec.Disposition ?? null,
+    createdAt: toIsoStringOrNull(rec.createdAt ?? rec.CreatedAt) ?? new Date().toISOString(),
+    updatedAt: toIsoStringOrNull(rec.updatedAt ?? rec.UpdatedAt) ?? new Date().toISOString(),
+    version: Number(rec.version ?? rec.Version ?? 1)
+  };
+}
+
+async function scanSublots() {
+  const btnScan = document.getElementById('btnScan');
+  const btnMigrate = document.getElementById('btnMigrate');
+  btnScan.disabled = true;
+  btnMigrate.disabled = true;
+
+  try {
+    log(`Opening ${DB_NAME} (v${DB_VERSION})`, 'info');
+    const db = await openIDB(DB_NAME, DB_VERSION);
+    const stores = Array.from(db.objectStoreNames);
+    log(`Stores found: ${stores.join(', ') || '(none)'}`, 'info');
+
+    if (!stores.includes(STORE_NAME)) {
+      cachedSublots = [];
+      document.getElementById('scanSummary').textContent = `${STORE_NAME} store not found in ${DB_NAME}.`;
+      log(`Store ${STORE_NAME} not found.`, 'warn');
+      db.close();
+      return;
+    }
+
+    const records = await readAllFromStore(db, STORE_NAME);
+    db.close();
+
+    cachedSublots = records;
+    document.getElementById('scanSummary').textContent = `Found ${records.length.toLocaleString()} materialSublot record(s).`;
+    log(`${STORE_NAME}: ${records.length} records loaded from IndexedDB`, records.length > 0 ? 'ok' : 'warn');
+
+    btnMigrate.disabled = records.length === 0;
+  } catch (e) {
+    document.getElementById('scanSummary').textContent = `Scan failed: ${e.message}`;
+    log(`Scan failed: ${e.message}`, 'err');
+  } finally {
+    btnScan.disabled = false;
+  }
+}
+
+async function migrateSublots() {
+  const btnMigrate = document.getElementById('btnMigrate');
+  btnMigrate.disabled = true;
+
+  if (!cachedSublots.length) {
+    log('No scanned materialSublot records to migrate.', 'warn');
+    document.getElementById('migrateSummary').textContent = 'Nothing to migrate.';
+    btnMigrate.disabled = false;
+    return;
+  }
+
+  let success = 0;
+  let failed = 0;
+
+  try {
+    log(`Starting migration of ${cachedSublots.length} materialSublot record(s)...`, 'info');
+
+    for (let i = 0; i < cachedSublots.length; i++) {
+      const raw = cachedSublots[i];
+      const payload = mapToApiModel(raw, i);
+
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`HTTP ${res.status}: ${err}`);
+        }
+
+        success++;
+        if (success % 100 === 0) {
+          log(`Progress: ${success}/${cachedSublots.length} migrated`, 'info');
+        }
+      } catch (err) {
+        failed++;
+        log(`Failed id=${payload.id}: ${err.message}`, 'err');
+      }
+    }
+
+    const verify = await fetch(API_URL);
+    let sqlCount = '?';
+    if (verify.ok) {
+      const data = await verify.json();
+      sqlCount = Array.isArray(data) ? data.length : '?';
+    }
+
+    document.getElementById('migrateSummary').textContent =
+      `Done. Success: ${success}, Failed: ${failed}, SQL materialSublots count: ${sqlCount}.`;
+
+    log(`Migration complete. Success=${success}, Failed=${failed}, SQLCount=${sqlCount}`, failed === 0 ? 'ok' : 'warn');
+  } catch (e) {
+    document.getElementById('migrateSummary').textContent = `Migration failed: ${e.message}`;
+    log(`Migration failed: ${e.message}`, 'err');
+  } finally {
+    btnMigrate.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>

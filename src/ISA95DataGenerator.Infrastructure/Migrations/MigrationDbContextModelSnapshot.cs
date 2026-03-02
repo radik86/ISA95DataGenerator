@@ -62,6 +62,44 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.ToTable("EntityMappings");
                 });
 
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.GenericDataStore", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecordId")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("StoreName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreName");
+
+                    b.HasIndex("StoreName", "RecordId")
+                        .IsUnique();
+
+                    b.ToTable("GenericDataStores");
+                });
+
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.Crew", b =>
                 {
                     b.Property<string>("Id")
@@ -705,6 +743,90 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.HasIndex("Name");
 
                     b.ToTable("MaterialClasses");
+                });
+
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialClassProperty", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("MaxValue")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("MinValue")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PropertyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ValueDataType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MaterialClassProperties");
+                });
+
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialClassPropertyAssignment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("MaterialClassPropertyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("MaterialDefinitionPropertyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialClassPropertyId");
+
+                    b.HasIndex("MaterialDefinitionPropertyId");
+
+                    b.ToTable("MaterialClassPropertyAssignments");
                 });
 
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialDefinitionProperty", b =>
@@ -1479,6 +1601,9 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("LogMessages")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1511,6 +1636,38 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.HasIndex("Status");
 
                     b.ToTable("MigrationSessions");
+                });
+
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MigrationSourceData", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("MigrationSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RecordCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoreName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MigrationSessionId", "StoreName")
+                        .IsUnique();
+
+                    b.ToTable("MigrationSourceDatas");
                 });
 
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.ProcessData.EquipmentActual", b =>
@@ -2101,6 +2258,25 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.Navigation("MaterialClass");
                 });
 
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialClassPropertyAssignment", b =>
+                {
+                    b.HasOne("ISA95DataGenerator.Domain.Entities.MasterData.MaterialClassProperty", "MaterialClassProperty")
+                        .WithMany("Assignments")
+                        .HasForeignKey("MaterialClassPropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ISA95DataGenerator.Domain.Entities.MasterData.MaterialDefinitionProperty", "MaterialDefinitionProperty")
+                        .WithMany()
+                        .HasForeignKey("MaterialDefinitionPropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MaterialClassProperty");
+
+                    b.Navigation("MaterialDefinitionProperty");
+                });
+
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialDefinitionPropertyAssignment", b =>
                 {
                     b.HasOne("ISA95DataGenerator.Domain.Entities.MasterData.MaterialDefinitionProperty", "MaterialDefinitionProperty")
@@ -2218,6 +2394,17 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.Navigation("Shift");
                 });
 
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MigrationSourceData", b =>
+                {
+                    b.HasOne("ISA95DataGenerator.Domain.Entities.MigrationSession", "MigrationSession")
+                        .WithMany("SourceDatas")
+                        .HasForeignKey("MigrationSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MigrationSession");
+                });
+
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.ProcessData.EquipmentActual", b =>
                 {
                     b.HasOne("ISA95DataGenerator.Domain.Entities.ProcessData.JobOrder", "JobOrder")
@@ -2320,6 +2507,11 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
                     b.Navigation("Materials");
                 });
 
+            modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialClassProperty", b =>
+                {
+                    b.Navigation("Assignments");
+                });
+
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MasterData.MaterialDefinitionProperty", b =>
                 {
                     b.Navigation("Assignments");
@@ -2374,6 +2566,8 @@ namespace ISA95DataGenerator.Infrastructure.Migrations
             modelBuilder.Entity("ISA95DataGenerator.Domain.Entities.MigrationSession", b =>
                 {
                     b.Navigation("EntityMappings");
+
+                    b.Navigation("SourceDatas");
 
                     b.Navigation("SourceTables");
                 });
