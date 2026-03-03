@@ -39,7 +39,7 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     //  Public entry point
     // ────────────────────────────────────────────
-    public async Task ExecuteAsync(Guid sessionId, List<TableMappingDto> mappings, CancellationToken ct = default)
+    public async Task ExecuteAsync(Guid sessionId, List<TableMappingDto> mappings, int? maxFileSizeMb = null, CancellationToken ct = default)
     {
         var session = await _dbContext.MigrationSessions.FindAsync(new object[] { sessionId }, ct)
             ?? throw new InvalidOperationException($"Session {sessionId} not found");
@@ -116,6 +116,10 @@ public class MigrationProcessorV2Service
             var mappingSubDir = Path.Combine(sessionOutputDir, "mapping");
             Directory.CreateDirectory(mappingSubDir);
 
+            var clampedMaxFileSizeMb = Math.Clamp(maxFileSizeMb ?? 10, 1, 10);
+            var maxFileSizeBytes = clampedMaxFileSizeMb * 1024L * 1024L;
+            Log($"CSV split size limit: {clampedMaxFileSizeMb} MB");
+
             var outputFiles = new List<string>();
             int processedTotal = 0;
             int successCount = 0;
@@ -168,7 +172,7 @@ public class MigrationProcessorV2Service
                             mapping, filteredData, sortedMappings, allStoreData,
                             entityDataCache, Log);
 
-                        written = await WriteCsvFilesAsync(entityDisplayName, transformedData, targetDir, ct);
+                        written = await WriteCsvFilesAsync(entityDisplayName, transformedData, targetDir, maxFileSizeBytes, ct);
                         recordCount = transformedData.Count;
                     }
                     else if (bridgeFieldReqs.TryGetValue(mapping.TargetEntity, out var neededFields))
@@ -177,7 +181,7 @@ public class MigrationProcessorV2Service
                         var transformedData = ProcessRegularMapping(
                             mapping, filteredData, allStoreData, Log);
 
-                        written = await WriteCsvFilesAsync(entityDisplayName, transformedData, targetDir, ct);
+                        written = await WriteCsvFilesAsync(entityDisplayName, transformedData, targetDir, maxFileSizeBytes, ct);
                         recordCount = transformedData.Count;
 
                         // Cache ONLY the fields needed for bridge lookups (PK + join columns)
@@ -201,7 +205,7 @@ public class MigrationProcessorV2Service
                     {
                         // NOT bridge-referenced: stream transform → CSV directly, no in-memory list
                         var result = await StreamRegularMappingToCsvAsync(
-                            mapping, filteredData, allStoreData, entityDisplayName, targetDir, Log, ct);
+                            mapping, filteredData, allStoreData, entityDisplayName, targetDir, maxFileSizeBytes, Log, ct);
                         written = result.Files;
                         recordCount = result.RecordCount;
                     }
@@ -520,6 +524,7 @@ public class MigrationProcessorV2Service
         Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
         string entityDisplayName,
         string outputDir,
+        long maxFileSizeBytes,
         Action<string> log,
         CancellationToken ct)
     {
@@ -540,10 +545,13 @@ public class MigrationProcessorV2Service
         int totalRecords = 0;
 
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        int fileIndex = 1;
         var filePath = Path.Combine(outputDir, $"{entityDisplayName}_{timestamp}.csv");
-
-        await using var writer = new StreamWriter(filePath, append: false, encoding: System.Text.Encoding.UTF8, bufferSize: 65536);
+        var writer = new StreamWriter(filePath, append: false, encoding: System.Text.Encoding.UTF8, bufferSize: 65536);
         await writer.WriteLineAsync(string.Join(",", columns));
+        long currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+        int recordsInCurrentFile = 0;
+        files.Add(filePath);
 
         try
         {
@@ -593,7 +601,26 @@ public class MigrationProcessorV2Service
                         return $"\"{str.Replace("\"", "\"\"")}\"";
                     return str;
                 });
-                await writer.WriteLineAsync(string.Join(",", values));
+                var line = string.Join(",", values);
+                var lineBytes = System.Text.Encoding.UTF8.GetByteCount(line + Environment.NewLine);
+
+                if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
+                {
+                    await writer.FlushAsync(ct);
+                    await writer.DisposeAsync();
+
+                    fileIndex++;
+                    filePath = Path.Combine(outputDir, $"{entityDisplayName}_{timestamp}_{fileIndex:D2}.csv");
+                    writer = new StreamWriter(filePath, append: false, encoding: System.Text.Encoding.UTF8, bufferSize: 65536);
+                    await writer.WriteLineAsync(string.Join(",", columns));
+                    currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+                    recordsInCurrentFile = 0;
+                    files.Add(filePath);
+                }
+
+                await writer.WriteLineAsync(line);
+                currentFileBytes += lineBytes;
+                recordsInCurrentFile++;
                 totalRecords++;
 
                 // Periodic flush to avoid large buffered data
@@ -604,9 +631,9 @@ public class MigrationProcessorV2Service
         finally
         {
             await writer.FlushAsync(ct);
+            await writer.DisposeAsync();
         }
 
-        files.Add(filePath);
         return (files, totalRecords);
     }
 
@@ -1341,24 +1368,28 @@ public class MigrationProcessorV2Service
         string entityName,
         List<Dictionary<string, object?>> data,
         string outputDir,
+        long maxFileSizeBytes,
         CancellationToken ct)
     {
         var files = new List<string>();
         if (data.Count == 0) return files;
 
-        var path = await WriteSingleCsvAsync(entityName, data, outputDir, ct);
-        files.Add(path);
+        var paths = await WriteSingleCsvAsync(entityName, data, outputDir, maxFileSizeBytes, ct);
+        files.AddRange(paths);
 
         return files;
     }
 
-    private async Task<string> WriteSingleCsvAsync(
+    private async Task<List<string>> WriteSingleCsvAsync(
         string entityName,
         List<Dictionary<string, object?>> data,
         string outputDir,
+        long maxFileSizeBytes,
         CancellationToken ct)
     {
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        var files = new List<string>();
+        int fileIndex = 1;
         var fileName = $"{entityName}_{timestamp}.csv";
         var filePath = Path.Combine(outputDir, fileName);
 
@@ -1370,28 +1401,58 @@ public class MigrationProcessorV2Service
             columns.Insert(0, "PrimaryKey");
         }
 
-        await using var writer = new StreamWriter(filePath);
-
-        // Header
+        var writer = new StreamWriter(filePath);
         await writer.WriteLineAsync(string.Join(",", columns));
+        long currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+        int recordsInCurrentFile = 0;
+        files.Add(filePath);
 
         // Rows
-        foreach (var row in data)
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var values = columns.Select(col =>
+            foreach (var row in data)
             {
-                var val = row.GetValueOrDefault(col);
-                var str = FormatCsvValue(val);
-                // Quote if needed
-                if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
-                    return $"\"{str.Replace("\"", "\"\"")}\"";
-                return str;
-            });
-            await writer.WriteLineAsync(string.Join(",", values));
+                ct.ThrowIfCancellationRequested();
+                var values = columns.Select(col =>
+                {
+                    var val = row.GetValueOrDefault(col);
+                    var str = FormatCsvValue(val);
+                    // Quote if needed
+                    if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
+                        return $"\"{str.Replace("\"", "\"\"")}\"";
+                    return str;
+                });
+
+                var line = string.Join(",", values);
+                var lineBytes = System.Text.Encoding.UTF8.GetByteCount(line + Environment.NewLine);
+
+                if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
+                {
+                    await writer.FlushAsync();
+                    await writer.DisposeAsync();
+
+                    fileIndex++;
+                    fileName = $"{entityName}_{timestamp}_{fileIndex:D2}.csv";
+                    filePath = Path.Combine(outputDir, fileName);
+                    writer = new StreamWriter(filePath);
+                    await writer.WriteLineAsync(string.Join(",", columns));
+                    currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+                    recordsInCurrentFile = 0;
+                    files.Add(filePath);
+                }
+
+                await writer.WriteLineAsync(line);
+                currentFileBytes += lineBytes;
+                recordsInCurrentFile++;
+            }
+        }
+        finally
+        {
+            await writer.FlushAsync();
+            await writer.DisposeAsync();
         }
 
-        return filePath;
+        return files;
     }
 
     private static string FormatCsvValue(object? val)

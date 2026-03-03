@@ -171,6 +171,7 @@ const DataMigration: React.FC = () => {
   const [tableMappings, setTableMappings] = useState<TableMapping[]>([]);
   const [loadedMappingsCount, setLoadedMappingsCount] = useState<number | null>(null);
   const [migrationProgress, setMigrationProgress] = useState(0);
+  const [maxSplitFileSizeMB, setMaxSplitFileSizeMB] = useState(10);
   const [migrationLog, setMigrationLog] = useState<string[]>([]);
   const [failedMigrationItems, setFailedMigrationItems] = useState<string[]>([]);
   const [skippedMigrationItems, setSkippedMigrationItems] = useState<string[]>([]);
@@ -5443,7 +5444,7 @@ const DataMigration: React.FC = () => {
         });
         
         try {
-          await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge);
+          await saveToISA95CSV(entityDisplayName, transformedData, directoryHandle, mapping.isBridge, maxSplitFileSizeMB);
           log(`✓ Completed: ${mapping.sourceTable} -> ${entityDisplayName} (${transformedData.length} records)`);
           
           // Small delay between file saves to prevent directory handle staleness
@@ -5819,7 +5820,7 @@ const DataMigration: React.FC = () => {
 
       // 3. Execute migration on the server
       log('Starting server-side migration processing...');
-      await migrationApi.executeMigration(sessionId, tableMappings);
+      await migrationApi.executeMigration(sessionId, tableMappings, maxSplitFileSizeMB);
       log('Migration processing started on server');
 
       // 4. Poll for progress
@@ -6225,7 +6226,7 @@ const DataMigration: React.FC = () => {
     throw new Error(`Unknown table: ${tableName}`);
   };
 
-  const saveToISA95CSV = async (entityName: string, data: any[], directoryHandle: any, isBridge: boolean = false): Promise<void> => {
+  const saveToISA95CSV = async (entityName: string, data: any[], directoryHandle: any, isBridge: boolean = false, splitSizeMB: number = 10): Promise<void> => {
     console.log(`[CSV Save] Attempting to save ${entityName}:`, {
       isBridge,
       dataLength: data.length,
@@ -6239,19 +6240,24 @@ const DataMigration: React.FC = () => {
       return;
     }
 
-    // Define threshold for splitting large tables into multiple CSV files
-    const FILE_SPLIT_THRESHOLD = 50000; // Split if more than 50k records
-    const RECORDS_PER_FILE = 50000; // Each file will contain max 50k records
+    const clampedSplitSizeMB = Math.min(10, Math.max(1, Number(splitSizeMB) || 10));
+    const maxFileSizeBytes = clampedSplitSizeMB * 1024 * 1024;
+
+    const estimatedBytesPerRecord = Math.max(
+      100,
+      Math.ceil((JSON.stringify(data[0] || {}).length + 2) * 1.2)
+    );
+    const recordsPerFile = Math.max(1, Math.floor(maxFileSizeBytes / estimatedBytesPerRecord));
     
     // Check if we need to split into multiple files
-    if (data.length > FILE_SPLIT_THRESHOLD) {
-      const fileCount = Math.ceil(data.length / RECORDS_PER_FILE);
-      console.log(`[CSV Save] Large table detected (${data.length} records). Splitting into ${fileCount} files...`);
+    if (data.length > recordsPerFile) {
+      const fileCount = Math.ceil(data.length / recordsPerFile);
+      console.log(`[CSV Save] Large table detected (${data.length} records). Splitting into ${fileCount} files by ~${clampedSplitSizeMB}MB...`);
       
       // Save each chunk as a separate file
       for (let fileIndex = 0; fileIndex < fileCount; fileIndex++) {
-        const startIdx = fileIndex * RECORDS_PER_FILE;
-        const endIdx = Math.min(startIdx + RECORDS_PER_FILE, data.length);
+        const startIdx = fileIndex * recordsPerFile;
+        const endIdx = Math.min(startIdx + recordsPerFile, data.length);
         const chunk = data.slice(startIdx, endIdx);
         
         // Add suffix to filename: EntityName_01, EntityName_02, etc.
@@ -7701,6 +7707,30 @@ const DataMigration: React.FC = () => {
           <Alert severity="info" sx={{ mb: 3 }}>
             {tableMappings.filter(m => m.enabled).length} table mappings will be processed
           </Alert>
+
+          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Output Split Settings
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TextField
+                label="Max split file size (MB)"
+                type="number"
+                size="small"
+                value={maxSplitFileSizeMB}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (Number.isNaN(value)) return;
+                  setMaxSplitFileSizeMB(Math.min(10, Math.max(1, value)));
+                }}
+                inputProps={{ min: 1, max: 10, step: 1 }}
+                sx={{ width: 220 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Server and browser migration split large CSV files using this limit (max 10 MB).
+              </Typography>
+            </Box>
+          </Paper>
 
           <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
             <Table size="small">

@@ -110,11 +110,11 @@ export const migrationApi = {
    * Start backend migration execution.
    * @param mappings The full table-mapping configuration array from the frontend.
    */
-  async executeMigration(sessionId: string, mappings: any[]): Promise<{ message: string; sessionId: string }> {
+  async executeMigration(sessionId: string, mappings: any[], maxFileSizeMb?: number): Promise<{ message: string; sessionId: string }> {
     const res = await fetch(`${API_BASE_URL}/session/${sessionId}/execute-v2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mappings }),
+      body: JSON.stringify({ mappings, maxFileSizeMb }),
     });
     if (!res.ok) throw new Error(`Execute failed: ${await res.text()}`);
     return res.json();

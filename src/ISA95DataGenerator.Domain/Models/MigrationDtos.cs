@@ -22,6 +22,7 @@ public class UploadStoreDataRequest
 public class ExecuteMigrationRequest
 {
     public List<TableMappingDto> Mappings { get; set; } = new();
+    public int? MaxFileSizeMb { get; set; }
 }
 
 /// <summary>
