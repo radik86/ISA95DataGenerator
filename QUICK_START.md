@@ -168,6 +168,12 @@ policy.WithOrigins("http://localhost:YOUR_PORT")
    - Use mapping file for integration
    - Import into your test environment
 
+5. **Run Mappings in Microsoft Fabric (PySpark)**
+   - Use notebook: `templates/fabric/ISA95_Fabric_Migration.ipynb`
+   - Use runner script: `templates/fabric/isa95_pyspark_migration.py`
+   - Follow setup guide: `templates/fabric/FABRIC_PYSPARK_MIGRATION.md`
+   - Input is the same exported mapping JSON from Data Migration UI
+
 ---
 
 ## 🎓 Advanced Tips

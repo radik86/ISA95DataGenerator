@@ -167,3 +167,23 @@ ZIP file containing:
 - The code compiles successfully (Domain, Application, and Infrastructure layers built without errors)
 - Simply stop the API, rebuild, and restart to apply changes
 - All frontend code is already complete and sends correct data structure
+
+## Microsoft Fabric (PySpark) Migration Option
+
+In addition to running Data Migration inside the web application, you can now execute the same mapping configuration with PySpark in Microsoft Fabric.
+
+### Assets
+- `templates/fabric/isa95_pyspark_migration.py` — PySpark migration runner
+- `templates/fabric/ISA95_Fabric_Migration.ipynb` — ready-to-run Fabric notebook
+- `templates/fabric/FABRIC_PYSPARK_MIGRATION.md` — setup and usage guide
+
+### Input/Output Model
+- **Input:** exported Data Migration JSON config (`Export Config` as JSON) + source tables (CSV/JSON/Parquet)
+- **Output:**
+    - source-to-entity CSV folders under `<output_base>/<targetEntity>`
+    - entity-to-entity mapping CSV folders under `<output_base>/mapping/<targetEntity>`
+
+### Why use this path
+- Run large mapping workloads directly on Fabric Spark compute
+- Reuse existing mapping logic and configuration outside the browser runtime
+- Get failed/skipped mapping summaries in notebook execution output

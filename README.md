@@ -72,6 +72,27 @@ Update `appsettings.json` to set the metadata path:
 }
 ```
 
+## ☁️ Microsoft Fabric (PySpark) Data Migration
+
+You can run Data Migration mappings outside the web UI using the Fabric-ready PySpark assets.
+
+### Included assets
+- `templates/fabric/isa95_pyspark_migration.py` — PySpark migration runner
+- `templates/fabric/ISA95_Fabric_Migration.ipynb` — ready-to-run Fabric notebook
+- `templates/fabric/FABRIC_PYSPARK_MIGRATION.md` — usage guide
+
+### What this supports
+- Source-to-entity mapping generation from exported mapping JSON config
+- Entity-to-entity (bridge) mapping generation
+- Mapping filters, field rules, and primary-key rules from the existing configuration format
+- Failed/skipped item summaries for batch runs
+
+### Typical flow
+1. Export mapping config from UI as JSON (`Export Config`)
+2. Upload `isa95_pyspark_migration.py`, config JSON, and source tables to Fabric Lakehouse Files
+3. Open `ISA95_Fabric_Migration.ipynb` in Fabric and update paths in the configuration cell
+4. Run notebook cells to generate output CSV folders
+
 ## 📡 API Endpoints
 
 ### Entities
