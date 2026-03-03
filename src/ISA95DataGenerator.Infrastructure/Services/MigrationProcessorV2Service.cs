@@ -121,6 +121,8 @@ public class MigrationProcessorV2Service
             int successCount = 0;
             int failCount = 0;
             int skippedCount = 0;
+            var skippedItems = new List<string>();
+            var failedItems = new List<string>();
 
             // Slim cache for transformed entity data (used by bridge tables)
             // Only stores PrimaryKey + join fields, NOT full transformed records
@@ -141,6 +143,7 @@ public class MigrationProcessorV2Service
                     {
                         Log($"  ⚠ Source table '{mapping.SourceTable}' empty or not found — skipping");
                         skippedCount++;
+                        skippedItems.Add($"{mapping.SourceTable} → {mapping.TargetEntity}");
 
                         // Still decrement use count
                         if (sourceTableUseCount.ContainsKey(mapping.SourceTable))
@@ -227,6 +230,7 @@ public class MigrationProcessorV2Service
                     Log($"  ❌ Failed: {ex.Message}");
                     _logger.LogError(ex, "Mapping {SourceTable} → {TargetEntity} failed", mapping.SourceTable, mapping.TargetEntity);
                     failCount++;
+                    failedItems.Add($"{mapping.SourceTable} → {mapping.TargetEntity} | {ex.Message}");
                 }
             }
 
@@ -249,6 +253,25 @@ public class MigrationProcessorV2Service
 
             Log("─────────────────────────────────");
             Log($"Migration complete! ✓ {successCount} successful, ❌ {failCount} failed, ⚠ {skippedCount} skipped");
+
+            if (failedItems.Count > 0)
+            {
+                Log("Failed mappings:");
+                foreach (var failed in failedItems)
+                {
+                    Log($"  - {failed}");
+                }
+            }
+
+            if (skippedItems.Count > 0)
+            {
+                Log("Skipped mappings:");
+                foreach (var skipped in skippedItems)
+                {
+                    Log($"  - {skipped}");
+                }
+            }
+
             await SaveSession(session, logMessages, ct);
 
             _logger.LogInformation("Migration {SessionId} completed", sessionId);

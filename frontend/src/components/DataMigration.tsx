@@ -172,6 +172,8 @@ const DataMigration: React.FC = () => {
   const [loadedMappingsCount, setLoadedMappingsCount] = useState<number | null>(null);
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [migrationLog, setMigrationLog] = useState<string[]>([]);
+  const [failedMigrationItems, setFailedMigrationItems] = useState<string[]>([]);
+  const [skippedMigrationItems, setSkippedMigrationItems] = useState<string[]>([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [selectedSourceTable, setSelectedSourceTable] = useState('');
   const [selectedTargetEntity, setSelectedTargetEntity] = useState('');
@@ -4463,6 +4465,8 @@ const DataMigration: React.FC = () => {
   const executeMigration = async () => {
     setMigrationProgress(0);
     setMigrationLog([]);
+    setFailedMigrationItems([]);
+    setSkippedMigrationItems([]);
 
     const log = (message: string) => {
       setMigrationLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
@@ -4600,6 +4604,8 @@ const DataMigration: React.FC = () => {
 
       let failedMappingsCount = 0;
       let successfulMappingsCount = 0;
+      const failedItems: string[] = [];
+      const skippedItems: string[] = [];
       
       // Track memory usage
       const logMemoryUsage = () => {
@@ -4641,6 +4647,7 @@ const DataMigration: React.FC = () => {
         const mapping = sortedMappings[i];
         if (!mapping.enabled) {
           log(`Skipping disabled mapping: ${mapping.sourceTable} -> ${mapping.targetEntity}`);
+          skippedItems.push(`${mapping.sourceTable} → ${mapping.targetEntity} | Disabled mapping`);
           continue;
         }
 
@@ -4674,6 +4681,7 @@ const DataMigration: React.FC = () => {
               lookingFor: mapping.sourceTable,
               availableTables: dataSource?.tables.map(t => t.name)
             });
+            skippedItems.push(`${mapping.sourceTable} → ${mapping.targetEntity} | Source table not found`);
             continue;
           }
 
@@ -5444,6 +5452,7 @@ const DataMigration: React.FC = () => {
           console.error(`[CSV Save Error] Failed to save ${entityDisplayName}:`, csvError);
           log(`❌ Error saving CSV for ${entityDisplayName}: ${csvError.message}`);
           failedMappingsCount++;
+          failedItems.push(`${mapping.sourceTable} → ${mapping.targetEntity} | ${csvError.message}`);
           
           // Try to recover and continue with next mapping
           const errorMsg = `Failed to save ${entityDisplayName}: ${csvError.message}. Continuing with remaining mappings...`;
@@ -5525,6 +5534,7 @@ const DataMigration: React.FC = () => {
             isMemoryError
           });
           failedMappingsCount++;
+          failedItems.push(`${mapping.sourceTable} → ${mapping.targetEntity} | ${errorMessage}`);
           
           // Clear cache on error to free memory
           entityDataCache.clear();
@@ -5546,6 +5556,9 @@ const DataMigration: React.FC = () => {
         log('⚠️  Please review the errors above');
       }
 
+      setFailedMigrationItems(failedItems);
+      setSkippedMigrationItems(skippedItems);
+
       log('Migration completed successfully!');
       showSnackbar('Migration completed successfully', 'success');
     } catch (error) {
@@ -5565,9 +5578,102 @@ const DataMigration: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════
   //  SERVER-SIDE MIGRATION (V2) — All heavy processing on backend
   // ═══════════════════════════════════════════════════════════════
+  const parseIssueListsFromServerLog = (serverLog: string[]) => {
+    const failedItems = new Set<string>();
+    const skippedItems = new Set<string>();
+    let section: 'failed' | 'skipped' | null = null;
+    let currentMapping: { source: string; target: string } | null = null;
+
+    const normalizeLogLine = (rawLine: string) =>
+      rawLine
+        .replace(/^\d{1,2}:\d{2}:\d{2}\s?(AM|PM)?\s*:\s*/i, '')
+        .replace(/^\[Server\]\s*/i, '')
+        .replace(/^\d{2}:\d{2}:\d{2}:\s*/, '')
+        .trim();
+
+    for (const rawLine of serverLog) {
+      const line = normalizeLogLine(rawLine);
+
+      const mappingMatch = line.match(/^\[\d+\/\d+\]\s+(.+?)\s*(?:→|->)\s*(.+?)(?:\s+\(BRIDGE\))?$/);
+      if (mappingMatch) {
+        currentMapping = {
+          source: mappingMatch[1].trim(),
+          target: mappingMatch[2].trim(),
+        };
+      }
+
+      if (line.toLowerCase() === 'failed mappings:') {
+        section = 'failed';
+        continue;
+      }
+
+      if (line.toLowerCase() === 'skipped mappings:') {
+        section = 'skipped';
+        continue;
+      }
+
+      if (!section) {
+        if (line.includes('empty or not found') && line.includes('skipping') && currentMapping) {
+          skippedItems.add(`${currentMapping.source} → ${currentMapping.target} | Source table empty or not found`);
+        }
+
+        if (line.startsWith('❌ Failed:') && currentMapping) {
+          const reason = line.replace(/^❌\s*Failed:\s*/i, '').trim();
+          failedItems.add(`${currentMapping.source} → ${currentMapping.target} | ${reason || 'Processing failed'}`);
+        }
+
+        continue;
+      }
+
+      if (line.startsWith('- ')) {
+        const item = line.substring(2).trim();
+        if (item) {
+          if (section === 'failed') {
+            failedItems.add(item);
+          } else {
+            skippedItems.add(item);
+          }
+        }
+      } else {
+        section = null;
+      }
+    }
+
+    return {
+      failedItems: Array.from(failedItems),
+      skippedItems: Array.from(skippedItems),
+    };
+  };
+
+  const parseIssueCountsFromMigrationLog = (logLines: string[]) => {
+    let failedCount = 0;
+    let skippedCount = 0;
+
+    const normalizeLogLine = (rawLine: string) =>
+      rawLine
+        .replace(/^\d{1,2}:\d{2}:\d{2}\s?(AM|PM)?\s*:\s*/i, '')
+        .replace(/^\[Server\]\s*/i, '')
+        .replace(/^\d{2}:\d{2}:\d{2}:\s*/, '')
+        .trim();
+
+    for (const rawLine of logLines) {
+      const line = normalizeLogLine(rawLine);
+
+      const summaryMatch = line.match(/Migration complete!.*❌\s*(\d+)\s*failed,\s*⚠\s*(\d+)\s*skipped/i);
+      if (summaryMatch) {
+        failedCount = parseInt(summaryMatch[1] || '0', 10);
+        skippedCount = parseInt(summaryMatch[2] || '0', 10);
+      }
+    }
+
+    return { failedCount, skippedCount };
+  };
+
   const executeServerMigration = async () => {
     setMigrationProgress(0);
     setMigrationLog([]);
+    setFailedMigrationItems([]);
+    setSkippedMigrationItems([]);
     setLoading(true);
 
     const log = (message: string) => {
@@ -5733,6 +5839,12 @@ const DataMigration: React.FC = () => {
               log(`[Server] ${status.log[li]}`);
             }
             lastLogIndex = status.log.length;
+          }
+
+          if (status.log && status.log.length > 0) {
+            const { failedItems, skippedItems } = parseIssueListsFromServerLog(status.log);
+            setFailedMigrationItems(failedItems);
+            setSkippedMigrationItems(skippedItems);
           }
 
           // Update progress (30-100% range for server processing)
@@ -7640,6 +7752,67 @@ const DataMigration: React.FC = () => {
               ))}
             </Paper>
           )}
+
+          {(() => {
+            const parsedFromVisibleLog = parseIssueListsFromServerLog(migrationLog);
+            const effectiveFailedItems = failedMigrationItems.length > 0 ? failedMigrationItems : parsedFromVisibleLog.failedItems;
+            const effectiveSkippedItems = skippedMigrationItems.length > 0 ? skippedMigrationItems : parsedFromVisibleLog.skippedItems;
+            const { failedCount, skippedCount } = parseIssueCountsFromMigrationLog(migrationLog);
+
+            const shouldShowSummary =
+              effectiveFailedItems.length > 0 ||
+              effectiveSkippedItems.length > 0 ||
+              failedCount > 0 ||
+              skippedCount > 0;
+
+            if (!shouldShowSummary) {
+              return null;
+            }
+
+            return (
+            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Migration Issues Summary
+              </Typography>
+
+              {(effectiveFailedItems.length > 0 || failedCount > 0) && (
+                <Box sx={{ mb: (effectiveSkippedItems.length > 0 || skippedCount > 0) ? 2 : 0 }}>
+                  <Typography variant="body2" color="error" sx={{ fontWeight: 600, mb: 1 }}>
+                    Failed Mappings ({Math.max(failedCount, effectiveFailedItems.length)})
+                  </Typography>
+                  {effectiveFailedItems.map((item, index) => (
+                    <Typography key={`failed-${index}`} variant="caption" display="block" sx={{ fontFamily: 'monospace' }}>
+                      • {item}
+                    </Typography>
+                  ))}
+                  {effectiveFailedItems.length === 0 && failedCount > 0 && (
+                    <Typography variant="caption" display="block" sx={{ fontStyle: 'italic' }}>
+                      Details not returned by server log for this run.
+                    </Typography>
+                  )}
+                </Box>
+              )}
+
+              {(effectiveSkippedItems.length > 0 || skippedCount > 0) && (
+                <Box>
+                  <Typography variant="body2" color="warning.main" sx={{ fontWeight: 600, mb: 1 }}>
+                    Skipped Mappings ({Math.max(skippedCount, effectiveSkippedItems.length)})
+                  </Typography>
+                  {effectiveSkippedItems.map((item, index) => (
+                    <Typography key={`skipped-${index}`} variant="caption" display="block" sx={{ fontFamily: 'monospace' }}>
+                      • {item}
+                    </Typography>
+                  ))}
+                  {effectiveSkippedItems.length === 0 && skippedCount > 0 && (
+                    <Typography variant="caption" display="block" sx={{ fontStyle: 'italic' }}>
+                      Details not returned by server log for this run.
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Paper>
+            );
+          })()}
 
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <Button
