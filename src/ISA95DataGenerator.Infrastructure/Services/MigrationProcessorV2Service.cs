@@ -161,6 +161,7 @@ public class MigrationProcessorV2Service
                         Log($"  Filtered: {sourceData.Count} → {filteredData.Count} records");
 
                     var entityDisplayName = mapping.TargetEntity;
+                    var entityOutputName = FormatEntityNameForOutput(mapping.TargetEntity);
                     var targetDir = mapping.IsBridge ? mappingSubDir : sessionOutputDir;
                     int recordCount;
                     List<string> written;
@@ -172,7 +173,7 @@ public class MigrationProcessorV2Service
                             mapping, filteredData, sortedMappings, allStoreData,
                             entityDataCache, Log);
 
-                        written = await WriteCsvFilesAsync(entityDisplayName, transformedData, targetDir, maxFileSizeBytes, ct);
+                        written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
                         recordCount = transformedData.Count;
                     }
                     else if (bridgeFieldReqs.TryGetValue(mapping.TargetEntity, out var neededFields))
@@ -181,7 +182,7 @@ public class MigrationProcessorV2Service
                         var transformedData = ProcessRegularMapping(
                             mapping, filteredData, allStoreData, Log);
 
-                        written = await WriteCsvFilesAsync(entityDisplayName, transformedData, targetDir, maxFileSizeBytes, ct);
+                        written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
                         recordCount = transformedData.Count;
 
                         // Cache ONLY the fields needed for bridge lookups (PK + join columns)
@@ -205,7 +206,7 @@ public class MigrationProcessorV2Service
                     {
                         // NOT bridge-referenced: stream transform → CSV directly, no in-memory list
                         var result = await StreamRegularMappingToCsvAsync(
-                            mapping, filteredData, allStoreData, entityDisplayName, targetDir, maxFileSizeBytes, Log, ct);
+                            mapping, filteredData, allStoreData, entityOutputName, targetDir, maxFileSizeBytes, Log, ct);
                         written = result.Files;
                         recordCount = result.RecordCount;
                     }
@@ -713,6 +714,8 @@ public class MigrationProcessorV2Service
     {
         var entity1Name = mapping.BridgeEntity1 ?? "";
         var entity2Name = mapping.BridgeEntity2 ?? "";
+        var entity1DisplayName = FormatEntityNameForOutput(entity1Name);
+        var entity2DisplayName = FormatEntityNameForOutput(entity2Name);
 
         // Get combined transformed data for both entities (from cache built during regular processing)
         var entity1Data = GetOrBuildEntityData(entity1Name, allMappings, allStoreData, entityDataCache);
@@ -732,9 +735,9 @@ public class MigrationProcessorV2Service
             var record = bridgeSourceData[idx];
             var transformed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Source type"] = entity1Name,
+                ["Source type"] = entity1DisplayName,
                 ["Source PrimaryKey"] = "",
-                ["Target Type"] = entity2Name,
+                ["Target Type"] = entity2DisplayName,
                 ["Target PrimaryKey"] = "",
                 ["Relationship Type"] = mapping.RelationshipType ?? "related"
             };
@@ -1461,6 +1464,46 @@ public class MigrationProcessorV2Service
         if (val is DateTime dt) return dt.ToString("O"); // ISO 8601
         if (val is DateTimeOffset dto) return dto.ToString("O");
         return val.ToString() ?? "";
+    }
+
+    private static string FormatEntityNameForOutput(string? entityName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName))
+            return string.Empty;
+
+        if (entityName.Contains("_to_", StringComparison.OrdinalIgnoreCase)
+            && entityName.EndsWith("_mapping", StringComparison.OrdinalIgnoreCase))
+        {
+            var mappingSuffixLength = "_mapping".Length;
+            var withoutSuffix = entityName[..^mappingSuffixLength];
+            var split = withoutSuffix.Split(new[] { "_to_" }, 2, StringSplitOptions.None);
+
+            if (split.Length == 2)
+            {
+                var sourceEntity = FormatSimpleEntityLabel(split[0]);
+                var targetEntity = FormatSimpleEntityLabel(split[1]);
+                return $"{sourceEntity}_to_{targetEntity}_mapping";
+            }
+        }
+
+        return FormatSimpleEntityLabel(entityName);
+    }
+
+    private static string FormatSimpleEntityLabel(string entityName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName))
+            return string.Empty;
+
+        var spaced = entityName
+            .Replace("_", " ")
+            .Replace("-", " ");
+
+        spaced = Regex.Replace(spaced, "([a-z0-9])([A-Z])", "$1 $2");
+        spaced = Regex.Replace(spaced, "([A-Z]+)([A-Z][a-z])", "$1 $2");
+        spaced = Regex.Replace(spaced, "\\s+", " ").Trim();
+
+        var normalized = spaced.ToLowerInvariant();
+        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized);
     }
 
     // ────────────────────────────────────────────
