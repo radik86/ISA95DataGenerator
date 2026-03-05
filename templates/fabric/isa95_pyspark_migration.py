@@ -14,15 +14,51 @@ from pyspark.sql import DataFrame, SparkSession, functions as F
 
 @dataclass
 class MigrationResult:
+    """Aggregated outcome of one migration run, including output and log metadata."""
     successful: int
     failed: int
     skipped: int
     failed_items: List[str]
     skipped_items: List[str]
     outputs: List[str]
+    version_id: str
+    run_output_path: str
+    log_file_path: str
+
+
+def _utc_now_iso() -> str:
+    """Return current UTC timestamp in ISO-like format used in run/item logs."""
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _write_run_log(
+    logs_dir: str,
+    version_id: str,
+    run_started_at: str,
+    run_ended_at: str,
+    summary: Dict[str, Any],
+    items: List[Dict[str, Any]],
+) -> str:
+    """Write a structured JSON ingestion log for a single migration run."""
+    os.makedirs(logs_dir, exist_ok=True)
+    log_file_path = os.path.join(logs_dir, f"ingestion_log_{version_id}.json")
+
+    payload = {
+        "version_id": version_id,
+        "run_started_at": run_started_at,
+        "run_ended_at": run_ended_at,
+        "summary": summary,
+        "items": items,
+    }
+
+    with open(log_file_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+    return log_file_path
 
 
 def _ci_get(record: Dict[str, Any], key: str, default: Any = None) -> Any:
+    """Case-insensitive dictionary lookup helper."""
     if key in record:
         return record[key]
     lk = key.lower()
@@ -33,12 +69,14 @@ def _ci_get(record: Dict[str, Any], key: str, default: Any = None) -> Any:
 
 
 def _to_str(v: Any) -> str:
+    """Convert value to string while treating None as empty string."""
     if v is None:
         return ""
     return str(v)
 
 
 def _to_float(v: Any, default: float = 0.0) -> float:
+    """Safely convert value to float, returning a default on failure."""
     try:
         return float(v)
     except Exception:
@@ -46,6 +84,7 @@ def _to_float(v: Any, default: float = 0.0) -> float:
 
 
 def _to_int(v: Any, default: int = 0) -> int:
+    """Safely convert value to int, returning a default on failure."""
     try:
         return int(v)
     except Exception:
@@ -53,6 +92,7 @@ def _to_int(v: Any, default: int = 0) -> int:
 
 
 def _apply_filters(df: DataFrame, filters: Optional[List[Dict[str, Any]]]) -> DataFrame:
+    """Apply configured frontend-style filters to a Spark DataFrame."""
     if not filters:
         return df
 
@@ -99,6 +139,7 @@ def _apply_filters(df: DataFrame, filters: Optional[List[Dict[str, Any]]]) -> Da
 
 
 def _eval_condition(value: str, condition: str) -> bool:
+    """Evaluate If/Then condition expressions used by rule processing."""
     cond = (condition or "").strip()
     if not cond:
         return False
@@ -129,6 +170,7 @@ def _eval_condition(value: str, condition: str) -> bool:
 
 
 def _replace_placeholders(template: str, record: Dict[str, Any]) -> str:
+    """Replace {field} placeholders in templates with source-record values."""
     out = template or ""
     for k, v in record.items():
         out = out.replace("{" + str(k) + "}", _to_str(v))
@@ -136,6 +178,7 @@ def _replace_placeholders(template: str, record: Dict[str, Any]) -> str:
 
 
 def _resolve_lookup(source_record: Dict[str, Any], rule: Dict[str, Any], lookup_tables: Dict[str, List[Dict[str, Any]]]) -> Any:
+    """Resolve one-step lookup rules against preloaded lookup tables."""
     params = rule.get("parameters") or {}
     table_name = params.get("sourceTable") or params.get("lookupTable")
     return_field = params.get("returnField") or ""
@@ -186,6 +229,7 @@ def _resolve_lookup(source_record: Dict[str, Any], rule: Dict[str, Any], lookup_
 
 
 def _resolve_multiple_lookups(source_record: Dict[str, Any], rule: Dict[str, Any], lookup_tables: Dict[str, List[Dict[str, Any]]]) -> Any:
+    """Resolve chained lookup rules where each step feeds the next step."""
     params = rule.get("parameters") or {}
     steps = params.get("lookupSteps") or []
     default_value = params.get("defaultValue", "")
@@ -251,6 +295,7 @@ def _resolve_multiple_lookups(source_record: Dict[str, Any], rule: Dict[str, Any
 
 
 def _apply_field_rule(rule: Dict[str, Any], source_record: Dict[str, Any], index: int, transformed: Dict[str, Any]) -> Any:
+    """Apply a non-PK field rule to generate a transformed field value."""
     if not rule:
         return ""
 
@@ -353,6 +398,7 @@ def _apply_pk_rule(
     lookup_tables: Dict[str, List[Dict[str, Any]]],
     sequence_counter_ref: Dict[str, int],
 ) -> Any:
+    """Apply PK rule logic, including stateful sequence handling."""
     if not pk_rule:
         return ""
 
@@ -392,6 +438,7 @@ def _apply_pk_rule(
 
 
 def _extract_lookup_table_names(mapping: Dict[str, Any]) -> List[str]:
+    """Collect lookup table names referenced by a mapping's field and PK rules."""
     names = set()
 
     def collect(rule: Optional[Dict[str, Any]]) -> None:
@@ -417,6 +464,7 @@ def _extract_lookup_table_names(mapping: Dict[str, Any]) -> List[str]:
 
 
 def _build_bridge_key(record: Dict[str, Any], join_fields: List[Dict[str, Any]], from_bridge: bool) -> str:
+    """Build normalized join keys for bridge-table resolution."""
     parts = []
     for jf in join_fields:
         field_name = jf.get("bridgeField") if from_bridge else jf.get("entityField")
@@ -440,6 +488,7 @@ def _load_source_table(
     source_format: str,
     debug: bool = True,
 ) -> Optional[DataFrame]:
+    """Load one source table using Spark with robust path and format fallbacks."""
     entries: List[str] = []
     try:
         entries = os.listdir(source_base_path)
@@ -513,6 +562,7 @@ def _load_source_table(
 
 
 def _to_rows(df: DataFrame) -> List[Dict[str, Any]]:
+    """Materialize a DataFrame into Python dictionaries for rule-based processing."""
     return [r.asDict(recursive=True) for r in df.collect()]
 
 
@@ -522,6 +572,7 @@ def _transform_regular_mapping(
     source_df: DataFrame,
     lookup_tables: Dict[str, List[Dict[str, Any]]],
 ) -> DataFrame:
+    """Transform a regular (non-bridge) mapping into ISA95 entity rows."""
     filtered_df = _apply_filters(source_df, mapping.get("filters"))
     source_rows = _to_rows(filtered_df)
 
@@ -569,6 +620,7 @@ def _build_entity_cache_for_bridge(
     all_source_dfs: Dict[str, DataFrame],
     target_entity: str,
 ) -> List[Dict[str, Any]]:
+    """Build transformed entity rows used as lookup cache by bridge mappings."""
     rows: List[Dict[str, Any]] = []
 
     entity_mappings = [m for m in mappings if not m.get("isBridge") and m.get("targetEntity") == target_entity and m.get("enabled", True)]
@@ -596,6 +648,7 @@ def _transform_bridge_mapping(
     all_mappings: List[Dict[str, Any]],
     all_source_dfs: Dict[str, DataFrame],
 ) -> DataFrame:
+    """Transform bridge mappings into source-target relationship rows."""
     filtered_df = _apply_filters(source_df, mapping.get("filters"))
     source_rows = _to_rows(filtered_df)
 
@@ -645,6 +698,7 @@ def _transform_bridge_mapping(
 
 
 def _write_output_csv(df: DataFrame, output_path: str) -> str:
+    """Write a DataFrame as Spark CSV output folder (legacy helper)."""
     local_path = output_path
     if local_path.startswith("file:"):
         local_path = local_path[len("file:"):]
@@ -667,6 +721,7 @@ def _write_output_csv(df: DataFrame, output_path: str) -> str:
 
 
 def _format_entity_name_for_output(entity_name: str) -> str:
+    """Normalize entity names into spaced title-case labels for outputs."""
     if not entity_name:
         return ""
 
@@ -678,6 +733,7 @@ def _format_entity_name_for_output(entity_name: str) -> str:
 
 
 def _csv_escape(value: Any) -> str:
+    """Escape one CSV value according to RFC-like quoting rules."""
     text = "" if value is None else str(value)
     if any(ch in text for ch in [",", '"', "\n", "\r"]):
         return '"' + text.replace('"', '""') + '"'
@@ -690,6 +746,7 @@ def _write_entity_csv_files(
     entity_name: str,
     max_split_file_size_mb: int,
 ) -> List[str]:
+    """Write entity data into one or more CSV files based on size limits."""
     os.makedirs(output_dir, exist_ok=True)
 
     columns = df.columns
@@ -750,6 +807,7 @@ def _write_mapping_csv_files(
     mapping_name: str,
     max_split_file_size_mb: int,
 ) -> List[str]:
+    """Write mapping relationship data into one or more CSV files based on size limits."""
     os.makedirs(output_dir, exist_ok=True)
 
     columns = df.columns
@@ -805,6 +863,7 @@ def _write_mapping_csv_files(
 
 
 def _debug_print_source_path(source_base_path: str, debug: bool, max_items: int = 200) -> None:
+    """Print source folder diagnostics to help troubleshooting in Fabric."""
     if not debug:
         return
 
@@ -845,6 +904,8 @@ def run_migration(
     max_split_file_size_mb: int = 10,
     debug: bool = True,
 ) -> MigrationResult:
+    """Execute end-to-end migration, write outputs, and emit run/entity ingestion logs."""
+    run_started_at = _utc_now_iso()
     if debug:
         print(f"[DEBUG] CONFIG_PATH = {config_path}")
     config_exists = os.path.exists(config_path)
@@ -901,32 +962,67 @@ def run_migration(
     sorted_mappings = sorted(enabled_mappings, key=lambda m: 1 if m.get("isBridge") else 0)
 
     run_timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    version_id = run_timestamp
     run_output_base_path = os.path.join(output_base_path, f"migration_{run_timestamp}")
 
     mapping_dir = os.path.join(run_output_base_path, "mapping")
+    logs_dir = os.path.join(run_output_base_path, "logs")
     os.makedirs(run_output_base_path, exist_ok=True)
     os.makedirs(mapping_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
 
     if debug:
         print(f"[DEBUG] Run output folder: {run_output_base_path}")
+        print(f"[DEBUG] Version ID: {version_id}")
 
+    ingestion_items: List[Dict[str, Any]] = []
+
+    # Process each enabled mapping and capture per-item ingestion telemetry.
     for mapping in sorted_mappings:
         source_table = mapping.get("sourceTable")
         target_entity = mapping.get("targetEntity")
         item_id = f"{source_table} → {target_entity}"
+        item_started_at = _utc_now_iso()
+        item_kind = "mapping" if mapping.get("isBridge") else "entity"
+        source_total_rowcount = 0
+        ingested_rowcount = 0
+        output_paths: List[str] = []
 
         try:
             source_df = all_source_dfs.get(source_table)
+            # Source table missing/empty -> mark as skipped with reason and error code.
             if source_df is None or source_df.rdd.isEmpty():
+                item_ended_at = _utc_now_iso()
+                reason = "Source table empty or not found"
                 skipped += 1
-                skipped_items.append(f"{item_id} | Source table empty or not found")
+                skipped_items.append(f"{item_id} | {reason}")
+                ingestion_items.append({
+                    "version_id": version_id,
+                    "item_id": item_id,
+                    "kind": item_kind,
+                    "source_table": source_table,
+                    "target_entity": target_entity,
+                    "is_bridge": bool(mapping.get("isBridge")),
+                    "status": "skipped",
+                    "reason": reason,
+                    "error_code": "SOURCE_NOT_FOUND_OR_EMPTY",
+                    "error_message": "",
+                    "source_total_rowcount": source_total_rowcount,
+                    "ingested_rowcount": ingested_rowcount,
+                    "output_files": output_paths,
+                    "started_at": item_started_at,
+                    "ended_at": item_ended_at,
+                })
                 continue
+
+            source_total_rowcount = source_df.count()
 
             lookup_tables: Dict[str, List[Dict[str, Any]]] = {}
             for ln in _extract_lookup_table_names(mapping):
                 if ln in all_source_dfs:
                     lookup_tables[ln] = _to_rows(all_source_dfs[ln])
 
+            # Bridge mappings and regular entity mappings are transformed via dedicated logic.
             if mapping.get("isBridge"):
                 out_df = _transform_bridge_mapping(spark, mapping, source_df, sorted_mappings, all_source_dfs)
                 mapping_files = _write_mapping_csv_files(
@@ -936,6 +1032,7 @@ def run_migration(
                     max_split_file_size_mb=max_split_file_size_mb,
                 )
                 outputs.extend(mapping_files)
+                output_paths = mapping_files
             else:
                 out_df = _transform_regular_mapping(spark, mapping, source_df, lookup_tables)
                 entity_files = _write_entity_csv_files(
@@ -945,11 +1042,73 @@ def run_migration(
                     max_split_file_size_mb=max_split_file_size_mb,
                 )
                 outputs.extend(entity_files)
+                output_paths = entity_files
+
+            ingested_rowcount = out_df.count()
+            item_ended_at = _utc_now_iso()
 
             successful += 1
+            # Persist successful item metrics, timing, and produced output files.
+            ingestion_items.append({
+                "version_id": version_id,
+                "item_id": item_id,
+                "kind": item_kind,
+                "source_table": source_table,
+                "target_entity": target_entity,
+                "is_bridge": bool(mapping.get("isBridge")),
+                "status": "successful",
+                "reason": "",
+                "error_code": "",
+                "error_message": "",
+                "source_total_rowcount": source_total_rowcount,
+                "ingested_rowcount": ingested_rowcount,
+                "output_files": output_paths,
+                "started_at": item_started_at,
+                "ended_at": item_ended_at,
+            })
         except Exception as ex:
+            item_ended_at = _utc_now_iso()
+            error_code = ex.__class__.__name__
+            error_message = str(ex)
             failed += 1
-            failed_items.append(f"{item_id} | {str(ex)}")
+            failed_items.append(f"{item_id} | {error_message}")
+            # Persist failure diagnostics including exception class as error code.
+            ingestion_items.append({
+                "version_id": version_id,
+                "item_id": item_id,
+                "kind": item_kind,
+                "source_table": source_table,
+                "target_entity": target_entity,
+                "is_bridge": bool(mapping.get("isBridge")),
+                "status": "failed",
+                "reason": "Processing error",
+                "error_code": error_code,
+                "error_message": error_message,
+                "source_total_rowcount": source_total_rowcount,
+                "ingested_rowcount": ingested_rowcount,
+                "output_files": output_paths,
+                "started_at": item_started_at,
+                "ended_at": item_ended_at,
+            })
+
+    run_ended_at = _utc_now_iso()
+    # Final run summary used in the structured log file.
+    summary = {
+        "successful": successful,
+        "failed": failed,
+        "skipped": skipped,
+        "total_mappings": len(sorted_mappings),
+        "total_outputs": len(outputs),
+    }
+    log_file_path = _write_run_log(
+        logs_dir=logs_dir,
+        version_id=version_id,
+        run_started_at=run_started_at,
+        run_ended_at=run_ended_at,
+        summary=summary,
+        items=ingestion_items,
+    )
+    outputs.append(log_file_path)
 
     return MigrationResult(
         successful=successful,
@@ -958,14 +1117,21 @@ def run_migration(
         failed_items=failed_items,
         skipped_items=skipped_items,
         outputs=outputs,
+        version_id=version_id,
+        run_output_path=run_output_base_path,
+        log_file_path=log_file_path,
     )
 
 
 def _print_result(result: MigrationResult) -> None:
+    """Print human-readable summary after run completion."""
     print("Migration complete!")
+    print(f"  Version ID: {result.version_id}")
     print(f"  Successful: {result.successful}")
     print(f"  Failed:     {result.failed}")
     print(f"  Skipped:    {result.skipped}")
+    print(f"  Run folder: {result.run_output_path}")
+    print(f"  Log file:   {result.log_file_path}")
 
     if result.failed_items:
         print("Failed mappings:")
@@ -984,6 +1150,7 @@ def _print_result(result: MigrationResult) -> None:
 
 
 def main() -> None:
+    """CLI entry point for Fabric/standalone execution."""
     parser = argparse.ArgumentParser(description="ISA-95 mapping migration runner for PySpark/Fabric")
     parser.add_argument("--config", required=True, help="Path to exported mapping JSON file")
     parser.add_argument("--source-base", required=True, help="Base folder containing source tables")
