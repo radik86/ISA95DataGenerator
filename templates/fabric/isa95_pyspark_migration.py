@@ -601,6 +601,8 @@ def _transform_bridge_mapping(
 
     entity1 = mapping.get("bridgeEntity1")
     entity2 = mapping.get("bridgeEntity2")
+    source_type_label = _format_entity_name_for_output(entity1 or "")
+    target_type_label = _format_entity_name_for_output(entity2 or "")
     entity1_join = mapping.get("bridgeEntity1JoinFields") or []
     entity2_join = mapping.get("bridgeEntity2JoinFields") or []
 
@@ -616,9 +618,9 @@ def _transform_bridge_mapping(
 
     for idx, src in enumerate(source_rows):
         out = {
-            "Source type": entity1 or "",
+            "Source type": source_type_label,
             "Source PrimaryKey": "",
-            "Target Type": entity2 or "",
+            "Target Type": target_type_label,
             "Target PrimaryKey": "",
             "Relationship Type": mapping.get("relationshipType") or "related",
         }
