@@ -1,8 +1,11 @@
 import argparse
+import csv
+from datetime import datetime
 import json
 import os
 import random
 import re
+import shutil
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -430,7 +433,21 @@ def _build_bridge_key(record: Dict[str, Any], join_fields: List[Dict[str, Any]],
     return "||".join(parts)
 
 
-def _load_source_table(spark: SparkSession, source_base_path: str, table_name: str, source_format: str) -> Optional[DataFrame]:
+def _load_source_table(
+    spark: SparkSession,
+    source_base_path: str,
+    table_name: str,
+    source_format: str,
+    debug: bool = True,
+) -> Optional[DataFrame]:
+    entries: List[str] = []
+    try:
+        entries = os.listdir(source_base_path)
+    except Exception:
+        entries = []
+
+    lower_to_actual = {e.lower(): e for e in entries}
+
     candidates = [
         os.path.join(source_base_path, table_name),
         os.path.join(source_base_path, f"{table_name}.csv"),
@@ -438,16 +455,60 @@ def _load_source_table(spark: SparkSession, source_base_path: str, table_name: s
         os.path.join(source_base_path, f"{table_name}.parquet"),
     ]
 
-    for path in candidates:
-        try:
-            if source_format.lower() == "csv" or path.endswith(".csv"):
-                return spark.read.option("header", True).option("inferSchema", True).csv(path)
-            if source_format.lower() == "json" or path.endswith(".json"):
-                return spark.read.option("multiLine", True).json(path)
-            if source_format.lower() == "parquet" or path.endswith(".parquet"):
-                return spark.read.parquet(path)
-        except Exception:
+    # Add case-insensitive matches from directory listing
+    for suffix in ["", ".csv", ".json", ".parquet"]:
+        lookup = f"{table_name}{suffix}".lower()
+        actual = lower_to_actual.get(lookup)
+        if actual:
+            candidates.append(os.path.join(source_base_path, actual))
+
+    # Preserve order but remove duplicates
+    deduped_candidates = list(dict.fromkeys(candidates))
+
+    for path in deduped_candidates:
+        if not os.path.exists(path):
             continue
+
+        if path.startswith("file:"):
+            read_paths = [path]
+        elif path.startswith("/lakehouse/"):
+            # In Fabric notebooks, direct /lakehouse paths often trigger ABFS HEAD 400 during Spark checks.
+            # Prefer file: URI to avoid noisy failures.
+            read_paths = [f"file:{path}"]
+        else:
+            read_paths = [path, f"file:{path}"]
+
+        for read_path in read_paths:
+            try:
+                if debug:
+                    print(f"[DEBUG] Trying source path for '{table_name}': {read_path}")
+                if source_format.lower() == "csv" or path.endswith(".csv"):
+                    return spark.read.option("header", True).option("inferSchema", True).csv(read_path)
+                if source_format.lower() == "json" or path.endswith(".json"):
+                    return spark.read.option("multiLine", True).json(read_path)
+                if source_format.lower() == "parquet" or path.endswith(".parquet"):
+                    return spark.read.parquet(read_path)
+            except Exception as ex:
+                if debug:
+                    print(f"[DEBUG] Failed reading source path for '{table_name}': {read_path} | {str(ex)}")
+
+        # Fallback for CSV in environments where Spark can't read the local path directly
+        if source_format.lower() == "csv" or path.endswith(".csv"):
+            try:
+                with open(path, "r", encoding="utf-8-sig", newline="") as fh:
+                    rows = list(csv.DictReader(fh))
+                if rows:
+                    if debug:
+                        print(f"[DEBUG] Loaded source table via Python CSV fallback: {table_name} ({len(rows)} rows)")
+                    return spark.createDataFrame(rows)
+                if debug:
+                    print(f"[DEBUG] CSV fallback read zero rows for table '{table_name}'")
+            except Exception as ex:
+                if debug:
+                    print(f"[DEBUG] CSV fallback failed for '{table_name}': {path} | {str(ex)}")
+
+    if debug:
+        print(f"[DEBUG] No readable source path found for '{table_name}'. Checked {len(deduped_candidates)} candidate(s).")
     return None
 
 
@@ -582,8 +643,195 @@ def _transform_bridge_mapping(
 
 
 def _write_output_csv(df: DataFrame, output_path: str) -> str:
-    df.coalesce(1).write.mode("overwrite").option("header", True).csv(output_path)
+    local_path = output_path
+    if local_path.startswith("file:"):
+        local_path = local_path[len("file:"):]
+
+    try:
+        if os.path.isdir(local_path):
+            shutil.rmtree(local_path)
+        elif os.path.isfile(local_path):
+            os.remove(local_path)
+    except Exception:
+        # Let Spark write attempt surface the real error if cleanup is not possible
+        pass
+
+    spark_output_path = output_path
+    if output_path.startswith("/lakehouse/") and not output_path.startswith("file:"):
+        spark_output_path = f"file:{output_path}"
+
+    df.coalesce(1).write.mode("overwrite").option("header", True).csv(spark_output_path)
     return output_path
+
+
+def _format_entity_name_for_output(entity_name: str) -> str:
+    if not entity_name:
+        return ""
+
+    spaced = entity_name.replace("_", " ").replace("-", " ")
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", spaced)
+    spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
+    spaced = re.sub(r"\s+", " ", spaced).strip()
+    return spaced.title()
+
+
+def _csv_escape(value: Any) -> str:
+    text = "" if value is None else str(value)
+    if any(ch in text for ch in [",", '"', "\n", "\r"]):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def _write_entity_csv_files(
+    df: DataFrame,
+    output_dir: str,
+    entity_name: str,
+    max_split_file_size_mb: int,
+) -> List[str]:
+    os.makedirs(output_dir, exist_ok=True)
+
+    columns = df.columns
+    if not columns:
+        return []
+
+    clamped_mb = max(1, min(10, int(max_split_file_size_mb)))
+    max_file_bytes = clamped_mb * 1024 * 1024
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    base_name = _format_entity_name_for_output(entity_name)
+    header_line = ",".join(columns)
+    header_bytes = len((header_line + "\n").encode("utf-8"))
+
+    files: List[str] = []
+    file_index = 1
+    current_file = None
+    current_bytes = 0
+    records_in_current_file = 0
+
+    def _open_file(index: int):
+        if index == 1:
+            file_name = f"{base_name}_{timestamp}.csv"
+        else:
+            file_name = f"{base_name}_{timestamp}_{index:02d}.csv"
+        file_path = os.path.join(output_dir, file_name)
+        handle = open(file_path, "w", encoding="utf-8", newline="")
+        handle.write(header_line + "\n")
+        files.append(file_path)
+        return handle, header_bytes, 0
+
+    current_file, current_bytes, records_in_current_file = _open_file(file_index)
+
+    try:
+        for row in df.toLocalIterator():
+            row_data = row.asDict(recursive=True)
+            line = ",".join(_csv_escape(row_data.get(col)) for col in columns)
+            line_bytes = len((line + "\n").encode("utf-8"))
+
+            if records_in_current_file > 0 and current_bytes + line_bytes > max_file_bytes:
+                current_file.close()
+                file_index += 1
+                current_file, current_bytes, records_in_current_file = _open_file(file_index)
+
+            current_file.write(line + "\n")
+            current_bytes += line_bytes
+            records_in_current_file += 1
+    finally:
+        if current_file is not None:
+            current_file.close()
+
+    return files
+
+
+def _write_mapping_csv_files(
+    df: DataFrame,
+    output_dir: str,
+    mapping_name: str,
+    max_split_file_size_mb: int,
+) -> List[str]:
+    os.makedirs(output_dir, exist_ok=True)
+
+    columns = df.columns
+    if not columns:
+        return []
+
+    clamped_mb = max(1, min(10, int(max_split_file_size_mb)))
+    max_file_bytes = clamped_mb * 1024 * 1024
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    base_name = mapping_name
+    header_line = ",".join(columns)
+    header_bytes = len((header_line + "\n").encode("utf-8"))
+
+    files: List[str] = []
+    file_index = 1
+    current_file = None
+    current_bytes = 0
+    records_in_current_file = 0
+
+    def _open_file(index: int):
+        if index == 1:
+            file_name = f"{base_name}_{timestamp}.csv"
+        else:
+            file_name = f"{base_name}_{timestamp}_{index:02d}.csv"
+        file_path = os.path.join(output_dir, file_name)
+        handle = open(file_path, "w", encoding="utf-8", newline="")
+        handle.write(header_line + "\n")
+        files.append(file_path)
+        return handle, header_bytes, 0
+
+    current_file, current_bytes, records_in_current_file = _open_file(file_index)
+
+    try:
+        for row in df.toLocalIterator():
+            row_data = row.asDict(recursive=True)
+            line = ",".join(_csv_escape(row_data.get(col)) for col in columns)
+            line_bytes = len((line + "\n").encode("utf-8"))
+
+            if records_in_current_file > 0 and current_bytes + line_bytes > max_file_bytes:
+                current_file.close()
+                file_index += 1
+                current_file, current_bytes, records_in_current_file = _open_file(file_index)
+
+            current_file.write(line + "\n")
+            current_bytes += line_bytes
+            records_in_current_file += 1
+    finally:
+        if current_file is not None:
+            current_file.close()
+
+    return files
+
+
+def _debug_print_source_path(source_base_path: str, debug: bool, max_items: int = 200) -> None:
+    if not debug:
+        return
+
+    print(f"[DEBUG] SOURCE_BASE_PATH = {source_base_path}")
+    exists = os.path.exists(source_base_path)
+    print(f"[DEBUG] SOURCE_BASE_PATH exists = {exists}")
+
+    if not exists:
+        return
+
+    try:
+        entries = sorted(os.listdir(source_base_path))
+        print(f"[DEBUG] SOURCE_BASE_PATH item count = {len(entries)}")
+        preview = entries[:max_items]
+        for name in preview:
+            full = os.path.join(source_base_path, name)
+            if os.path.isdir(full):
+                print(f"[DEBUG]   DIR  {name}")
+            else:
+                try:
+                    size = os.path.getsize(full)
+                    print(f"[DEBUG]   FILE {name} ({size} bytes)")
+                except Exception:
+                    print(f"[DEBUG]   FILE {name}")
+
+        if len(entries) > max_items:
+            print(f"[DEBUG]   ... ({len(entries) - max_items} more items)")
+    except Exception as ex:
+        print(f"[DEBUG] Failed to list SOURCE_BASE_PATH: {str(ex)}")
 
 
 def run_migration(
@@ -592,12 +840,31 @@ def run_migration(
     source_base_path: str,
     output_base_path: str,
     source_format: str = "csv",
+    max_split_file_size_mb: int = 10,
+    debug: bool = True,
 ) -> MigrationResult:
+    if debug:
+        print(f"[DEBUG] CONFIG_PATH = {config_path}")
+    config_exists = os.path.exists(config_path)
+    if debug:
+        print(f"[DEBUG] CONFIG_PATH exists = {config_exists}")
+
+    if not config_exists:
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
+    if debug:
+        print("[DEBUG] Config file loaded successfully")
+
+    _debug_print_source_path(source_base_path, debug)
 
     mappings = cfg.get("mappings") or []
+    if debug:
+        print(f"[DEBUG] Total mappings in config = {len(mappings)}")
     enabled_mappings = [m for m in mappings if m.get("enabled", True)]
+    if debug:
+        print(f"[DEBUG] Enabled mappings = {len(enabled_mappings)}")
 
     successful = 0
     failed = 0
@@ -607,17 +874,39 @@ def run_migration(
     outputs: List[str] = []
 
     source_tables = sorted({m.get("sourceTable") for m in enabled_mappings if m.get("sourceTable")})
+    if debug:
+        print(f"[DEBUG] Referenced source tables = {len(source_tables)}")
     all_source_dfs: Dict[str, DataFrame] = {}
+    missing_source_tables: List[str] = []
     for table in source_tables:
-        df = _load_source_table(spark, source_base_path, table, source_format)
+        df = _load_source_table(spark, source_base_path, table, source_format, debug=debug)
         if df is not None:
             all_source_dfs[table] = df
+            if debug:
+                print(f"[DEBUG] Loaded source table: {table}")
+        else:
+            if debug:
+                print(f"[DEBUG] Source table not found/readable: {table}")
+            missing_source_tables.append(table)
+
+    if debug:
+        print(f"[DEBUG] Loaded source DataFrames = {len(all_source_dfs)}")
+    if missing_source_tables:
+        print(f"Missing source tables ({len(missing_source_tables)}):")
+        for t in missing_source_tables:
+            print(f"  - {t}")
 
     sorted_mappings = sorted(enabled_mappings, key=lambda m: 1 if m.get("isBridge") else 0)
 
-    mapping_dir = os.path.join(output_base_path, "mapping")
-    os.makedirs(output_base_path, exist_ok=True)
+    run_timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    run_output_base_path = os.path.join(output_base_path, f"migration_{run_timestamp}")
+
+    mapping_dir = os.path.join(run_output_base_path, "mapping")
+    os.makedirs(run_output_base_path, exist_ok=True)
     os.makedirs(mapping_dir, exist_ok=True)
+
+    if debug:
+        print(f"[DEBUG] Run output folder: {run_output_base_path}")
 
     for mapping in sorted_mappings:
         source_table = mapping.get("sourceTable")
@@ -638,13 +927,23 @@ def run_migration(
 
             if mapping.get("isBridge"):
                 out_df = _transform_bridge_mapping(spark, mapping, source_df, sorted_mappings, all_source_dfs)
-                out_path = os.path.join(mapping_dir, target_entity)
+                mapping_files = _write_mapping_csv_files(
+                    out_df,
+                    mapping_dir,
+                    target_entity,
+                    max_split_file_size_mb=max_split_file_size_mb,
+                )
+                outputs.extend(mapping_files)
             else:
                 out_df = _transform_regular_mapping(spark, mapping, source_df, lookup_tables)
-                out_path = os.path.join(output_base_path, target_entity)
+                entity_files = _write_entity_csv_files(
+                    out_df,
+                    run_output_base_path,
+                    target_entity,
+                    max_split_file_size_mb=max_split_file_size_mb,
+                )
+                outputs.extend(entity_files)
 
-            _write_output_csv(out_df, out_path)
-            outputs.append(out_path)
             successful += 1
         except Exception as ex:
             failed += 1
@@ -688,6 +987,10 @@ def main() -> None:
     parser.add_argument("--source-base", required=True, help="Base folder containing source tables")
     parser.add_argument("--output-base", required=True, help="Output base folder for generated CSV files")
     parser.add_argument("--source-format", default="csv", choices=["csv", "json", "parquet"], help="Source table file format")
+    parser.add_argument("--max-split-file-size-mb", type=int, default=10, help="Max split size for ISA95 entity CSV files (1-10 MB)")
+    parser.set_defaults(debug=True)
+    parser.add_argument("--debug", dest="debug", action="store_true", help="Enable verbose debug logs")
+    parser.add_argument("--no-debug", dest="debug", action="store_false", help="Disable verbose debug logs")
 
     args = parser.parse_args()
 
@@ -698,6 +1001,8 @@ def main() -> None:
         source_base_path=args.source_base,
         output_base_path=args.output_base,
         source_format=args.source_format,
+        max_split_file_size_mb=args.max_split_file_size_mb,
+        debug=args.debug,
     )
     _print_result(result)
 

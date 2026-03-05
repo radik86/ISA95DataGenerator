@@ -25,6 +25,24 @@ public class MigrationProcessorV2Service
 
     private const int PROGRESS_FLUSH_INTERVAL = 500; // flush progress every N records
     private const int CSV_FLUSH_INTERVAL = 1_000; // flush CSV stream every N rows
+    private static readonly HashSet<string> ProcessSourceTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "operations_requests",
+        "segment_requirements",
+        "segment_material_requirements",
+        "segment_equipment_requirements",
+        "operations_responses",
+        "segment_responses",
+        "segment_material_actuals",
+        "segment_equipment_actuals",
+        "equipment_property_tracking",
+        "test_results",
+        "operations_events",
+        "operations_event_records",
+        "operations_event_entries",
+        "operations_event_properties",
+        "segment_data",
+    };
 
     public MigrationProcessorV2Service(
         MigrationDbContext dbContext,
@@ -39,7 +57,12 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     //  Public entry point
     // ────────────────────────────────────────────
-    public async Task ExecuteAsync(Guid sessionId, List<TableMappingDto> mappings, int? maxFileSizeMb = null, CancellationToken ct = default)
+    public async Task ExecuteAsync(
+        Guid sessionId,
+        List<TableMappingDto> mappings,
+        int? maxFileSizeMb = null,
+        bool separateMasterProcessFiles = false,
+        CancellationToken ct = default)
     {
         var session = await _dbContext.MigrationSessions.FindAsync(new object[] { sessionId }, ct)
             ?? throw new InvalidOperationException($"Session {sessionId} not found");
@@ -113,14 +136,36 @@ public class MigrationProcessorV2Service
             var outputPath = _configuration.GetValue<string>("MigrationSettings:OutputPath") ?? "Data/Outputs";
             var sessionOutputDir = Path.Combine(outputPath, sessionId.ToString());
             Directory.CreateDirectory(sessionOutputDir);
-            var mappingSubDir = Path.Combine(sessionOutputDir, "mapping");
+            var isa95SubDir = Path.Combine(sessionOutputDir, "isa95");
+            var sourceSubDir = Path.Combine(sessionOutputDir, "source");
+            Directory.CreateDirectory(isa95SubDir);
+            Directory.CreateDirectory(sourceSubDir);
+            var mappingSubDir = Path.Combine(isa95SubDir, "mapping");
             Directory.CreateDirectory(mappingSubDir);
+            var masterSubDir = Path.Combine(isa95SubDir, "master");
+            var processSubDir = Path.Combine(isa95SubDir, "process");
+
+            if (separateMasterProcessFiles)
+            {
+                Directory.CreateDirectory(masterSubDir);
+                Directory.CreateDirectory(processSubDir);
+                Log("Master/process split enabled: ISA95 outputs will be written to isa95/master and isa95/process");
+            }
+            else
+            {
+                Log("ISA95 outputs will be written to isa95 folder");
+            }
 
             var clampedMaxFileSizeMb = Math.Clamp(maxFileSizeMb ?? 10, 1, 10);
             var maxFileSizeBytes = clampedMaxFileSizeMb * 1024L * 1024L;
             Log($"CSV split size limit: {clampedMaxFileSizeMb} MB");
 
             var outputFiles = new List<string>();
+
+            var exportedSourceFiles = await ExportSourceStoresToCsvAsync(allStoreData, sourceSubDir, maxFileSizeBytes, ct);
+            outputFiles.AddRange(exportedSourceFiles);
+            Log($"Exported source stores to source folder: {exportedSourceFiles.Count} file(s)");
+
             int processedTotal = 0;
             int successCount = 0;
             int failCount = 0;
@@ -160,9 +205,12 @@ public class MigrationProcessorV2Service
                     if (filteredData.Count != sourceData.Count)
                         Log($"  Filtered: {sourceData.Count} → {filteredData.Count} records");
 
-                    var entityDisplayName = mapping.TargetEntity;
                     var entityOutputName = FormatEntityNameForOutput(mapping.TargetEntity);
-                    var targetDir = mapping.IsBridge ? mappingSubDir : sessionOutputDir;
+                    var targetDir = mapping.IsBridge
+                        ? mappingSubDir
+                        : separateMasterProcessFiles
+                            ? (IsProcessSourceTable(mapping.SourceTable) ? processSubDir : masterSubDir)
+                            : isa95SubDir;
                     int recordCount;
                     List<string> written;
 
@@ -1367,6 +1415,28 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     //  CSV writing
     // ────────────────────────────────────────────
+    private async Task<List<string>> ExportSourceStoresToCsvAsync(
+        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
+        string sourceOutputDir,
+        long maxFileSizeBytes,
+        CancellationToken ct)
+    {
+        var files = new List<string>();
+
+        foreach (var kv in allStoreData.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (kv.Value == null || kv.Value.Count == 0)
+                continue;
+
+            var storeFiles = await WriteCsvFilesAsync(kv.Key, kv.Value, sourceOutputDir, maxFileSizeBytes, ct);
+            files.AddRange(storeFiles);
+        }
+
+        return files;
+    }
+
     private async Task<List<string>> WriteCsvFilesAsync(
         string entityName,
         List<Dictionary<string, object?>> data,
@@ -1504,6 +1574,11 @@ public class MigrationProcessorV2Service
 
         var normalized = spaced.ToLowerInvariant();
         return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized);
+    }
+
+    private static bool IsProcessSourceTable(string sourceTable)
+    {
+        return ProcessSourceTables.Contains(sourceTable);
     }
 
     // ────────────────────────────────────────────

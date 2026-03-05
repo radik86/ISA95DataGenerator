@@ -172,6 +172,7 @@ const DataMigration: React.FC = () => {
   const [loadedMappingsCount, setLoadedMappingsCount] = useState<number | null>(null);
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [maxSplitFileSizeMB, setMaxSplitFileSizeMB] = useState(10);
+  const [separateMasterProcessFiles, setSeparateMasterProcessFiles] = useState(false);
   const [migrationLog, setMigrationLog] = useState<string[]>([]);
   const [failedMigrationItems, setFailedMigrationItems] = useState<string[]>([]);
   const [skippedMigrationItems, setSkippedMigrationItems] = useState<string[]>([]);
@@ -5820,7 +5821,7 @@ const DataMigration: React.FC = () => {
 
       // 3. Execute migration on the server
       log('Starting server-side migration processing...');
-      await migrationApi.executeMigration(sessionId, tableMappings, maxSplitFileSizeMB);
+      await migrationApi.executeMigration(sessionId, tableMappings, maxSplitFileSizeMB, separateMasterProcessFiles);
       log('Migration processing started on server');
 
       // 4. Poll for progress
@@ -7728,6 +7729,20 @@ const DataMigration: React.FC = () => {
               />
               <Typography variant="caption" color="text.secondary">
                 Server and browser migration split large CSV files using this limit (max 10 MB).
+              </Typography>
+            </Box>
+            <Box sx={{ mt: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={separateMasterProcessFiles}
+                    onChange={(e) => setSeparateMasterProcessFiles(e.target.checked)}
+                  />
+                }
+                label="Export master and process data as separate CSV files"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                When enabled, server-side output is grouped into separate `master` and `process` folders.
               </Typography>
             </Box>
           </Paper>

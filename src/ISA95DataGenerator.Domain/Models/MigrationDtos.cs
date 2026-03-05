@@ -23,6 +23,7 @@ public class ExecuteMigrationRequest
 {
     public List<TableMappingDto> Mappings { get; set; } = new();
     public int? MaxFileSizeMb { get; set; }
+    public bool SeparateMasterProcessFiles { get; set; }
 }
 
 /// <summary>
