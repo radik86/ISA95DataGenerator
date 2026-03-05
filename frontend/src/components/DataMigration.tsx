@@ -173,6 +173,8 @@ const DataMigration: React.FC = () => {
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [maxSplitFileSizeMB, setMaxSplitFileSizeMB] = useState(10);
   const [separateMasterProcessFiles, setSeparateMasterProcessFiles] = useState(false);
+  const [sourceIncludeTimestampSuffix, setSourceIncludeTimestampSuffix] = useState(false);
+  const [sourceSplitFiles, setSourceSplitFiles] = useState(false);
   const [migrationLog, setMigrationLog] = useState<string[]>([]);
   const [failedMigrationItems, setFailedMigrationItems] = useState<string[]>([]);
   const [skippedMigrationItems, setSkippedMigrationItems] = useState<string[]>([]);
@@ -5821,7 +5823,14 @@ const DataMigration: React.FC = () => {
 
       // 3. Execute migration on the server
       log('Starting server-side migration processing...');
-      await migrationApi.executeMigration(sessionId, tableMappings, maxSplitFileSizeMB, separateMasterProcessFiles);
+      await migrationApi.executeMigration(
+        sessionId,
+        tableMappings,
+        maxSplitFileSizeMB,
+        separateMasterProcessFiles,
+        sourceIncludeTimestampSuffix,
+        sourceSplitFiles,
+      );
       log('Migration processing started on server');
 
       // 4. Poll for progress
@@ -7743,6 +7752,32 @@ const DataMigration: React.FC = () => {
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
                 When enabled, server-side output is grouped into separate `master` and `process` folders.
+              </Typography>
+            </Box>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Source CSV Settings
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={sourceIncludeTimestampSuffix}
+                    onChange={(e) => setSourceIncludeTimestampSuffix(e.target.checked)}
+                  />
+                }
+                label="Add timestamp suffix to source CSV file names"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={sourceSplitFiles}
+                    onChange={(e) => setSourceSplitFiles(e.target.checked)}
+                  />
+                }
+                label="Split source CSV files by max split file size"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Disabled by default: source files are exported as a single file per source table without timestamp suffix.
               </Typography>
             </Box>
           </Paper>

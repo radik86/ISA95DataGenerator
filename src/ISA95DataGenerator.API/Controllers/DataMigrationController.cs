@@ -527,7 +527,13 @@ public class DataMigrationController : ControllerBase
             {
                 using var scope = _scopeFactory.CreateScope();
                 var processor = scope.ServiceProvider.GetRequiredService<MigrationProcessorV2Service>();
-                await processor.ExecuteAsync(sessionId, request.Mappings, request.MaxFileSizeMb, request.SeparateMasterProcessFiles);
+                await processor.ExecuteAsync(
+                    sessionId,
+                    request.Mappings,
+                    request.MaxFileSizeMb,
+                    request.SeparateMasterProcessFiles,
+                    request.SourceIncludeTimestampSuffix,
+                    request.SourceSplitFiles);
             }
             catch (Exception ex)
             {

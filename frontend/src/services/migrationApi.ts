@@ -115,11 +115,19 @@ export const migrationApi = {
     mappings: any[],
     maxFileSizeMb?: number,
     separateMasterProcessFiles?: boolean,
+    sourceIncludeTimestampSuffix?: boolean,
+    sourceSplitFiles?: boolean,
   ): Promise<{ message: string; sessionId: string }> {
     const res = await fetch(`${API_BASE_URL}/session/${sessionId}/execute-v2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mappings, maxFileSizeMb, separateMasterProcessFiles }),
+      body: JSON.stringify({
+        mappings,
+        maxFileSizeMb,
+        separateMasterProcessFiles,
+        sourceIncludeTimestampSuffix,
+        sourceSplitFiles,
+      }),
     });
     if (!res.ok) throw new Error(`Execute failed: ${await res.text()}`);
     return res.json();

@@ -62,6 +62,8 @@ public class MigrationProcessorV2Service
         List<TableMappingDto> mappings,
         int? maxFileSizeMb = null,
         bool separateMasterProcessFiles = false,
+        bool sourceIncludeTimestampSuffix = false,
+        bool sourceSplitFiles = false,
         CancellationToken ct = default)
     {
         var session = await _dbContext.MigrationSessions.FindAsync(new object[] { sessionId }, ct)
@@ -162,8 +164,15 @@ public class MigrationProcessorV2Service
 
             var outputFiles = new List<string>();
 
-            var exportedSourceFiles = await ExportSourceStoresToCsvAsync(allStoreData, sourceSubDir, maxFileSizeBytes, ct);
+            var exportedSourceFiles = await ExportSourceStoresToCsvAsync(
+                allStoreData,
+                sourceSubDir,
+                maxFileSizeBytes,
+                sourceIncludeTimestampSuffix,
+                sourceSplitFiles,
+                ct);
             outputFiles.AddRange(exportedSourceFiles);
+            Log($"Source export settings: timestamp suffix={(sourceIncludeTimestampSuffix ? "on" : "off")}, split={(sourceSplitFiles ? "on" : "off")}");
             Log($"Exported source stores to source folder: {exportedSourceFiles.Count} file(s)");
 
             int processedTotal = 0;
@@ -1419,6 +1428,8 @@ public class MigrationProcessorV2Service
         Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
         string sourceOutputDir,
         long maxFileSizeBytes,
+        bool includeTimestampSuffix,
+        bool splitFiles,
         CancellationToken ct)
     {
         var files = new List<string>();
@@ -1430,7 +1441,14 @@ public class MigrationProcessorV2Service
             if (kv.Value == null || kv.Value.Count == 0)
                 continue;
 
-            var storeFiles = await WriteCsvFilesAsync(kv.Key, kv.Value, sourceOutputDir, maxFileSizeBytes, ct);
+            var storeFiles = await WriteCsvFilesAsync(
+                kv.Key,
+                kv.Value,
+                sourceOutputDir,
+                maxFileSizeBytes,
+                ct,
+                includeTimestampSuffix,
+                splitFiles);
             files.AddRange(storeFiles);
         }
 
@@ -1442,12 +1460,14 @@ public class MigrationProcessorV2Service
         List<Dictionary<string, object?>> data,
         string outputDir,
         long maxFileSizeBytes,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includeTimestampSuffix = true,
+        bool splitFiles = true)
     {
         var files = new List<string>();
         if (data.Count == 0) return files;
 
-        var paths = await WriteSingleCsvAsync(entityName, data, outputDir, maxFileSizeBytes, ct);
+        var paths = await WriteSingleCsvAsync(entityName, data, outputDir, maxFileSizeBytes, includeTimestampSuffix, splitFiles, ct);
         files.AddRange(paths);
 
         return files;
@@ -1458,12 +1478,15 @@ public class MigrationProcessorV2Service
         List<Dictionary<string, object?>> data,
         string outputDir,
         long maxFileSizeBytes,
+        bool includeTimestampSuffix,
+        bool splitFiles,
         CancellationToken ct)
     {
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        var timestampSuffix = includeTimestampSuffix ? $"_{timestamp}" : string.Empty;
         var files = new List<string>();
         int fileIndex = 1;
-        var fileName = $"{entityName}_{timestamp}.csv";
+        var fileName = $"{entityName}{timestampSuffix}.csv";
         var filePath = Path.Combine(outputDir, fileName);
 
         // Determine columns — PrimaryKey first
@@ -1499,13 +1522,15 @@ public class MigrationProcessorV2Service
                 var line = string.Join(",", values);
                 var lineBytes = System.Text.Encoding.UTF8.GetByteCount(line + Environment.NewLine);
 
-                if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
+                if (splitFiles && recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
                 {
                     await writer.FlushAsync();
                     await writer.DisposeAsync();
 
                     fileIndex++;
-                    fileName = $"{entityName}_{timestamp}_{fileIndex:D2}.csv";
+                    fileName = includeTimestampSuffix
+                        ? $"{entityName}_{timestamp}_{fileIndex:D2}.csv"
+                        : $"{entityName}_{fileIndex:D2}.csv";
                     filePath = Path.Combine(outputDir, fileName);
                     writer = new StreamWriter(filePath);
                     await writer.WriteLineAsync(string.Join(",", columns));
