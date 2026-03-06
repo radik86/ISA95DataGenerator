@@ -84,6 +84,8 @@ export interface BaseRecord {
   createdAt: Date;
   updatedAt: Date;
   version: number;
+  DataGeneratedAt?: Date | string;
+  LastDataMigrationAt?: Date | string | null;
 }
 
 export interface OperationsRequestRecord extends BaseRecord {
@@ -392,6 +394,8 @@ class ProcessDataDBService {
       createdAt: now,
       updatedAt: now,
       version: 1,
+      DataGeneratedAt: (record as any).DataGeneratedAt ?? now,
+      LastDataMigrationAt: (record as any).LastDataMigrationAt ?? null,
     } as ProcessDataDB[K]['value'];
     await db.add(storeName, recordWithMetadata);
   }
@@ -402,6 +406,8 @@ class ProcessDataDBService {
       ...record,
       updatedAt: new Date(),
       version: record.version + 1,
+      DataGeneratedAt: (record as any).DataGeneratedAt ?? (record as any).createdAt,
+      LastDataMigrationAt: (record as any).LastDataMigrationAt ?? null,
     } as ProcessDataDB[K]['value'];
     await db.put(storeName, recordWithMetadata);
   }
@@ -455,6 +461,8 @@ class ProcessDataDBService {
       createdAt: now,
       updatedAt: now,
       version: 1,
+      DataGeneratedAt: (operationsRequest as any).DataGeneratedAt ?? now,
+      LastDataMigrationAt: (operationsRequest as any).LastDataMigrationAt ?? null,
     });
 
     // Save segment requirements
@@ -464,6 +472,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (sr as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (sr as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -474,6 +484,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (mr as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (mr as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -484,6 +496,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (er as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (er as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -549,6 +563,8 @@ class ProcessDataDBService {
       createdAt: now,
       updatedAt: now,
       version: 1,
+      DataGeneratedAt: (operationsResponse as any).DataGeneratedAt ?? now,
+      LastDataMigrationAt: (operationsResponse as any).LastDataMigrationAt ?? null,
     });
 
     // Save segment responses
@@ -558,6 +574,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (sr as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (sr as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -568,6 +586,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (ma as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (ma as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -578,6 +598,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (ea as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (ea as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -588,6 +610,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (ept as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (ept as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -598,6 +622,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (tr as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (tr as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -608,6 +634,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (oe as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (oe as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -618,6 +646,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (oer as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (oer as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -628,6 +658,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (oee as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (oee as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -638,6 +670,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (oep as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (oep as any).LastDataMigrationAt ?? null,
       });
     }
 
@@ -648,6 +682,8 @@ class ProcessDataDBService {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (sd as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (sd as any).LastDataMigrationAt ?? null,
       });
     }
 

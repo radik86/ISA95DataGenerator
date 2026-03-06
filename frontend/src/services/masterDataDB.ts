@@ -185,6 +185,8 @@ export interface BaseRecord {
   createdAt: Date;
   updatedAt: Date;
   version: number;
+  DataGeneratedAt?: Date | string;
+  LastDataMigrationAt?: Date | string | null;
 }
 
 export interface MaterialClassRecord extends BaseRecord {
@@ -698,6 +700,8 @@ class MasterDataDatabase {
       createdAt: now,
       updatedAt: now,
       version: 1,
+      DataGeneratedAt: (data as any).DataGeneratedAt ?? now,
+      LastDataMigrationAt: (data as any).LastDataMigrationAt ?? null,
     } as MasterDataDB[T]['value'];
     await db.add(storeName, record);
   }
@@ -729,6 +733,8 @@ class MasterDataDatabase {
       createdAt: (existing as any).createdAt,
       updatedAt: new Date(),
       version: ((existing as any).version || 0) + 1,
+      DataGeneratedAt: (data as any).DataGeneratedAt ?? (existing as any).DataGeneratedAt ?? (existing as any).createdAt,
+      LastDataMigrationAt: (data as any).LastDataMigrationAt ?? (existing as any).LastDataMigrationAt ?? null,
     } as MasterDataDB[T]['value'];
     
     await db.put(storeName, record);
@@ -763,6 +769,8 @@ class MasterDataDatabase {
         createdAt: now,
         updatedAt: now,
         version: 1,
+        DataGeneratedAt: (data as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (data as any).LastDataMigrationAt ?? null,
       } as MasterDataDB[T]['value'];
       
       // Validate that the record has the required key

@@ -173,6 +173,7 @@ const DataMigration: React.FC = () => {
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [maxSplitFileSizeMB, setMaxSplitFileSizeMB] = useState(10);
   const [separateMasterProcessFiles, setSeparateMasterProcessFiles] = useState(false);
+  const [migrationLoadMode, setMigrationLoadMode] = useState<'full' | 'delta'>('delta');
   const [sourceIncludeTimestampSuffix, setSourceIncludeTimestampSuffix] = useState(false);
   const [sourceSplitFiles, setSourceSplitFiles] = useState(false);
   const [migrationLog, setMigrationLog] = useState<string[]>([]);
@@ -5778,14 +5779,25 @@ const DataMigration: React.FC = () => {
       // Upload each referenced store
       let uploadedCount = 0;
       let totalUploadedRecords = 0;
+      const uploadedStoreRecords: Record<string, any[]> = {};
+
+      const shouldIncludeForDeltaMigration = (record: any): boolean => {
+        const lastMigrationAt = record?.LastDataMigrationAt ?? record?.lastDataMigrationAt;
+        if (lastMigrationAt === null || lastMigrationAt === undefined) return true;
+        if (typeof lastMigrationAt === 'string' && lastMigrationAt.trim() === '') return true;
+        return false;
+      };
+
       for (const tableName of referencedTables) {
         try {
           let data: any[] = [];
+          let storeNameForUpdate: string | null = null;
 
           // Try master data store
           const masterStoreName = masterStoreMap[tableName];
           if (masterStoreName) {
             data = await masterDataApi.getAll(masterStoreName as any);
+            storeNameForUpdate = masterStoreName;
           }
 
           // Try process data store
@@ -5793,6 +5805,7 @@ const DataMigration: React.FC = () => {
             const processStoreName = processStoreMap[tableName];
             if (processStoreName) {
               data = await processDataApi.getAll(processStoreName as any);
+              storeNameForUpdate = processStoreName;
             }
           }
 
@@ -5801,13 +5814,24 @@ const DataMigration: React.FC = () => {
             data = importedTablesData[tableName];
           }
 
-          if (data.length > 0) {
-            await migrationApi.uploadStoreData(sessionId, tableName, data);
+          const recordsToUpload = (migrationLoadMode === 'delta' ? data.filter(shouldIncludeForDeltaMigration) : data)
+            .map((record) => ({
+              ...record,
+              DataGeneratedAt: record?.DataGeneratedAt ?? record?.dataGeneratedAt ?? record?.createdAt ?? new Date().toISOString(),
+              LastDataMigrationAt: record?.LastDataMigrationAt ?? record?.lastDataMigrationAt ?? null,
+            }));
+
+          if (recordsToUpload.length > 0) {
+            await migrationApi.uploadStoreData(sessionId, tableName, recordsToUpload);
             uploadedCount++;
-            totalUploadedRecords += data.length;
-            log(`  ↑ ${tableName}: ${data.length} records`);
+            totalUploadedRecords += recordsToUpload.length;
+            log(`  ↑ ${tableName}: ${recordsToUpload.length}/${data.length} records (${migrationLoadMode})`);
+
+            if (storeNameForUpdate) {
+              uploadedStoreRecords[storeNameForUpdate] = recordsToUpload;
+            }
           } else {
-            log(`  ⚠ ${tableName}: no data found`);
+            log(`  ⚠ ${tableName}: no records to upload for ${migrationLoadMode} mode`);
           }
         } catch (uploadErr: any) {
           log(`  ❌ ${tableName}: upload failed — ${uploadErr.message}`);
@@ -5864,6 +5888,31 @@ const DataMigration: React.FC = () => {
 
           if (status.status === 'Completed' || status.status === 'CompletedWithErrors') {
             completed = true;
+
+            const migrationStamp = new Date().toISOString();
+            const storesToStamp: Record<string, any[]> = {};
+            for (const [storeName, rows] of Object.entries(uploadedStoreRecords)) {
+              storesToStamp[storeName] = rows.map((row) => ({
+                ...row,
+                DataGeneratedAt: row?.DataGeneratedAt ?? row?.dataGeneratedAt ?? row?.createdAt ?? migrationStamp,
+                LastDataMigrationAt: migrationStamp,
+                updatedAt: migrationStamp,
+              }));
+            }
+
+            if (Object.keys(storesToStamp).length > 0) {
+              try {
+                await fetch('http://localhost:5237/api/GenericData/bulk-multi', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ stores: storesToStamp }),
+                });
+                log(`✓ Updated LastDataMigrationAt for ${Object.keys(storesToStamp).length} store(s)`);
+              } catch (stampErr: any) {
+                log(`⚠ Could not update LastDataMigrationAt metadata: ${stampErr.message || stampErr}`);
+              }
+            }
+
             if (status.status === 'CompletedWithErrors') {
               log('⚠ Migration completed with some errors — check the log above');
               showSnackbar('Migration completed with errors', 'warning');
@@ -7738,6 +7787,23 @@ const DataMigration: React.FC = () => {
               />
               <Typography variant="caption" color="text.secondary">
                 Server and browser migration split large CSV files using this limit (max 10 MB).
+              </Typography>
+            </Box>
+            <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel id="migration-load-mode-label">Data load mode</InputLabel>
+                <Select
+                  labelId="migration-load-mode-label"
+                  value={migrationLoadMode}
+                  label="Data load mode"
+                  onChange={(e) => setMigrationLoadMode(e.target.value as 'full' | 'delta')}
+                >
+                  <MenuItem value="delta">Delta (never migrated only)</MenuItem>
+                  <MenuItem value="full">Full (all records)</MenuItem>
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary">
+                Delta uploads only rows where `LastDataMigrationAt` is empty or null.
               </Typography>
             </Box>
             <Box sx={{ mt: 1 }}>

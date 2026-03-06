@@ -78,13 +78,15 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
 class ProcessDataApiService {
   /** Metadata that was on IndexedDB records but the server doesn't need. */
-  private withMeta<T extends Record<string, any>>(record: T): T & { createdAt: string; updatedAt: string; version: number } {
+  private withMeta<T extends Record<string, any>>(record: T): T & { createdAt: string; updatedAt: string; version: number; DataGeneratedAt: string; LastDataMigrationAt: string | null } {
     const now = new Date().toISOString();
     return {
       ...record,
       createdAt: (record as any).createdAt ?? now,
       updatedAt: now,
       version: ((record as any).version ?? 0) + 1,
+      DataGeneratedAt: (record as any).DataGeneratedAt ?? (record as any).createdAt ?? now,
+      LastDataMigrationAt: (record as any).LastDataMigrationAt ?? null,
     };
   }
 
@@ -165,7 +167,14 @@ class ProcessDataApiService {
     equipmentRequirements: Omit<SegmentEquipmentRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
   ): Promise<void> {
     const now = new Date().toISOString();
-    const enrich = (r: any) => ({ ...r, createdAt: now, updatedAt: now, version: 1 });
+    const enrich = (r: any) => ({
+      ...r,
+      createdAt: r.createdAt ?? now,
+      updatedAt: now,
+      version: 1,
+      DataGeneratedAt: r.DataGeneratedAt ?? r.createdAt ?? now,
+      LastDataMigrationAt: r.LastDataMigrationAt ?? null,
+    });
 
     const stores: Record<string, any[]> = {
       operationsRequests: [enrich(operationsRequest)],
@@ -194,7 +203,14 @@ class ProcessDataApiService {
     segmentData: Omit<SegmentDataRecord, 'createdAt' | 'updatedAt' | 'version'>[],
   ): Promise<void> {
     const now = new Date().toISOString();
-    const enrich = (r: any) => ({ ...r, createdAt: now, updatedAt: now, version: 1 });
+    const enrich = (r: any) => ({
+      ...r,
+      createdAt: r.createdAt ?? now,
+      updatedAt: now,
+      version: 1,
+      DataGeneratedAt: r.DataGeneratedAt ?? r.createdAt ?? now,
+      LastDataMigrationAt: r.LastDataMigrationAt ?? null,
+    });
 
     const stores: Record<string, any[]> = {
       operationsResponses: [enrich(operationsResponse)],
