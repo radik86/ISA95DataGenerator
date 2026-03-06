@@ -44,6 +44,20 @@ public class MigrationProcessorV2Service
         "segment_data",
     };
 
+    private static readonly string[] KnownIsa95Terms =
+    {
+        "operations", "operation", "segment", "material", "equipment", "event", "record", "entry",
+        "requirement", "requirements", "response", "responses", "property", "properties", "actual", "actuals",
+        "capability", "capabilities", "definition", "definitions", "specification", "specifications",
+        "parameter", "parameters", "class", "classes", "allocation", "reference", "resource", "scope",
+        "hierarchy", "sublot", "lot", "source", "target", "evaluated", "from", "lang", "string", "set",
+        "job", "order", "list", "data", "type", "id", "pk"
+    };
+
+    private static readonly string[] KnownIsa95TermsByLength = KnownIsa95Terms
+        .OrderByDescending(t => t.Length)
+        .ToArray();
+
     public MigrationProcessorV2Service(
         MigrationDbContext dbContext,
         IConfiguration configuration,
@@ -144,19 +158,7 @@ public class MigrationProcessorV2Service
             Directory.CreateDirectory(sourceSubDir);
             var mappingSubDir = Path.Combine(isa95SubDir, "mapping");
             Directory.CreateDirectory(mappingSubDir);
-            var masterSubDir = Path.Combine(isa95SubDir, "master");
-            var processSubDir = Path.Combine(isa95SubDir, "process");
-
-            if (separateMasterProcessFiles)
-            {
-                Directory.CreateDirectory(masterSubDir);
-                Directory.CreateDirectory(processSubDir);
-                Log("Master/process split enabled: ISA95 outputs will be written to isa95/master and isa95/process");
-            }
-            else
-            {
-                Log("ISA95 outputs will be written to isa95 folder");
-            }
+            Log("ISA95 outputs will be written to isa95 folder");
 
             var clampedMaxFileSizeMb = Math.Clamp(maxFileSizeMb ?? 10, 1, 10);
             var maxFileSizeBytes = clampedMaxFileSizeMb * 1024L * 1024L;
@@ -164,16 +166,24 @@ public class MigrationProcessorV2Service
 
             var outputFiles = new List<string>();
 
-            var exportedSourceFiles = await ExportSourceStoresToCsvAsync(
-                allStoreData,
-                sourceSubDir,
-                maxFileSizeBytes,
-                sourceIncludeTimestampSuffix,
-                sourceSplitFiles,
-                ct);
-            outputFiles.AddRange(exportedSourceFiles);
-            Log($"Source export settings: timestamp suffix={(sourceIncludeTimestampSuffix ? "on" : "off")}, split={(sourceSplitFiles ? "on" : "off")}");
-            Log($"Exported source stores to source folder: {exportedSourceFiles.Count} file(s)");
+            if (separateMasterProcessFiles)
+            {
+                var exportedSourceFiles = await ExportSourceStoresToCsvAsync(
+                    allStoreData,
+                    sourceSubDir,
+                    maxFileSizeBytes,
+                    sourceIncludeTimestampSuffix,
+                    sourceSplitFiles,
+                    exportByMasterProcess: true,
+                    ct);
+                outputFiles.AddRange(exportedSourceFiles);
+                Log($"Source export enabled: grouped by master/process, timestamp suffix={(sourceIncludeTimestampSuffix ? "on" : "off")}, split={(sourceSplitFiles ? "on" : "off")}");
+                Log($"Exported source stores to source folder: {exportedSourceFiles.Count} file(s)");
+            }
+            else
+            {
+                Log("Source export disabled by configuration");
+            }
 
             int processedTotal = 0;
             int successCount = 0;
@@ -217,9 +227,7 @@ public class MigrationProcessorV2Service
                     var entityOutputName = FormatEntityNameForOutput(mapping.TargetEntity);
                     var targetDir = mapping.IsBridge
                         ? mappingSubDir
-                        : separateMasterProcessFiles
-                            ? (IsProcessSourceTable(mapping.SourceTable) ? processSubDir : masterSubDir)
-                            : isa95SubDir;
+                        : isa95SubDir;
                     int recordCount;
                     List<string> written;
 
@@ -1430,9 +1438,19 @@ public class MigrationProcessorV2Service
         long maxFileSizeBytes,
         bool includeTimestampSuffix,
         bool splitFiles,
+        bool exportByMasterProcess,
         CancellationToken ct)
     {
         var files = new List<string>();
+
+        var sourceMasterDir = Path.Combine(sourceOutputDir, "master");
+        var sourceProcessDir = Path.Combine(sourceOutputDir, "process");
+
+        if (exportByMasterProcess)
+        {
+            Directory.CreateDirectory(sourceMasterDir);
+            Directory.CreateDirectory(sourceProcessDir);
+        }
 
         foreach (var kv in allStoreData.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
         {
@@ -1441,10 +1459,14 @@ public class MigrationProcessorV2Service
             if (kv.Value == null || kv.Value.Count == 0)
                 continue;
 
+            var targetDir = exportByMasterProcess
+                ? (IsProcessSourceTable(kv.Key) ? sourceProcessDir : sourceMasterDir)
+                : sourceOutputDir;
+
             var storeFiles = await WriteCsvFilesAsync(
                 kv.Key,
                 kv.Value,
-                sourceOutputDir,
+                targetDir,
                 maxFileSizeBytes,
                 ct,
                 includeTimestampSuffix,
@@ -1597,8 +1619,38 @@ public class MigrationProcessorV2Service
         spaced = Regex.Replace(spaced, "([A-Z]+)([A-Z][a-z])", "$1 $2");
         spaced = Regex.Replace(spaced, "\\s+", " ").Trim();
 
-        var normalized = spaced.ToLowerInvariant();
-        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized);
+        var textInfo = CultureInfo.InvariantCulture.TextInfo;
+        var tokens = spaced
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => ExpandIsa95Token(token, textInfo));
+
+        return string.Join(" ", tokens);
+    }
+
+    private static string ExpandIsa95Token(string token, TextInfo textInfo)
+    {
+        var lower = token.ToLowerInvariant();
+
+        if (!lower.All(char.IsLetter))
+            return textInfo.ToTitleCase(lower);
+
+        var words = new List<string>();
+        var position = 0;
+
+        while (position < lower.Length)
+        {
+            var matched = KnownIsa95TermsByLength.FirstOrDefault(term =>
+                position + term.Length <= lower.Length &&
+                lower.AsSpan(position, term.Length).Equals(term.AsSpan(), StringComparison.Ordinal));
+
+            if (matched is null)
+                return textInfo.ToTitleCase(lower);
+
+            words.Add(textInfo.ToTitleCase(matched));
+            position += matched.Length;
+        }
+
+        return string.Join(" ", words);
     }
 
     private static bool IsProcessSourceTable(string sourceTable)

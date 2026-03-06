@@ -12,6 +12,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from pyspark.sql import DataFrame, SparkSession, functions as F
 
 
+_KNOWN_ISA95_TERMS = sorted([
+    "operations", "operation", "segment", "material", "equipment", "event", "record", "entry",
+    "requirement", "requirements", "response", "responses", "property", "properties", "actual", "actuals",
+    "capability", "capabilities", "definition", "definitions", "specification", "specifications",
+    "parameter", "parameters", "class", "classes", "allocation", "reference", "resource", "scope",
+    "hierarchy", "sublot", "lot", "source", "target", "evaluated", "from", "lang", "string", "set",
+    "job", "order", "list", "data", "type", "id", "pk"
+], key=len, reverse=True)
+
+
 @dataclass
 class MigrationResult:
     """Aggregated outcome of one migration run, including output and log metadata."""
@@ -729,7 +739,31 @@ def _format_entity_name_for_output(entity_name: str) -> str:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", spaced)
     spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
     spaced = re.sub(r"\s+", " ", spaced).strip()
-    return spaced.title()
+
+    def _expand_token(token: str) -> str:
+        lower = token.lower()
+        if not lower.isalpha():
+            return lower.title()
+
+        parts: List[str] = []
+        idx = 0
+        while idx < len(lower):
+            matched = None
+            for term in _KNOWN_ISA95_TERMS:
+                if lower.startswith(term, idx):
+                    matched = term
+                    break
+
+            if matched is None:
+                return lower.title()
+
+            parts.append(matched.title())
+            idx += len(matched)
+
+        return " ".join(parts)
+
+    tokens = [t for t in spaced.split(" ") if t]
+    return " ".join(_expand_token(t) for t in tokens)
 
 
 def _csv_escape(value: Any) -> str:

@@ -7748,10 +7748,10 @@ const DataMigration: React.FC = () => {
                     onChange={(e) => setSeparateMasterProcessFiles(e.target.checked)}
                   />
                 }
-                label="Export master and process data as separate CSV files"
+                label="Export source master/process data"
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
-                When enabled, server-side output is grouped into separate `master` and `process` folders.
+                This only applies to source data export. When enabled, source tables are exported to `source/master` and `source/process`; ISA95 output is unaffected.
               </Typography>
             </Box>
             <Box sx={{ mt: 2 }}>
