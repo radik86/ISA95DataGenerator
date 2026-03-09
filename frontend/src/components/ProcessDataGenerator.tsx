@@ -27,6 +27,8 @@ import {
   Tab,
   IconButton,
   Tooltip,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import {
   PlayArrow as GenerateIcon,
@@ -199,6 +201,9 @@ interface TestResult {
 }
 
 const ProcessDataGenerator: React.FC = () => {
+  const MAX_DAILY_ORDERS = 20;
+  const MAX_UTILIZATION_PERCENT = 200;
+
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
@@ -296,6 +301,17 @@ const ProcessDataGenerator: React.FC = () => {
   const [actualDataFilter, setActualDataFilter] = useState('');
   const [materialActualsFilter, setMaterialActualsFilter] = useState<'ALL' | 'CONSUME' | 'PRODUCE' | 'Scrap'>('ALL');
   const [segmentResponsesFilter, setSegmentResponsesFilter] = useState('');
+
+  // Automated batch generation inputs (plan + actual)
+  const [batchStartDate, setBatchStartDate] = useState('');
+  const [batchEndDate, setBatchEndDate] = useState('');
+  const [batchPlantId, setBatchPlantId] = useState('');
+  const [batchLineId, setBatchLineId] = useState('');
+  const [batchIncludeScrap, setBatchIncludeScrap] = useState(true);
+  const [batchIncludeDelays, setBatchIncludeDelays] = useState(true);
+  const [batchMinDailyOrders, setBatchMinDailyOrders] = useState(1);
+  const [batchMaxDailyOrders, setBatchMaxDailyOrders] = useState(3);
+  const [batchTargetUtilizationPercent, setBatchTargetUtilizationPercent] = useState(100);
 
   const loadSavedOperationsRequests = async () => {
     try {
@@ -2111,6 +2127,690 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
+  const randomInt = (min: number, max: number): number => {
+    const low = Math.ceil(min);
+    const high = Math.floor(max);
+    return Math.floor(Math.random() * (high - low + 1)) + low;
+  };
+
+  const randomFloat = (min: number, max: number): number => Math.random() * (max - min) + min;
+
+  const toDbDateTime = (date: Date): string => date.toISOString().slice(0, 19).replace('T', ' ');
+
+  const listDatesInclusive = (startDateStr: string, endDateStr: string): string[] => {
+    const dates: string[] = [];
+    const current = new Date(`${startDateStr}T00:00:00`);
+    const end = new Date(`${endDateStr}T00:00:00`);
+    while (current <= end) {
+      dates.push(current.toISOString().slice(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const dateFromDateAndHour = (dateStr: string, hour: number, minute = 0): Date => {
+    return new Date(`${dateStr}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
+  };
+
+  const calculateLineDailyCapacity = (plantId: string, lineId: string, productMaterialId: string): number => {
+    const productSegments = processSegments
+      .filter(ps => ps.productMaterialId === productMaterialId)
+      .sort((a, b) => a.sequence - b.sequence);
+
+    if (productSegments.length === 0) return 0;
+
+    const lineEquipmentIds = lineEquipment
+      .filter(le => le.productionLineId === lineId && le.plantId === plantId)
+      .map(le => le.equipmentId);
+
+    if (lineEquipmentIds.length === 0) return 0;
+
+    let bottleneckPerHour = Number.POSITIVE_INFINITY;
+
+    for (const segment of productSegments) {
+      const durationHours = Math.max(0.25, Number(segment.durationHours) || 2);
+      const usage = equipmentUsages.find(
+        eu => eu.processSegmentId === segment.id && lineEquipmentIds.includes(eu.equipmentId),
+      );
+      const capacityPerRun = Math.max(1, Number(usage?.capacityPerRun) || 1);
+      const segmentPerHour = capacityPerRun / durationHours;
+      bottleneckPerHour = Math.min(bottleneckPerHour, segmentPerHour);
+    }
+
+    if (!Number.isFinite(bottleneckPerHour)) return 0;
+
+    const productionHoursPerDay = 16;
+    return Math.max(1, Math.floor(bottleneckPerHour * productionHoursPerDay));
+  };
+
+  const splitDemandIntoOrders = (demandQty: number, maxOrderQty: number): number[] => {
+    const orders: number[] = [];
+    let remaining = demandQty;
+
+    while (remaining > 0) {
+      const upper = Math.min(maxOrderQty, remaining);
+      const lower = Math.max(1, Math.min(upper, Math.floor(maxOrderQty * 0.45)));
+      const qty = remaining <= maxOrderQty ? remaining : randomInt(lower, upper);
+      orders.push(qty);
+      remaining -= qty;
+    }
+
+    return orders;
+  };
+
+  const buildPlanPackage = (
+    plantId: string,
+    lineId: string,
+    productMaterialId: string,
+    quantity: number,
+    planStart: Date,
+    orderSeq: number,
+  ): {
+    operationsRequest: OperationsRequest;
+    segmentRequirements: SegmentRequirement[];
+    materialRequirements: SegmentMaterialRequirement[];
+    equipmentRequirements: SegmentEquipmentRequirement[];
+    endTime: Date;
+  } => {
+    const dateTimeStr = `${planStart.toISOString().slice(0, 10).replace(/-/g, '')}${String(planStart.getHours()).padStart(2, '0')}${String(planStart.getMinutes()).padStart(2, '0')}`;
+    const orId = `OR-${plantId}-${lineId}-${dateTimeStr}-${String(orderSeq).padStart(3, '0')}`;
+
+    const product = materials.find(m => m.id === productMaterialId);
+    const productName = product?.name || productMaterialId;
+
+    const productSegments = processSegments
+      .filter(ps => ps.productMaterialId === productMaterialId)
+      .sort((a, b) => a.sequence - b.sequence);
+
+    if (productSegments.length === 0) {
+      throw new Error(`No process segments found for product ${productMaterialId}`);
+    }
+
+    const generatedSegReqs: SegmentRequirement[] = [];
+    const generatedMatReqs: SegmentMaterialRequirement[] = [];
+    const generatedEqReqs: SegmentEquipmentRequirement[] = [];
+
+    const lineEquipmentIds = lineEquipment
+      .filter(le => le.productionLineId === lineId && le.plantId === plantId)
+      .map(le => le.equipmentId);
+
+    let currentTime = new Date(planStart);
+    let previousSegmentFirstRunEnd: Date | null = null;
+
+    productSegments.forEach((segment, index) => {
+      const segReqId = `SR-${plantId}-${lineId}-${dateTimeStr}-${String(index + 1).padStart(3, '0')}-${segment.id}`;
+      const segmentDuration = Number(segment.durationHours) || 2;
+      const eqUsages = equipmentUsages.filter(
+        eu => eu.processSegmentId === segment.id && lineEquipmentIds.includes(eu.equipmentId),
+      );
+      const equipmentCapacity = eqUsages.length > 0 ? Math.max(1, Number(eqUsages[0].capacityPerRun) || 1) : quantity;
+      const requiredRuns = Math.max(1, Math.ceil(quantity / equipmentCapacity));
+      const totalDuration = segmentDuration * requiredRuns;
+
+      let segmentStartTime: Date;
+      if (index === 0) segmentStartTime = new Date(currentTime);
+      else if (previousSegmentFirstRunEnd) segmentStartTime = new Date(previousSegmentFirstRunEnd);
+      else segmentStartTime = new Date(currentTime);
+
+      const firstRunEnd = new Date(segmentStartTime.getTime() + segmentDuration * 60 * 60 * 1000);
+      let allRunsEnd = new Date(segmentStartTime.getTime() + totalDuration * 60 * 60 * 1000);
+      if (index > 0 && currentTime > allRunsEnd) {
+        allRunsEnd = new Date(currentTime.getTime() + segmentDuration * 60 * 60 * 1000);
+      }
+
+      const segReq: SegmentRequirement = {
+        id: segReqId,
+        operationsRequestId: orId,
+        processSegmentId: segment.id,
+        sequence: (index + 1) * 10,
+        earliestStartDateTime: toDbDateTime(segmentStartTime),
+        latestEndDateTime: toDbDateTime(allRunsEnd),
+        targetQuantity: quantity,
+        quantityUoM: 'EA',
+      };
+      generatedSegReqs.push(segReq);
+
+      previousSegmentFirstRunEnd = firstRunEnd;
+      currentTime = new Date(allRunsEnd);
+
+      const bomLines = segmentBOMs.filter(bom => bom.processSegmentId === segment.id);
+      bomLines.forEach((bom, bomIndex) => {
+        const material = materials.find(m => m.id === bom.materialId);
+        generatedMatReqs.push({
+          id: `SMR-${plantId}-${lineId}-${dateTimeStr}-${String(bomIndex + 1).padStart(3, '0')}-${segment.id}`,
+          segmentRequirementId: segReqId,
+          materialId: bom.materialId,
+          requiredQty: (Number(bom.qtyPerUnit) || 0) * quantity,
+          qtyUoM: bom.uom || 'EA',
+          requirementType:
+            material?.classId === 'FINISHEDPRODUCT' ? 'Output' :
+            material?.classId === 'INPROCESSMATERIAL' ? 'Input' :
+            'Consumable',
+        });
+      });
+
+      if (index === productSegments.length - 1) {
+        generatedMatReqs.push({
+          id: `SMR-${plantId}-${lineId}-${dateTimeStr}-OUTPUT-${segment.id}`,
+          segmentRequirementId: segReqId,
+          materialId: productMaterialId,
+          requiredQty: quantity,
+          qtyUoM: 'EA',
+          requirementType: 'Output',
+        });
+      }
+
+      eqUsages.forEach((usage, eqIndex) => {
+        const equipmentItem = equipment.find(e => e.id === usage.equipmentId);
+        const requiredRunsForEquipment = Math.max(1, Math.ceil(quantity / Math.max(1, Number(usage.capacityPerRun) || 1)));
+        generatedEqReqs.push({
+          id: `SER-${plantId}-${lineId}-${dateTimeStr}-${String(eqIndex + 1).padStart(3, '0')}-${segment.id}`,
+          segmentRequirementId: segReqId,
+          lineId,
+          equipmentClassId: equipmentItem?.classId || '',
+          equipmentId: usage.equipmentId,
+          requirementType: 'SpecificAsset',
+          plannedDurationHours: (Number(segment.durationHours) || 2) * requiredRunsForEquipment,
+        });
+        if (eqIndex === 0 && !generatedSegReqs[index].equipmentId) {
+          generatedSegReqs[index].equipmentId = usage.equipmentId;
+        }
+      });
+    });
+
+    const operationsRequest: OperationsRequest = {
+      id: orId,
+      description: `Auto plan for ${productName}`,
+      plantId,
+      lineId,
+      productMaterialId,
+      plannedQuantity: quantity,
+      quantityUoM: 'EA',
+      plannedStartDateTime: toDbDateTime(planStart),
+      plannedEndDateTime: toDbDateTime(currentTime),
+      priority: randomInt(1, 3),
+      status: 'Planned',
+    };
+
+    return {
+      operationsRequest,
+      segmentRequirements: generatedSegReqs,
+      materialRequirements: generatedMatReqs,
+      equipmentRequirements: generatedEqReqs,
+      endTime: currentTime,
+    };
+  };
+
+  const generateAndSaveActualForOrder = async (
+    operationsRequest: OperationsRequest,
+    includeScrap: boolean,
+    includeDelays: boolean,
+  ): Promise<Date | null> => {
+    const orData = await processDataApi.getOperationsRequestWithRequirements(operationsRequest.id);
+    if (!orData || !orData.segmentRequirements || orData.segmentRequirements.length === 0) return null;
+
+    const sortedSegReqs = [...orData.segmentRequirements].sort((a, b) => a.sequence - b.sequence);
+    const lineEquipmentIds = lineEquipment
+      .filter(le => le.productionLineId === operationsRequest.lineId && le.plantId === operationsRequest.plantId)
+      .map(le => le.equipmentId);
+
+    const scrapPercent = includeScrap ? randomFloat(0, 6) : 0;
+    const startDelayMinutes = includeDelays ? randomInt(0, 45) : 0;
+    const downtimeDelayMinutes = includeDelays ? randomInt(0, 20) : 0;
+
+    const generatedSegResponses: SegmentResponse[] = [];
+    const generatedMatActuals: SegmentMaterialActual[] = [];
+    const generatedEqActuals: SegmentEquipmentActual[] = [];
+    const generatedPropertyTracking: EquipmentPropertyTracking[] = [];
+    const generatedOperationsEvents: OperationsEvent[] = [];
+    const generatedOperationsEventRecords: OperationsEventRecord[] = [];
+    const generatedOperationsEventEntries: OperationsEventEntry[] = [];
+    const generatedOperationsEventProperties: any[] = [];
+    const generatedSegmentData: SegmentData[] = [];
+    const generatedTestResults: TestResult[] = [];
+
+    let overallStart: Date | null = null;
+    let overallEnd: Date | null = null;
+    let timeCursor = new Date(orData.operationsRequest.plannedStartDateTime.replace(' ', 'T'));
+    if (startDelayMinutes > 0) {
+      timeCursor = new Date(timeCursor.getTime() + startDelayMinutes * 60 * 1000);
+    }
+
+    const toIdDateTime = (d: Date): string => {
+      const iso = d.toISOString();
+      return `${iso.slice(0, 10).replace(/-/g, '')}${iso.slice(11, 13)}${iso.slice(14, 16)}`;
+    };
+
+    const opsResponseId = `OPS-RESP-${operationsRequest.plantId}-${operationsRequest.lineId}-${toIdDateTime(timeCursor)}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+
+    for (const segReq of sortedSegReqs) {
+      const segment = processSegments.find(ps => ps.id === segReq.processSegmentId);
+      const segmentDuration = Number(segment?.durationHours) || 2;
+      const eqUsages = equipmentUsages.filter(
+        eu => eu.processSegmentId === segReq.processSegmentId && lineEquipmentIds.includes(eu.equipmentId),
+      );
+      const capacityPerRun = eqUsages.length > 0 ? Math.max(1, Number(eqUsages[0].capacityPerRun) || 1) : operationsRequest.plannedQuantity;
+      const runsNeeded = Math.max(1, Math.ceil(operationsRequest.plannedQuantity / capacityPerRun));
+
+      for (let run = 0; run < runsNeeded; run++) {
+        const runQty = Math.min(capacityPerRun, operationsRequest.plannedQuantity - run * capacityPerRun);
+        const runStart = new Date(timeCursor);
+        const runDuration = segmentDuration + (downtimeDelayMinutes / 60);
+        const runEnd = new Date(runStart.getTime() + runDuration * 60 * 60 * 1000);
+
+        const segRespId = `SEG-RESP-${operationsRequest.plantId}-${operationsRequest.lineId}-${toIdDateTime(runStart)}-RUN${run + 1}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+        generatedSegResponses.push({
+          id: segRespId,
+          segmentRequirementId: segReq.id,
+          operationsResponseId: opsResponseId,
+          processSegmentId: segReq.processSegmentId,
+          equipmentId: eqUsages[0]?.equipmentId,
+          actualStartDateTime: toDbDateTime(runStart),
+          actualEndDateTime: toDbDateTime(runEnd),
+          actualQuantity: runQty,
+          quantityUoM: operationsRequest.quantityUoM || 'EA',
+          status: 'Completed',
+        });
+
+        const bomLines = segmentBOMs.filter(b => b.processSegmentId === segReq.processSegmentId);
+        for (const bom of bomLines) {
+          const materialUse = (bom.materialUse || '').toUpperCase();
+          const direction: 'CONSUME' | 'PRODUCE' | 'Scrap' =
+            materialUse === 'PRODUCE' || materialUse === 'PRODUCED' ? 'PRODUCE' :
+            materialUse === 'SCRAP' ? 'Scrap' :
+            'CONSUME';
+
+          const matActualDateTime = toIdDateTime(runStart);
+          const matLotId = `LOT-${operationsRequest.plantId}-${operationsRequest.lineId}-${matActualDateTime}-${bom.materialId}-R${run + 1}`;
+
+          generatedMatActuals.push({
+            id: `MAT-ACT-${operationsRequest.plantId}-${operationsRequest.lineId}-${matActualDateTime}-${bom.materialId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
+            segmentResponseId: segRespId,
+            materialId: bom.materialId,
+            materialLotId: matLotId,
+            actualQty: (Number(bom.qtyPerUnit) || 0) * runQty,
+            qtyUoM: bom.uom || 'EA',
+            direction,
+          });
+        }
+
+        const isLastSegment = segReq.sequence === Math.max(...sortedSegReqs.map(s => s.sequence));
+        if (isLastSegment) {
+          const scrapQty = includeScrap ? (runQty * scrapPercent) / 100 : 0;
+          const producedQty = Math.max(0, runQty - scrapQty);
+          const finishedDateTime = toIdDateTime(runEnd);
+          const finishedLotId = `LOT-${operationsRequest.plantId}-${operationsRequest.lineId}-${finishedDateTime}-${operationsRequest.productMaterialId}-R${run + 1}`;
+
+          generatedMatActuals.push({
+            id: `MAT-ACT-${operationsRequest.plantId}-${operationsRequest.lineId}-${finishedDateTime}-FINAL-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
+            segmentResponseId: segRespId,
+            materialId: operationsRequest.productMaterialId,
+            materialLotId: finishedLotId,
+            actualQty: producedQty,
+            qtyUoM: operationsRequest.quantityUoM || 'EA',
+            direction: 'PRODUCE',
+          });
+
+          if (scrapQty > 0) {
+            generatedMatActuals.push({
+              id: `MAT-ACT-${operationsRequest.plantId}-${operationsRequest.lineId}-${finishedDateTime}-SCRAP-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
+              segmentResponseId: segRespId,
+              materialId: operationsRequest.productMaterialId,
+              materialLotId: `LOT-SCRAP-${operationsRequest.plantId}-${operationsRequest.lineId}-${finishedDateTime}-${operationsRequest.productMaterialId}-R${run + 1}`,
+              actualQty: scrapQty,
+              qtyUoM: operationsRequest.quantityUoM || 'EA',
+              direction: 'Scrap',
+            });
+          }
+        }
+
+        const eqList = eqUsages.length > 0 ? eqUsages : [{ equipmentId: segReq.equipmentId || '' } as any];
+        for (const usage of eqList) {
+          if (!usage.equipmentId) continue;
+          generatedEqActuals.push({
+            id: `EQ-ACT-${operationsRequest.plantId}-${operationsRequest.lineId}-${toIdDateTime(runStart)}-${usage.equipmentId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
+            segmentResponseId: segRespId,
+            equipmentId: usage.equipmentId,
+            actualDurationHours: runDuration,
+            actualStartDateTime: toDbDateTime(runStart),
+            actualEndDateTime: toDbDateTime(runEnd),
+          });
+        }
+
+        if (!overallStart || runStart < overallStart) overallStart = runStart;
+        if (!overallEnd || runEnd > overallEnd) overallEnd = runEnd;
+        timeCursor = new Date(runEnd);
+      }
+    }
+
+    if (!overallStart || !overallEnd) return null;
+
+    // Generate equipment property tracking records for created equipment actuals.
+    for (const eqActual of generatedEqActuals) {
+      const segResp = generatedSegResponses.find(sr => sr.id === eqActual.segmentResponseId);
+      if (!segResp) continue;
+
+      const propAssignments = equipmentPropertyAssignments.filter(
+        epa => epa.equipmentId === eqActual.equipmentId && epa.processSegmentId === segResp.processSegmentId,
+      );
+
+      for (const assignment of propAssignments) {
+        const property = equipmentProperties.find(ep => ep.id === assignment.equipmentPropertyId);
+        if (!property) continue;
+
+        const samplingIntervalSeconds = assignment.samplingIntervalSeconds || 60;
+        const startTs = new Date(eqActual.actualStartDateTime.replace(' ', 'T') + 'Z');
+        const endTs = new Date(eqActual.actualEndDateTime.replace(' ', 'T') + 'Z');
+        const durationMs = endTs.getTime() - startTs.getTime();
+        const numSamples = Math.max(1, Math.floor(durationMs / (samplingIntervalSeconds * 1000)) + 1);
+
+        const eqItem = equipment.find(e => e.id === eqActual.equipmentId);
+        const classAssignment = equipmentClassPropertyAssignments.find(
+          ecpa => ecpa.equipmentPropertyId === assignment.equipmentPropertyId,
+        );
+
+        for (let i = 0; i < numSamples; i++) {
+          const sampleTime = new Date(startTs.getTime() + i * samplingIntervalSeconds * 1000);
+          if (sampleTime > endTs) break;
+
+          let value: number | string = 'N/A';
+          if (property.valueDataType === 'DECIMAL' || property.valueDataType === 'INTEGER') {
+            const minValue = typeof property.minValue === 'number' ? property.minValue : 0;
+            const maxValue = typeof property.maxValue === 'number' ? property.maxValue : 100;
+            const numericValue = minValue + Math.random() * (maxValue - minValue);
+            value = property.valueDataType === 'INTEGER' ? Math.round(numericValue) : Math.round(numericValue * 100) / 100;
+          } else if (property.valueDataType === 'BOOLEAN') {
+            value = Math.random() > 0.5 ? 'true' : 'false';
+          } else if (property.minValue && typeof property.minValue === 'string') {
+            const opts = property.minValue.split(',').map((v: string) => v.trim()).filter(Boolean);
+            value = opts.length > 0 ? opts[Math.floor(Math.random() * opts.length)] : 'N/A';
+          }
+
+          generatedPropertyTracking.push({
+            id: `PROP-TRACK-${eqActual.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`,
+            segmentResponseId: eqActual.segmentResponseId,
+            equipmentId: eqActual.equipmentId,
+            equipmentPropertyId: assignment.equipmentPropertyId,
+            equipmentPropertyName: property.name,
+            equipmentClassId: eqItem?.classId || '',
+            equipmentClassPropertyId: classAssignment?.equipmentClassPropertyId || '',
+            value,
+            uom: property.unit || '',
+            createdTimestamp: toDbDateTime(sampleTime),
+          });
+        }
+      }
+    }
+
+    // Generate operations events + records + entries + properties for created segment responses.
+    for (const segResp of generatedSegResponses) {
+      const assignments = operationEventDefSegmentAssignments.filter(
+        a => a.processSegmentId === segResp.processSegmentId,
+      );
+
+      if (assignments.length === 0) continue;
+
+      const mandatory = assignments.filter(
+        (a: any) => a.isMandatory === true || a.isMandatory === 'TRUE' || a.isMandatory === 'true' || a.isMandatory === 'True',
+      );
+      const conditional = assignments.filter((a: any) => !mandatory.includes(a));
+      const selected = [...mandatory];
+      if (conditional.length > 0) {
+        selected.push(conditional[Math.floor(Math.random() * conditional.length)]);
+      }
+
+      const segStart = new Date(segResp.actualStartDateTime.replace(' ', 'T') + 'Z');
+      const segEnd = new Date(segResp.actualEndDateTime.replace(' ', 'T') + 'Z');
+      const eqId = (generatedEqActuals.find(ea => ea.segmentResponseId === segResp.id)?.equipmentId) || segResp.equipmentId || '';
+      const hierarchyScopeRecord = hierarchyScopes.find((hs: any) => hs.equipmentID === eqId);
+
+      for (const assignment of selected) {
+        const eventDef = operationEventDefinitions.find(oed => oed.id === assignment.operationsEventDefinitionId);
+        const startOrEnd = (assignment.startOrEndEvent || 'Start').toLowerCase();
+        const eventTime = startOrEnd === 'end'
+          ? new Date(segEnd.getTime() - Math.floor((segEnd.getTime() - segStart.getTime()) * 0.1 * Math.random()))
+          : new Date(segStart.getTime() + Math.floor((segEnd.getTime() - segStart.getTime()) * 0.1 * Math.random()));
+
+        const eventId = `OPS-EVENT-${segResp.id}-${assignment.operationsEventDefinitionId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+        generatedOperationsEvents.push({
+          id: eventId,
+          segmentResponseId: segResp.id,
+          operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+          effectiveTimestamp: toDbDateTime(eventTime),
+          notes: `${eventDef?.description || 'Event'} - ${(assignment.notes || '').toString()}`,
+          eventType: eventDef?.eventType || 'Alarm',
+          equipmentId: eqId,
+          hierarchyScope: hierarchyScopeRecord?.id || '',
+        });
+
+        const recordId = `OER-${eventId.replace('OPS-EVENT-', '')}`;
+        generatedOperationsEventRecords.push({
+          id: recordId,
+          operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+          severity: eventDef?.severity || 'Medium',
+          status: 'Closed',
+          comments: `Auto-generated for ${eventId}`,
+          effectiveTime: toDbDateTime(eventTime),
+          segmentResponseId: segResp.id,
+          equipmentId: eqId,
+          eventType: eventDef?.eventType || 'Alarm',
+        });
+
+        generatedOperationsEventEntries.push({
+          id: `OEE-${recordId.replace('OER-', '')}-01`,
+          operationsEventRecordId: recordId,
+          entryType: 'Production',
+          description: `Entry for ${eventId}`,
+          effectiveTime: toDbDateTime(new Date(eventTime.getTime() + 5 * 60 * 1000)),
+          segmentResponseId: segResp.id,
+          equipmentId: eqId,
+        });
+
+        const propAssignments = operationEventDefinitionPropertyAssignments.filter(
+          pa => pa.operationsEventDefinitionId === assignment.operationsEventDefinitionId,
+        );
+
+        for (const pa of propAssignments) {
+          generatedOperationsEventProperties.push({
+            id: `OEP-${eventId.replace('OPS-EVENT-', '')}-${pa.operationsEventDefinitionPropertyId}`,
+            operationsEventId: eventId,
+            operationsEventDefinitionPropertyId: pa.operationsEventDefinitionPropertyId,
+            value: pa.value,
+            valueUnitOfMeasure: pa.valueUnitOfMeasure,
+            effectiveTime: toDbDateTime(eventTime),
+          });
+        }
+      }
+    }
+
+    // Generate simplified shift/crew segment data.
+    for (const segResp of generatedSegResponses) {
+      const segStart = new Date(segResp.actualStartDateTime.replace(' ', 'T') + 'Z');
+      const segEnd = new Date(segResp.actualEndDateTime.replace(' ', 'T') + 'Z');
+      const matchingShift = shifts[0];
+      if (matchingShift) {
+        generatedSegmentData.push({
+          id: `SEG-DATA-SHIFT-${segResp.id}-${matchingShift.id}-${Math.floor(Math.random() * 1000)}`,
+          segmentResponseId: segResp.id,
+          recordType: 'shift',
+          shiftId: matchingShift.id,
+          startDateTime: toDbDateTime(segStart),
+          endDateTime: toDbDateTime(segEnd),
+          notes: `${matchingShift.shiftName || matchingShift.id}`,
+        });
+
+        const crewAssignment = shiftCrewAssignments.find((sca: any) => sca.shiftId === matchingShift.id);
+        if (crewAssignment) {
+          generatedSegmentData.push({
+            id: `SEG-DATA-CREW-${segResp.id}-${crewAssignment.crewId}-${Math.floor(Math.random() * 1000)}`,
+            segmentResponseId: segResp.id,
+            recordType: 'crew',
+            crewId: crewAssignment.crewId,
+            startDateTime: toDbDateTime(segStart),
+            endDateTime: toDbDateTime(segEnd),
+            notes: `Auto-assigned crew ${crewAssignment.crewId}`,
+          });
+        }
+      }
+    }
+
+    // Generate test results for produced/scrap material lots.
+    for (const mat of generatedMatActuals) {
+      if (mat.direction !== 'PRODUCE' && mat.direction !== 'Scrap') continue;
+      const now = new Date();
+      generatedTestResults.push({
+        id: `TEST-${mat.materialLotId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+        materialLotId: mat.materialLotId,
+        description: mat.direction === 'Scrap' ? 'Failed due to process variation' : 'Good',
+        evaluationDate: toDbDateTime(new Date(now.getTime() + randomInt(10, 30) * 60 * 1000)),
+        evaluatedCriterionResult: mat.direction === 'Scrap' ? 'Fail' : 'Pass',
+      });
+    }
+
+    const operationsResponse: OperationsResponse = {
+      id: opsResponseId,
+      operationsRequestId: operationsRequest.id,
+      description: operationsRequest.description,
+      plantId: operationsRequest.plantId,
+      productionLineId: operationsRequest.lineId,
+      actualStartDateTime: toDbDateTime(overallStart),
+      actualEndDateTime: toDbDateTime(overallEnd),
+      actualQuantity: operationsRequest.plannedQuantity,
+      quantityUoM: operationsRequest.quantityUoM,
+      status: 'Completed',
+    };
+
+    await processDataApi.saveActualData(
+      operationsResponse,
+      generatedSegResponses,
+      generatedMatActuals,
+      generatedEqActuals,
+      generatedPropertyTracking,
+      generatedTestResults,
+      generatedOperationsEvents,
+      generatedOperationsEventRecords,
+      generatedOperationsEventEntries,
+      generatedOperationsEventProperties,
+      generatedSegmentData,
+    );
+
+    return overallEnd;
+  };
+
+  const generateAutomatedBatchData = async () => {
+    if (!batchStartDate || !batchEndDate || !batchPlantId) {
+      showSnackbar('Please provide start date, end date, and plant for automated batch generation', 'error');
+      return;
+    }
+
+    if (new Date(batchStartDate) > new Date(batchEndDate)) {
+      showSnackbar('Batch start date must be before or equal to end date', 'error');
+      return;
+    }
+
+    if (
+      batchMinDailyOrders < 1 ||
+      batchMaxDailyOrders < 1 ||
+      batchMinDailyOrders > batchMaxDailyOrders ||
+      batchMinDailyOrders > MAX_DAILY_ORDERS ||
+      batchMaxDailyOrders > MAX_DAILY_ORDERS
+    ) {
+      showSnackbar(`Daily orders: use values between 1 and ${MAX_DAILY_ORDERS}, with min <= max`, 'error');
+      return;
+    }
+
+    if (batchTargetUtilizationPercent <= 0 || batchTargetUtilizationPercent > MAX_UTILIZATION_PERCENT) {
+      showSnackbar(`Target utilization must be between 1% and ${MAX_UTILIZATION_PERCENT}%`, 'error');
+      return;
+    }
+
+    const dates = listDatesInclusive(batchStartDate, batchEndDate);
+    const plantLines = productionLines.filter(
+      l => l.plantId === batchPlantId && (!batchLineId || l.id === batchLineId),
+    );
+
+    if (plantLines.length === 0) {
+      if (batchLineId) {
+        showSnackbar('Selected production line is not available for this plant', 'error');
+      } else {
+        showSnackbar('No production lines found for selected plant', 'error');
+      }
+      return;
+    }
+
+    try {
+      setLoading(true);
+      let createdOrders = 0;
+      let createdDays = 0;
+      const lineNextAvailableAt = new Map<string, Date>();
+
+      for (const dateStr of dates) {
+        createdDays++;
+
+        for (const line of plantLines) {
+          const productPool = materials.filter(m => {
+            const hasSegments = processSegments.some(ps => ps.productMaterialId === m.id);
+            if (!hasSegments) return false;
+            const capacity = calculateLineDailyCapacity(batchPlantId, line.id, m.id);
+            return capacity > 0;
+          });
+
+          if (productPool.length === 0) continue;
+
+          const lineScheduleKey = `${batchPlantId}::${line.id}`;
+          const dayStart = dateFromDateAndHour(dateStr, 6, 0);
+          const priorNextAvailable = lineNextAvailableAt.get(lineScheduleKey);
+          let lineCursor = priorNextAvailable && priorNextAvailable > dayStart
+            ? new Date(priorNextAvailable)
+            : dayStart;
+          const demandGroups = randomInt(batchMinDailyOrders, batchMaxDailyOrders);
+
+          for (let group = 0; group < demandGroups; group++) {
+            const selectedProduct = productPool[randomInt(0, productPool.length - 1)];
+            const dailyCapacity = Math.max(1, calculateLineDailyCapacity(batchPlantId, line.id, selectedProduct.id));
+            const utilizationFactor = batchTargetUtilizationPercent / 100;
+            const targetDailyQty = Math.max(1, Math.floor(dailyCapacity * utilizationFactor));
+            const perGroupTarget = Math.max(1, Math.floor(targetDailyQty / demandGroups));
+            const demandQty = Math.max(1, Math.floor(perGroupTarget * randomFloat(0.95, 1.05)));
+            const maxOrderQty = Math.max(25, Math.floor(dailyCapacity * 0.55));
+            const orderQuantities = splitDemandIntoOrders(demandQty, maxOrderQty);
+
+            for (const qty of orderQuantities) {
+              const planPackage = buildPlanPackage(batchPlantId, line.id, selectedProduct.id, qty, lineCursor, createdOrders + 1);
+
+              await processDataApi.saveGeneratedData(
+                planPackage.operationsRequest,
+                planPackage.segmentRequirements,
+                planPackage.materialRequirements,
+                planPackage.equipmentRequirements,
+              );
+
+              const actualEndTime = await generateAndSaveActualForOrder(
+                planPackage.operationsRequest,
+                batchIncludeScrap,
+                batchIncludeDelays,
+              );
+
+              createdOrders++;
+              const completionAnchor = actualEndTime ?? planPackage.endTime;
+              lineCursor = new Date(completionAnchor.getTime() + randomInt(10, 45) * 60 * 1000);
+              lineNextAvailableAt.set(lineScheduleKey, lineCursor);
+            }
+          }
+        }
+      }
+
+      await loadSavedOperationsRequests();
+      await loadStoredActualData();
+      showSnackbar(`Automated batch generated successfully: ${createdOrders} orders across ${createdDays} day(s)`, 'success');
+    } catch (error: any) {
+      console.error('Automated batch generation failed:', error);
+      showSnackbar(`Automated batch generation failed: ${error?.message || error}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const generateProcessData = () => {
     if (!formData.productMaterialId || !formData.lineId || !formData.plannedQuantity) {
       showSnackbar('Please fill in all required fields', 'error');
@@ -2773,6 +3473,129 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             segment requirements with material and equipment requirements based on master data (BOMs, equipment usage, capacities).
           </Alert>
 
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Automated Batch Generation (Plan + Actual)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Create multiple days of plan and actual production in one run. The generator chooses random products and splits orders by available line capacity.
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  fullWidth
+                  label="Start Date"
+                  type="date"
+                  value={batchStartDate}
+                  onChange={(e) => setBatchStartDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  fullWidth
+                  label="End Date"
+                  type="date"
+                  value={batchEndDate}
+                  onChange={(e) => setBatchEndDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Plant</InputLabel>
+                  <Select
+                    value={batchPlantId}
+                    label="Plant"
+                    onChange={(e) => {
+                      setBatchPlantId(e.target.value);
+                      setBatchLineId('');
+                    }}
+                  >
+                    {plants.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>{p.name || p.id}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Production Line</InputLabel>
+                  <Select
+                    value={batchLineId}
+                    label="Production Line"
+                    onChange={(e) => setBatchLineId(e.target.value)}
+                    disabled={!batchPlantId}
+                  >
+                    <MenuItem value="">All lines in plant</MenuItem>
+                    {productionLines
+                      .filter((line) => line.plantId === batchPlantId)
+                      .map((line) => (
+                        <MenuItem key={line.id} value={line.id}>{line.name || line.lineName || line.id}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<GenerateIcon />}
+                    onClick={generateAutomatedBatchData}
+                    disabled={loading}
+                  >
+                    Generate Batch Data
+                  </Button>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel
+                  control={<Switch checked={batchIncludeScrap} onChange={(e) => setBatchIncludeScrap(e.target.checked)} />}
+                  label="Include scrap in actual data"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel
+                  control={<Switch checked={batchIncludeDelays} onChange={(e) => setBatchIncludeDelays(e.target.checked)} />}
+                  label="Include production and downtime delays"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Min Daily Orders"
+                  type="number"
+                  value={batchMinDailyOrders}
+                  onChange={(e) => setBatchMinDailyOrders(Math.min(MAX_DAILY_ORDERS, Math.max(1, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: MAX_DAILY_ORDERS, step: 1 }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Max Daily Orders"
+                  type="number"
+                  value={batchMaxDailyOrders}
+                  onChange={(e) => setBatchMaxDailyOrders(Math.min(MAX_DAILY_ORDERS, Math.max(1, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: MAX_DAILY_ORDERS, step: 1 }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Target Utilization %"
+                  type="number"
+                  value={batchTargetUtilizationPercent}
+                  onChange={(e) => setBatchTargetUtilizationPercent(Math.min(MAX_UTILIZATION_PERCENT, Math.max(1, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: MAX_UTILIZATION_PERCENT, step: 1 }}
+                  helperText={`100% means ~daily line capacity (max ${MAX_UTILIZATION_PERCENT}%)`}
+                />
+              </Grid>
+            </Grid>
+          </Paper>
+
           {/* Plan Data Overview */}
           {savedOperationsRequests.length > 0 && (
             <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.lighter' }}>
@@ -3325,6 +4148,129 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
           <Alert severity="info" sx={{ mb: 3 }}>
             Generate actual production data based on saved operations requests. Select an operations request and enter the actual quantity produced.
           </Alert>
+
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Automated Batch Generation (Plan + Actual)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Use the same batch controls here to auto-generate both plan and actual data over a date range.
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  fullWidth
+                  label="Start Date"
+                  type="date"
+                  value={batchStartDate}
+                  onChange={(e) => setBatchStartDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  fullWidth
+                  label="End Date"
+                  type="date"
+                  value={batchEndDate}
+                  onChange={(e) => setBatchEndDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Plant</InputLabel>
+                  <Select
+                    value={batchPlantId}
+                    label="Plant"
+                    onChange={(e) => {
+                      setBatchPlantId(e.target.value);
+                      setBatchLineId('');
+                    }}
+                  >
+                    {plants.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>{p.name || p.id}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Production Line</InputLabel>
+                  <Select
+                    value={batchLineId}
+                    label="Production Line"
+                    onChange={(e) => setBatchLineId(e.target.value)}
+                    disabled={!batchPlantId}
+                  >
+                    <MenuItem value="">All lines in plant</MenuItem>
+                    {productionLines
+                      .filter((line) => line.plantId === batchPlantId)
+                      .map((line) => (
+                        <MenuItem key={line.id} value={line.id}>{line.name || line.lineName || line.id}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<GenerateIcon />}
+                    onClick={generateAutomatedBatchData}
+                    disabled={loading}
+                  >
+                    Generate Batch Data
+                  </Button>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel
+                  control={<Switch checked={batchIncludeScrap} onChange={(e) => setBatchIncludeScrap(e.target.checked)} />}
+                  label="Include scrap in actual data"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControlLabel
+                  control={<Switch checked={batchIncludeDelays} onChange={(e) => setBatchIncludeDelays(e.target.checked)} />}
+                  label="Include production and downtime delays"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Min Daily Orders"
+                  type="number"
+                  value={batchMinDailyOrders}
+                  onChange={(e) => setBatchMinDailyOrders(Math.min(MAX_DAILY_ORDERS, Math.max(1, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: MAX_DAILY_ORDERS, step: 1 }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Max Daily Orders"
+                  type="number"
+                  value={batchMaxDailyOrders}
+                  onChange={(e) => setBatchMaxDailyOrders(Math.min(MAX_DAILY_ORDERS, Math.max(1, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: MAX_DAILY_ORDERS, step: 1 }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Target Utilization %"
+                  type="number"
+                  value={batchTargetUtilizationPercent}
+                  onChange={(e) => setBatchTargetUtilizationPercent(Math.min(MAX_UTILIZATION_PERCENT, Math.max(1, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: MAX_UTILIZATION_PERCENT, step: 1 }}
+                  helperText={`100% means ~daily line capacity (max ${MAX_UTILIZATION_PERCENT}%)`}
+                />
+              </Grid>
+            </Grid>
+          </Paper>
 
           {/* Actual Data Overview */}
           {(savedOperationsRequests.length > 0 || storedOperationsResponses.length > 0 || generatedOperationsResponse) && (

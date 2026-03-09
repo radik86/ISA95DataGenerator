@@ -77,6 +77,9 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 // ──────────────────────── service ────────────────────────
 
 class ProcessDataApiService {
+  // Keep payloads bounded to avoid RangeError: Invalid string length on very large datasets.
+  private static readonly BULK_BATCH_SIZE = 1000;
+
   /** Metadata that was on IndexedDB records but the server doesn't need. */
   private withMeta<T extends Record<string, any>>(record: T): T & { createdAt: string; updatedAt: string; version: number; DataGeneratedAt: string; LastDataMigrationAt: string | null } {
     const now = new Date().toISOString();
@@ -158,6 +161,19 @@ class ProcessDataApiService {
     await apiFetch(`${API_BASE}/${storeName}`, { method: 'DELETE' });
   }
 
+  private async bulkUpsertStore<K extends ProcessDataStoreName>(storeName: K, records: any[]): Promise<void> {
+    if (!records || records.length === 0) return;
+
+    const batchSize = ProcessDataApiService.BULK_BATCH_SIZE;
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize);
+      await apiFetch(`${API_BASE}/${storeName}/bulk`, {
+        method: 'POST',
+        body: JSON.stringify(batch),
+      });
+    }
+  }
+
   // ─── compound save methods (mirror processDataDB) ───
 
   async saveGeneratedData(
@@ -176,17 +192,27 @@ class ProcessDataApiService {
       LastDataMigrationAt: r.LastDataMigrationAt ?? null,
     });
 
-    const stores: Record<string, any[]> = {
+    const stores: Record<ProcessDataStoreName, any[]> = {
       operationsRequests: [enrich(operationsRequest)],
       segmentRequirements: segmentRequirements.map(enrich),
       segmentMaterialRequirements: materialRequirements.map(enrich),
       segmentEquipmentRequirements: equipmentRequirements.map(enrich),
+      operationsResponses: [],
+      segmentResponses: [],
+      segmentMaterialActuals: [],
+      segmentEquipmentActuals: [],
+      testResults: [],
+      equipmentPropertyTracking: [],
+      operationsEvents: [],
+      operationsEventRecords: [],
+      operationsEventEntries: [],
+      operationsEventProperties: [],
+      segmentData: [],
     };
 
-    await apiFetch(`${API_BASE}/bulk-multi`, {
-      method: 'POST',
-      body: JSON.stringify({ stores }),
-    });
+    for (const [storeName, records] of Object.entries(stores) as Array<[ProcessDataStoreName, any[]]>) {
+      await this.bulkUpsertStore(storeName, records);
+    }
   }
 
   async saveActualData(
@@ -212,7 +238,11 @@ class ProcessDataApiService {
       LastDataMigrationAt: r.LastDataMigrationAt ?? null,
     });
 
-    const stores: Record<string, any[]> = {
+    const stores: Record<ProcessDataStoreName, any[]> = {
+      operationsRequests: [],
+      segmentRequirements: [],
+      segmentMaterialRequirements: [],
+      segmentEquipmentRequirements: [],
       operationsResponses: [enrich(operationsResponse)],
       segmentResponses: segmentResponses.map(enrich),
       segmentMaterialActuals: materialActuals.map(enrich),
@@ -226,10 +256,9 @@ class ProcessDataApiService {
       segmentData: segmentData.map(enrich),
     };
 
-    await apiFetch(`${API_BASE}/bulk-multi`, {
-      method: 'POST',
-      body: JSON.stringify({ stores }),
-    });
+    for (const [storeName, records] of Object.entries(stores) as Array<[ProcessDataStoreName, any[]]>) {
+      await this.bulkUpsertStore(storeName, records);
+    }
   }
 
   async getOperationsRequestWithRequirements(operationsRequestId: string): Promise<{
