@@ -179,39 +179,61 @@ public class GenericDataController : ControllerBase
         var now = DateTime.UtcNow;
         int added = 0, updated = 0;
 
-        // Load existing IDs for fast lookup
-        var existingMap = await _dbContext.GenericDataStores
-            .Where(r => r.StoreName == storeName)
-            .ToDictionaryAsync(r => r.RecordId, r => r);
+        var incoming = new List<(string RecordId, string DataJson)>();
+        var incomingIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var item in body.EnumerateArray())
         {
             var recordId = ExtractId(item);
-            if (recordId == null) continue;
+            if (string.IsNullOrWhiteSpace(recordId)) continue;
 
-            if (existingMap.TryGetValue(recordId, out var existing))
-            {
-                existing.DataJson = item.GetRawText();
-                existing.UpdatedAt = now;
-                updated++;
-            }
-            else
-            {
-                var newRow = new GenericDataStore
-                {
-                    StoreName = storeName,
-                    RecordId = recordId,
-                    DataJson = item.GetRawText(),
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                };
-                _dbContext.GenericDataStores.Add(newRow);
-                existingMap[recordId] = newRow;
-                added++;
-            }
+            incoming.Add((recordId, item.GetRawText()));
+            incomingIds.Add(recordId);
         }
 
-        await _dbContext.SaveChangesAsync();
+        if (incoming.Count == 0)
+            return Ok(new { added, updated });
+
+        // Only load keys that are present in this batch, not the whole store.
+        var existingMap = await _dbContext.GenericDataStores
+            .Where(r => r.StoreName == storeName && incomingIds.Contains(r.RecordId))
+            .ToDictionaryAsync(r => r.RecordId, r => r);
+
+        var originalDetectChanges = _dbContext.ChangeTracker.AutoDetectChangesEnabled;
+        _dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
+        try
+        {
+            foreach (var (recordId, dataJson) in incoming)
+            {
+                if (existingMap.TryGetValue(recordId, out var existing))
+                {
+                    existing.DataJson = dataJson;
+                    existing.UpdatedAt = now;
+                    updated++;
+                }
+                else
+                {
+                    var newRow = new GenericDataStore
+                    {
+                        StoreName = storeName,
+                        RecordId = recordId,
+                        DataJson = dataJson,
+                        CreatedAt = now,
+                        UpdatedAt = now,
+                    };
+                    _dbContext.GenericDataStores.Add(newRow);
+                    existingMap[recordId] = newRow;
+                    added++;
+                }
+            }
+
+            await _dbContext.SaveChangesAsync();
+        }
+        finally
+        {
+            _dbContext.ChangeTracker.AutoDetectChangesEnabled = originalDetectChanges;
+        }
+
         _logger.LogInformation("Bulk upsert to '{StoreName}': {Added} added, {Updated} updated", storeName, added, updated);
         return Ok(new { added, updated });
     }
@@ -268,46 +290,71 @@ public class GenericDataController : ControllerBase
 
         var now = DateTime.UtcNow;
         var result = new Dictionary<string, int>();
+        var originalDetectChanges = _dbContext.ChangeTracker.AutoDetectChangesEnabled;
+        _dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
 
-        foreach (var (storeName, records) in request.Stores)
+        try
         {
-            if (records.ValueKind != JsonValueKind.Array) continue;
-
-            var existingMap = await _dbContext.GenericDataStores
-                .Where(r => r.StoreName == storeName)
-                .ToDictionaryAsync(r => r.RecordId, r => r);
-
-            int count = 0;
-            foreach (var item in records.EnumerateArray())
+            foreach (var (storeName, records) in request.Stores)
             {
-                var recordId = ExtractId(item);
-                if (recordId == null) continue;
+                if (records.ValueKind != JsonValueKind.Array) continue;
 
-                if (existingMap.TryGetValue(recordId, out var existing))
+                var incoming = new List<(string RecordId, string DataJson)>();
+                var incomingIds = new HashSet<string>(StringComparer.Ordinal);
+
+                foreach (var item in records.EnumerateArray())
                 {
-                    existing.DataJson = item.GetRawText();
-                    existing.UpdatedAt = now;
+                    var recordId = ExtractId(item);
+                    if (string.IsNullOrWhiteSpace(recordId)) continue;
+
+                    incoming.Add((recordId, item.GetRawText()));
+                    incomingIds.Add(recordId);
                 }
-                else
+
+                if (incoming.Count == 0)
                 {
-                    var newRow = new GenericDataStore
+                    result[storeName] = 0;
+                    continue;
+                }
+
+                var existingMap = await _dbContext.GenericDataStores
+                    .Where(r => r.StoreName == storeName && incomingIds.Contains(r.RecordId))
+                    .ToDictionaryAsync(r => r.RecordId, r => r);
+
+                int count = 0;
+                foreach (var (recordId, dataJson) in incoming)
+                {
+                    if (existingMap.TryGetValue(recordId, out var existing))
                     {
-                        StoreName = storeName,
-                        RecordId = recordId,
-                        DataJson = item.GetRawText(),
-                        CreatedAt = now,
-                        UpdatedAt = now,
-                    };
-                    _dbContext.GenericDataStores.Add(newRow);
-                    existingMap[recordId] = newRow;
+                        existing.DataJson = dataJson;
+                        existing.UpdatedAt = now;
+                    }
+                    else
+                    {
+                        var newRow = new GenericDataStore
+                        {
+                            StoreName = storeName,
+                            RecordId = recordId,
+                            DataJson = dataJson,
+                            CreatedAt = now,
+                            UpdatedAt = now,
+                        };
+                        _dbContext.GenericDataStores.Add(newRow);
+                        existingMap[recordId] = newRow;
+                    }
+                    count++;
                 }
-                count++;
+
+                result[storeName] = count;
             }
 
-            result[storeName] = count;
+            await _dbContext.SaveChangesAsync();
+        }
+        finally
+        {
+            _dbContext.ChangeTracker.AutoDetectChangesEnabled = originalDetectChanges;
         }
 
-        await _dbContext.SaveChangesAsync();
         _logger.LogInformation("Bulk multi-store upsert: {Stores}", string.Join(", ", result.Select(kv => $"{kv.Key}={kv.Value}")));
         return Ok(result);
     }

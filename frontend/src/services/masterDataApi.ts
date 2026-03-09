@@ -4,6 +4,26 @@
  */
 
 const API_BASE_URL = 'http://localhost:5237/api';
+const BULK_CONCURRENCY = 6;
+
+async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
+  if (tasks.length === 0) return [];
+
+  const results: T[] = new Array(tasks.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const current = nextIndex++;
+      if (current >= tasks.length) return;
+      results[current] = await tasks[current]();
+    }
+  };
+
+  const workerCount = Math.min(concurrency, tasks.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 
 function normalizeHierarchyScopeFlatForApi(record: any): any {
   if (!record || typeof record !== 'object') return record;
@@ -235,14 +255,20 @@ export const masterDataApi = {
   /**
    * Bulk add records
    */
-  async bulkAdd<T>(storeName: string, items: T[]): Promise<void> {
-    for (const item of items) {
+  async bulkAdd<T>(storeName: string, items: T[]): Promise<{ succeeded: number; failed: number }> {
+    const tasks = items.map((item) => async () => {
       try {
         await this.add(storeName, item);
+        return true;
       } catch (error) {
         console.error(`Failed to add item to ${storeName}:`, error);
+        return false;
       }
-    }
+    });
+
+    const results = await runWithConcurrency(tasks, BULK_CONCURRENCY);
+    const succeeded = results.filter(Boolean).length;
+    return { succeeded, failed: results.length - succeeded };
   },
 
   /**

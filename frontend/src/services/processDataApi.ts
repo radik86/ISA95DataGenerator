@@ -79,6 +79,26 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 class ProcessDataApiService {
   // Keep payloads bounded to avoid RangeError: Invalid string length on very large datasets.
   private static readonly BULK_BATCH_SIZE = 1000;
+  private static readonly BULK_UPLOAD_CONCURRENCY = 4;
+
+  private async runWithConcurrency<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
+    if (tasks.length === 0) return [];
+
+    const results: T[] = new Array(tasks.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (true) {
+        const current = nextIndex++;
+        if (current >= tasks.length) return;
+        results[current] = await tasks[current]();
+      }
+    };
+
+    const workerCount = Math.min(concurrency, tasks.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return results;
+  }
 
   /** Metadata that was on IndexedDB records but the server doesn't need. */
   private withMeta<T extends Record<string, any>>(record: T): T & { createdAt: string; updatedAt: string; version: number; DataGeneratedAt: string; LastDataMigrationAt: string | null } {
@@ -153,6 +173,19 @@ class ProcessDataApiService {
     return all.filter((r: any) => Object.values(r).includes(val));
   }
 
+  async getSummary(storeNames?: ProcessDataStoreName[]): Promise<Record<string, number>> {
+    const query = storeNames && storeNames.length > 0
+      ? `?storeNames=${encodeURIComponent(storeNames.join(','))}`
+      : '';
+
+    try {
+      return await apiFetch<Record<string, number>>(`${API_BASE}/summary${query}`);
+    } catch (err) {
+      console.error('processDataApi.getSummary failed:', err);
+      return {};
+    }
+  }
+
   async delete<K extends ProcessDataStoreName>(storeName: K, key: string): Promise<void> {
     await apiFetch(`${API_BASE}/${storeName}/${encodeURIComponent(key)}`, { method: 'DELETE' });
   }
@@ -165,13 +198,63 @@ class ProcessDataApiService {
     if (!records || records.length === 0) return;
 
     const batchSize = ProcessDataApiService.BULK_BATCH_SIZE;
+    const tasks: Array<() => Promise<any>> = [];
+
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
-      await apiFetch(`${API_BASE}/${storeName}/bulk`, {
+      tasks.push(() => apiFetch(`${API_BASE}/${storeName}/bulk`, {
+        method: 'POST',
+        body: JSON.stringify(batch),
+      }));
+    }
+
+    await this.runWithConcurrency(tasks, ProcessDataApiService.BULK_UPLOAD_CONCURRENCY);
+  }
+
+  async upsertStoreRecords<K extends ProcessDataStoreName>(storeName: K, records: any[]): Promise<number> {
+    if (!records || records.length === 0) return 0;
+
+    const batchSize = ProcessDataApiService.BULK_BATCH_SIZE;
+    let saved = 0;
+
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize);
+      const result = await apiFetch<{ added?: number; updated?: number }>(`${API_BASE}/${storeName}/bulk`, {
         method: 'POST',
         body: JSON.stringify(batch),
       });
+      saved += (result.added ?? 0) + (result.updated ?? 0);
     }
+
+    return saved;
+  }
+
+  private async bulkUpsertStores(stores: Record<ProcessDataStoreName, any[]>): Promise<void> {
+    const entries = (Object.entries(stores) as Array<[ProcessDataStoreName, any[]]>).filter(([, records]) => records.length > 0);
+    if (entries.length === 0) return;
+
+    const batchSize = ProcessDataApiService.BULK_BATCH_SIZE;
+    const maxChunks = Math.max(...entries.map(([, records]) => Math.ceil(records.length / batchSize)));
+    const tasks: Array<() => Promise<any>> = [];
+
+    for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+      const chunkStores: Partial<Record<ProcessDataStoreName, any[]>> = {};
+
+      for (const [storeName, records] of entries) {
+        const start = chunkIndex * batchSize;
+        const chunk = records.slice(start, start + batchSize);
+        if (chunk.length > 0) {
+          chunkStores[storeName] = chunk;
+        }
+      }
+
+      tasks.push(() => apiFetch(`${API_BASE}/bulk-multi`, {
+        method: 'POST',
+        body: JSON.stringify({ stores: chunkStores }),
+      }));
+    }
+
+    await this.runWithConcurrency(tasks, ProcessDataApiService.BULK_UPLOAD_CONCURRENCY);
   }
 
   // ─── compound save methods (mirror processDataDB) ───
@@ -210,9 +293,7 @@ class ProcessDataApiService {
       segmentData: [],
     };
 
-    for (const [storeName, records] of Object.entries(stores) as Array<[ProcessDataStoreName, any[]]>) {
-      await this.bulkUpsertStore(storeName, records);
-    }
+    await this.bulkUpsertStores(stores);
   }
 
   async saveActualData(
@@ -256,9 +337,7 @@ class ProcessDataApiService {
       segmentData: segmentData.map(enrich),
     };
 
-    for (const [storeName, records] of Object.entries(stores) as Array<[ProcessDataStoreName, any[]]>) {
-      await this.bulkUpsertStore(storeName, records);
-    }
+    await this.bulkUpsertStores(stores);
   }
 
   async getOperationsRequestWithRequirements(operationsRequestId: string): Promise<{

@@ -5,8 +5,8 @@ C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.AssemblyInfoInputs.cache
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.AssemblyInfo.cs
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.csproj.CoreCompileInputs.cache
+C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.sourcelink.json
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.dll
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\refint\ISA95DataGenerator.Domain.dll
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.pdb
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ref\ISA95DataGenerator.Domain.dll
-C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.Domain\obj\Debug\net9.0\ISA95DataGenerator.Domain.sourcelink.json

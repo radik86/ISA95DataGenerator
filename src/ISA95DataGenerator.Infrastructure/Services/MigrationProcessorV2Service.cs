@@ -662,7 +662,7 @@ public class MigrationProcessorV2Service
                 var values = columns.Select(col =>
                 {
                     var val = transformed.GetValueOrDefault(col);
-                    var str = FormatCsvValue(val);
+                    var str = FormatCsvValue(col, val);
                     if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
                         return $"\"{str.Replace("\"", "\"\"")}\"";
                     return str;
@@ -1534,7 +1534,7 @@ public class MigrationProcessorV2Service
                 var values = columns.Select(col =>
                 {
                     var val = row.GetValueOrDefault(col);
-                    var str = FormatCsvValue(val);
+                    var str = FormatCsvValue(col, val);
                     // Quote if needed
                     if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
                         return $"\"{str.Replace("\"", "\"\"")}\"";
@@ -1575,12 +1575,48 @@ public class MigrationProcessorV2Service
         return files;
     }
 
-    private static string FormatCsvValue(object? val)
+    private static string FormatCsvValue(string columnName, object? val)
     {
         if (val == null) return "";
+
+        // Keep migration source timestamp aligned with target DB convention.
+        if (string.Equals(columnName, "sourceTimeStamp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(columnName, "sourceTimestamp", StringComparison.OrdinalIgnoreCase))
+        {
+            return FormatSourceTimestamp(val);
+        }
+
         if (val is DateTime dt) return dt.ToString("O"); // ISO 8601
         if (val is DateTimeOffset dto) return dto.ToString("O");
         return val.ToString() ?? "";
+    }
+
+    private static string FormatSourceTimestamp(object val)
+    {
+        DateTime utc;
+
+        if (val is DateTime dt)
+        {
+            utc = dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+        }
+        else if (val is DateTimeOffset dto)
+        {
+            utc = dto.UtcDateTime;
+        }
+        else
+        {
+            var raw = val.ToString() ?? string.Empty;
+            if (!DateTime.TryParse(
+                    raw,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out utc))
+            {
+                return raw;
+            }
+        }
+
+        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.000'z'", CultureInfo.InvariantCulture);
     }
 
     private static string FormatEntityNameForOutput(string? entityName)

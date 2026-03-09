@@ -151,6 +151,7 @@ C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.csproj.CoreCompileInputs.cache
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.MvcApplicationPartsAssemblyInfo.cs
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.sourcelink.json
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\scopedcss\bundle\ISA95DataGenerator.API.styles.css
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\staticwebassets.build.json
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\staticwebassets.development.json
@@ -167,4 +168,3 @@ C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.pdb
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.genruntimeconfig.cache
 C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ref\ISA95DataGenerator.API.dll
-C:\Users\radion.badanjuk\Documents\Avanade\MDS\MDS Tools\ISA95DataGenerator\src\ISA95DataGenerator.API\obj\Debug\net9.0\ISA95DataGenerator.API.sourcelink.json

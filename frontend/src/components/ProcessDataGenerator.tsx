@@ -17,6 +17,7 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
+  LinearProgress,
   Snackbar,
   Card,
   CardContent,
@@ -203,6 +204,8 @@ interface TestResult {
 const ProcessDataGenerator: React.FC = () => {
   const MAX_DAILY_ORDERS = 20;
   const MAX_UTILIZATION_PERCENT = 200;
+  const PREVIEW_ROW_LIMIT = 200;
+  const MAX_TRACKING_RECORDS_TO_SAVE = 20000;
 
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
@@ -293,6 +296,24 @@ const ProcessDataGenerator: React.FC = () => {
   const [storedSegmentData, setStoredSegmentData] = useState<any[]>([]);
   const [storedTestResults, setStoredTestResults] = useState<any[]>([]);
   const [storedEquipmentPropertyTracking, setStoredEquipmentPropertyTracking] = useState<any[]>([]);
+  const [storedActualSummary, setStoredActualSummary] = useState<Record<string, number>>({});
+  const [isStoredActualDataLoading, setIsStoredActualDataLoading] = useState(false);
+  const [hasLoadedStoredActualData, setHasLoadedStoredActualData] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{
+    active: boolean;
+    currentEntity: string;
+    currentStep: number;
+    totalSteps: number;
+    recordsSaved: number;
+    perEntity: Array<{ entity: string; saved: number }>;
+  }>({
+    active: false,
+    currentEntity: '',
+    currentStep: 0,
+    totalSteps: 0,
+    recordsSaved: 0,
+    perEntity: [],
+  });
 
   // Data overview filters and expansion states
   const [planDataExpanded, setPlanDataExpanded] = useState(false);
@@ -323,45 +344,31 @@ const ProcessDataGenerator: React.FC = () => {
   };
 
   const loadStoredActualData = async () => {
+    setIsStoredActualDataLoading(true);
     try {
-      const [opsResp, segResp, matAct, eqAct, opsEvt, opsEvtRec, opsEvtEnt, segData, tests, eqProp] = await Promise.all([
-        processDataApi.getAll('operationsResponses'),
-        processDataApi.getAll('segmentResponses'),
-        processDataApi.getAll('segmentMaterialActuals'),
-        processDataApi.getAll('segmentEquipmentActuals'),
-        processDataApi.getAll('operationsEvents'),
-        processDataApi.getAll('operationsEventRecords'),
-        processDataApi.getAll('operationsEventEntries'),
-        processDataApi.getAll('segmentData'),
-        processDataApi.getAll('testResults'),
-        processDataApi.getAll('equipmentPropertyTracking'),
-      ]);
+      const summaryStores: any[] = [
+        'operationsResponses',
+        'segmentResponses',
+        'segmentMaterialActuals',
+        'segmentEquipmentActuals',
+        'operationsEvents',
+        'operationsEventRecords',
+        'operationsEventEntries',
+        'operationsEventProperties',
+        'segmentData',
+        'testResults',
+        'equipmentPropertyTracking',
+      ];
 
-      setStoredOperationsResponses(opsResp);
-      setStoredSegmentResponses(segResp);
-      setStoredMaterialActuals(matAct);
-      setStoredEquipmentActuals(eqAct);
-      setStoredOperationsEvents(opsEvt);
-      setStoredOperationsEventRecords(opsEvtRec);
-      setStoredOperationsEventEntries(opsEvtEnt);
-      setStoredSegmentData(segData);
-      setStoredTestResults(tests);
-      setStoredEquipmentPropertyTracking(eqProp);
+      const summary = await processDataApi.getSummary(summaryStores);
+      setStoredActualSummary(summary);
 
-      console.log('[Stored Actual Data] Loaded:', {
-        operationsResponses: opsResp.length,
-        segmentResponses: segResp.length,
-        materialActuals: matAct.length,
-        equipmentActuals: eqAct.length,
-        operationsEvents: opsEvt.length,
-        operationsEventRecords: opsEvtRec.length,
-        operationsEventEntries: opsEvtEnt.length,
-        segmentData: segData.length,
-        testResults: tests.length,
-        equipmentPropertyTracking: eqProp.length,
-      });
+      console.log('[Stored Actual Summary] Loaded:', summary);
     } catch (error) {
       console.error('Failed to load stored actual data:', error);
+    } finally {
+      setIsStoredActualDataLoading(false);
+      setHasLoadedStoredActualData(true);
     }
   };
 
@@ -1656,66 +1663,148 @@ const ProcessDataGenerator: React.FC = () => {
 
     try {
       setLoading(true);
-      
-      // Save actual data to process data DB
-      await processDataApi.saveActualData(
-        generatedOperationsResponse,
-        segmentResponses,
-        materialActuals,
-        equipmentActuals,
-        equipmentPropertyTracking,
-        testResults,
-        operationsEvents,
-        operationsEventRecords,
-        operationsEventEntries,
-        operationsEventProperties,
-        segmentData
-      );
-      
-      // Save material lots to master data
-      if (generatedMaterialLotsForDisplay.length > 0) {
-        for (const lot of generatedMaterialLotsForDisplay) {
-          try {
-            // Use put to update if exists, insert if not
-            const existing = await masterDataApi.get('materialLots', lot.id);
-            if (existing) {
-              await masterDataApi.update('materialLots', lot);
-            } else {
-              await masterDataApi.add('materialLots', lot);
-            }
-          } catch (err) {
-            console.error(`Error saving material lot ${lot.id}:`, err);
-          }
-        }
-        console.log(`Saved ${generatedMaterialLotsForDisplay.length} material lots to master data`);
+
+      let trackingRecordsToSave = equipmentPropertyTracking;
+      if (equipmentPropertyTracking.length > MAX_TRACKING_RECORDS_TO_SAVE) {
+        const step = Math.ceil(equipmentPropertyTracking.length / MAX_TRACKING_RECORDS_TO_SAVE);
+        trackingRecordsToSave = equipmentPropertyTracking
+          .filter((_, index) => index % step === 0)
+          .slice(0, MAX_TRACKING_RECORDS_TO_SAVE);
+
+        showSnackbar(
+          `EquipmentPropertyTracking reduced for save: ${equipmentPropertyTracking.length} generated, ${trackingRecordsToSave.length} persisted`,
+          'success',
+        );
       }
-      
-      // Save material sublots to master data
-      if (generatedMaterialSublotsForDisplay.length > 0) {
-        for (const sublot of generatedMaterialSublotsForDisplay) {
-          try {
-            // Use put to update if exists, insert if not
-            const existing = await masterDataApi.get('materialSublots', sublot.id);
-            if (existing) {
-              await masterDataApi.update('materialSublots', sublot);
-            } else {
-              await masterDataApi.add('materialSublots', sublot);
-            }
-          } catch (err) {
-            console.error(`Error saving material sublot ${sublot.id}:`, err);
-          }
-        }
-        console.log(`Saved ${generatedMaterialSublotsForDisplay.length} material sublots to master data`);
+
+      const entitySteps: Array<{
+        entity: string;
+        save: () => Promise<number>;
+      }> = [
+        {
+          entity: 'OperationsResponse',
+          save: () => processDataApi.upsertStoreRecords('operationsResponses', [generatedOperationsResponse]),
+        },
+        {
+          entity: 'SegmentResponse',
+          save: () => processDataApi.upsertStoreRecords('segmentResponses', segmentResponses),
+        },
+        {
+          entity: 'SegmentMaterialActual',
+          save: () => processDataApi.upsertStoreRecords('segmentMaterialActuals', materialActuals),
+        },
+        {
+          entity: 'SegmentEquipmentActual',
+          save: () => processDataApi.upsertStoreRecords('segmentEquipmentActuals', equipmentActuals),
+        },
+        {
+          entity: 'EquipmentPropertyTracking',
+          save: () => processDataApi.upsertStoreRecords('equipmentPropertyTracking', trackingRecordsToSave),
+        },
+        {
+          entity: 'OperationsEvent',
+          save: () => processDataApi.upsertStoreRecords('operationsEvents', operationsEvents),
+        },
+        {
+          entity: 'OperationsEventRecord',
+          save: () => processDataApi.upsertStoreRecords('operationsEventRecords', operationsEventRecords),
+        },
+        {
+          entity: 'OperationsEventEntry',
+          save: () => processDataApi.upsertStoreRecords('operationsEventEntries', operationsEventEntries),
+        },
+        {
+          entity: 'OperationsEventProperty',
+          save: () => processDataApi.upsertStoreRecords('operationsEventProperties', operationsEventProperties),
+        },
+        {
+          entity: 'SegmentData',
+          save: () => processDataApi.upsertStoreRecords('segmentData', segmentData),
+        },
+        {
+          entity: 'TestResult',
+          save: () => processDataApi.upsertStoreRecords('testResults', testResults),
+        },
+        {
+          entity: 'MaterialLot',
+          save: async () => {
+            if (generatedMaterialLotsForDisplay.length === 0) return 0;
+            const result = await masterDataApi.bulkAdd('materialLots', generatedMaterialLotsForDisplay);
+            return result.succeeded;
+          },
+        },
+        {
+          entity: 'MaterialSublot',
+          save: async () => {
+            if (generatedMaterialSublotsForDisplay.length === 0) return 0;
+            const result = await masterDataApi.bulkAdd('materialSublots', generatedMaterialSublotsForDisplay);
+            return result.succeeded;
+          },
+        },
+      ];
+
+      const executableSteps = entitySteps.filter((step) => {
+        if (step.entity === 'MaterialLot') return generatedMaterialLotsForDisplay.length > 0;
+        if (step.entity === 'MaterialSublot') return generatedMaterialSublotsForDisplay.length > 0;
+        if (step.entity === 'TestResult') return testResults.length > 0;
+        if (step.entity === 'OperationsEvent') return operationsEvents.length > 0;
+        if (step.entity === 'OperationsEventRecord') return operationsEventRecords.length > 0;
+        if (step.entity === 'OperationsEventEntry') return operationsEventEntries.length > 0;
+        if (step.entity === 'OperationsEventProperty') return operationsEventProperties.length > 0;
+        if (step.entity === 'EquipmentPropertyTracking') return trackingRecordsToSave.length > 0;
+        if (step.entity === 'SegmentData') return segmentData.length > 0;
+        if (step.entity === 'SegmentMaterialActual') return materialActuals.length > 0;
+        if (step.entity === 'SegmentEquipmentActual') return equipmentActuals.length > 0;
+        if (step.entity === 'SegmentResponse') return segmentResponses.length > 0;
+        return true;
+      });
+
+      setSaveProgress({
+        active: true,
+        currentEntity: '',
+        currentStep: 0,
+        totalSteps: executableSteps.length,
+        recordsSaved: 0,
+        perEntity: [],
+      });
+
+      let runningTotalSaved = 0;
+      const perEntity: Array<{ entity: string; saved: number }> = [];
+
+      for (let i = 0; i < executableSteps.length; i++) {
+        const step = executableSteps[i];
+        setSaveProgress((prev) => ({
+          ...prev,
+          currentEntity: step.entity,
+          currentStep: i + 1,
+        }));
+
+        const savedCount = await step.save();
+        runningTotalSaved += savedCount;
+        perEntity.push({ entity: step.entity, saved: savedCount });
+
+        setSaveProgress((prev) => ({
+          ...prev,
+          recordsSaved: runningTotalSaved,
+          perEntity: [...perEntity],
+        }));
       }
       
       setLoading(false);
+      setSaveProgress((prev) => ({ ...prev, active: false }));
       showSnackbar('Actual data saved to database successfully', 'success');
       
       // Reload stored actual data to update the overview
       await loadStoredActualData();
     } catch (error) {
       console.error('Failed to save actual data:', error);
-      showSnackbar('Failed to save actual data to database', 'error');
+      const errorText = error instanceof Error ? error.message : String(error);
+      if (errorText.includes('Error Number:1105') || errorText.toLowerCase().includes('filegroup is full')) {
+        showSnackbar('Database is full. Clear actual data and retry, or increase SQL database file size/autogrowth.', 'error');
+      } else {
+        showSnackbar('Failed to save actual data to database', 'error');
+      }
+      setSaveProgress((prev) => ({ ...prev, active: false }));
       setLoading(false);
     }
   };
@@ -3377,7 +3466,38 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
+        <Box sx={{ width: '100%', maxWidth: 640, px: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <CircularProgress />
+          </Box>
+          <Typography variant="body1" align="center" gutterBottom>
+            {saveProgress.active ? 'Saving actual data to database...' : 'Loading data...'}
+          </Typography>
+          {saveProgress.active && (
+            <>
+              <Typography variant="body2" color="text.secondary" align="center" gutterBottom>
+                Step {saveProgress.currentStep} of {saveProgress.totalSteps}: {saveProgress.currentEntity}
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={saveProgress.totalSteps > 0 ? (saveProgress.currentStep / saveProgress.totalSteps) * 100 : 0}
+                sx={{ mb: 2 }}
+              />
+              <Typography variant="body2" color="text.secondary" align="center" gutterBottom>
+                Saved records: {saveProgress.recordsSaved}
+              </Typography>
+              {saveProgress.perEntity.length > 0 && (
+                <Box sx={{ mt: 1, maxHeight: 180, overflowY: 'auto', p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  {saveProgress.perEntity.map((item) => (
+                    <Typography key={item.entity} variant="caption" display="block">
+                      {item.entity}: {item.saved} saved
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </>
+          )}
+        </Box>
       </Box>
     );
   }
@@ -4273,7 +4393,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
           </Paper>
 
           {/* Actual Data Overview */}
-          {(savedOperationsRequests.length > 0 || storedOperationsResponses.length > 0 || generatedOperationsResponse) && (
+          {(savedOperationsRequests.length > 0 || (storedActualSummary.operationsResponses || 0) > 0 || generatedOperationsResponse || isStoredActualDataLoading || !hasLoadedStoredActualData) && (
             <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.lighter' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">
@@ -4289,7 +4409,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
               </Box>
               <Divider sx={{ mb: 2 }} />
               
-              {actualDataExpanded && storedOperationsResponses.length > 0 && (
+              {actualDataExpanded && (storedActualSummary.operationsResponses || 0) > 0 && (
                 <Box sx={{ mb: 2 }}>
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, md: 6 }}>
@@ -4362,115 +4482,31 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   <Typography variant="subtitle2" gutterBottom color="text.secondary">
                     Stored Actual Data (Database):
                   </Typography>
-                  {storedOperationsResponses.length > 0 ? (
+                  {isStoredActualDataLoading || !hasLoadedStoredActualData ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Loading saved actual data overview...
+                    </Typography>
+                  ) : (storedActualSummary.operationsResponses || 0) > 0 ? (
                     <Box>
                       <Typography variant="body2" color="text.primary" gutterBottom>
-                        <strong>{storedOperationsResponses.length}</strong> operations responses stored
+                        <strong>{storedActualSummary.operationsResponses || 0}</strong> operations responses stored
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                        <Chip label={`${storedOperationsResponses.length} Responses`} size="small" color="primary" />
-                        <Chip label={`${storedSegmentResponses.length} Segments`} size="small" color="success" />
-                        <Chip label={`${storedMaterialActuals.length} Materials`} size="small" color="warning" />
-                        <Chip label={`${storedEquipmentActuals.length} Equipment`} size="small" color="info" />
-                        <Chip label={`${storedOperationsEvents.length} Events`} size="small" color="error" />
-                        <Chip label={`${storedSegmentData.length} Shifts/Crews`} size="small" color="secondary" />
-                        <Chip label={`${storedTestResults.length} Tests`} size="small" color="default" />
+                        <Chip label={`${storedActualSummary.operationsResponses || 0} Responses`} size="small" color="primary" />
+                        <Chip label={`${storedActualSummary.segmentResponses || 0} Segments`} size="small" color="success" />
+                        <Chip label={`${storedActualSummary.segmentMaterialActuals || 0} Materials`} size="small" color="warning" />
+                        <Chip label={`${storedActualSummary.segmentEquipmentActuals || 0} Equipment`} size="small" color="info" />
+                        <Chip label={`${storedActualSummary.operationsEvents || 0} Events`} size="small" color="error" />
+                        <Chip label={`${storedActualSummary.operationsEventRecords || 0} Event Records`} size="small" color="warning" />
+                        <Chip label={`${storedActualSummary.operationsEventEntries || 0} Event Entries`} size="small" color="warning" />
+                        <Chip label={`${storedActualSummary.operationsEventProperties || 0} Event Properties`} size="small" color="warning" />
+                        <Chip label={`${storedActualSummary.segmentData || 0} Shifts/Crews`} size="small" color="secondary" />
+                        <Chip label={`${storedActualSummary.testResults || 0} Tests`} size="small" color="default" />
+                        <Chip label={`${storedActualSummary.equipmentPropertyTracking || 0} Property Tracking`} size="small" color="secondary" />
                       </Box>
-                      
-                      <Box sx={{ maxHeight: actualDataExpanded ? 400 : 150, overflowY: 'auto', pr: 1 }}>
-                        {storedOperationsResponses
-                          .filter(resp => !actualDataFilter || resp.id?.toLowerCase().includes(actualDataFilter.toLowerCase()))
-                          .slice(0, actualDataExpanded ? undefined : 2)
-                          .map((resp) => {
-                            const respSegments = storedSegmentResponses.filter(sr => sr.operationsResponseId === resp.id);
-                            const respMaterials = storedMaterialActuals.filter(ma => {
-                              const segment = storedSegmentResponses.find(sr => sr.id === ma.segmentResponseId);
-                              return segment?.operationsResponseId === resp.id &&
-                                     (materialActualsFilter === 'ALL' || ma.direction === materialActualsFilter);
-                            });
-                            const respEquipment = storedEquipmentActuals.filter(ea => {
-                              const segment = storedSegmentResponses.find(sr => sr.id === ea.segmentResponseId);
-                              return segment?.operationsResponseId === resp.id;
-                            });
-                            const respEvents = storedOperationsEvents.filter(oe => {
-                              const segment = storedSegmentResponses.find(sr => sr.id === oe.segmentResponseId);
-                              return segment?.operationsResponseId === resp.id;
-                            });
-                            const respSegmentData = storedSegmentData.filter(sd => {
-                              const segment = storedSegmentResponses.find(sr => sr.id === sd.segmentResponseId);
-                              return segment?.operationsResponseId === resp.id;
-                            });
-                            
-                            return (
-                              <Box key={resp.id} sx={{ ml: 2, mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1, position: 'relative' }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                                  <Box sx={{ flex: 1 }}>
-                                    <Typography variant="caption" display="block">
-                                      <strong>{resp.id}</strong>
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary" display="block">
-                                      Request: {resp.operationsRequestId}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary" display="block">
-                                      Actual: {resp.actualQuantity} {resp.quantityUoM} | Status: {resp.status}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary" display="block">
-                                      {new Date(resp.actualStartDateTime).toLocaleString()} → {new Date(resp.actualEndDateTime).toLocaleString()}
-                                    </Typography>
-                                  </Box>
-                                  <Tooltip title="Delete this operations response">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => deleteOperationsResponse(resp.id)}
-                                      sx={{ ml: 1 }}
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                </Box>
-                                <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                  <Chip label={`${respSegments.length} Seg`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="success" />
-                                  <Chip label={`${respMaterials.length} Mat`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="warning" />
-                                  <Chip label={`${respEquipment.length} Eq`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="info" />
-                                  <Chip label={`${respEvents.length} Evt`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="error" />
-                                  <Chip label={`${respSegmentData.length} Shift/Crew`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} color="secondary" />
-                                </Box>
-                                
-                                {/* Expanded view - show segment responses */}
-                                {actualDataExpanded && respSegments.length > 0 && (
-                                  <Box sx={{ mt: 1, ml: 1 }}>
-                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                                      <strong>Segments:</strong>
-                                    </Typography>
-                                    {respSegments.map((sr, idx) => {
-                                      const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
-                                      const segMatActs = storedMaterialActuals.filter(ma => ma.segmentResponseId === sr.id);
-                                      const segEqActs = storedEquipmentActuals.filter(ea => ea.segmentResponseId === sr.id);
-                                      const segData = storedSegmentData.filter(sd => sd.segmentResponseId === sr.id);
-                                      
-                                      return (
-                                        <Box key={sr.id} sx={{ ml: 1, mb: 0.5, p: 0.5, bgcolor: 'background.default', borderRadius: 0.5, fontSize: '0.7rem' }}>
-                                          <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
-                                            {idx + 1}. {segment?.name || sr.processSegmentId}
-                                          </Typography>
-                                          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>
-                                            Qty: {sr.actualQuantity} {sr.quantityUoM} | {segMatActs.length} mat, {segEqActs.length} eq, {segData.length} shift/crew
-                                          </Typography>
-                                        </Box>
-                                      );
-                                    })}
-                                  </Box>
-                                )}
-                              </Box>
-                            );
-                          })}
-                      </Box>
-                      {!actualDataExpanded && storedOperationsResponses.length > 2 && (
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, display: 'block', mt: 1 }}>
-                          ...and {storedOperationsResponses.length - 2} more responses
-                        </Typography>
-                      )}
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Summary only view. Detailed stored records are not loaded into browser memory.
+                      </Typography>
                     </Box>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
@@ -4655,6 +4691,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Typography variant="body2" color="text.secondary" gutterBottom>
                           Generated Actual Data:
                         </Typography>
+                        <Chip label={`${generatedOperationsResponse ? 1 : 0} Operations Responses`} color="primary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${segmentResponses.length} Segment Responses`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${materialActuals.length} Material Actuals`} color="warning" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentActuals.length} Equipment Actuals`} color="info" sx={{ mr: 1, mb: 1 }} />
@@ -4662,16 +4699,36 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <Chip label={`${operationsEvents.length} Operations Events`} color="error" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${operationsEventRecords.length} Event Records`} color="warning" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${operationsEventEntries.length} Event Entries`} color="warning" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${operationsEventProperties.length} Event Properties`} color="warning" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${segmentData.length} Segment Data`} color="primary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialLotsForDisplay.length} Material Lots`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${generatedMaterialSublotsForDisplay.length} Material Sublots`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${testResults.length} Test Results`} color="info" sx={{ mb: 1 }} />
                       </Box>
 
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'background.default', borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Record Counts by Object:
+                        </Typography>
+                        <Typography variant="caption" display="block">OperationsResponse: {generatedOperationsResponse ? 1 : 0}</Typography>
+                        <Typography variant="caption" display="block">SegmentResponse: {segmentResponses.length}</Typography>
+                        <Typography variant="caption" display="block">SegmentMaterialActual: {materialActuals.length}</Typography>
+                        <Typography variant="caption" display="block">SegmentEquipmentActual: {equipmentActuals.length}</Typography>
+                        <Typography variant="caption" display="block">EquipmentPropertyTracking: {equipmentPropertyTracking.length}</Typography>
+                        <Typography variant="caption" display="block">OperationsEvent: {operationsEvents.length}</Typography>
+                        <Typography variant="caption" display="block">OperationsEventRecord: {operationsEventRecords.length}</Typography>
+                        <Typography variant="caption" display="block">OperationsEventEntry: {operationsEventEntries.length}</Typography>
+                        <Typography variant="caption" display="block">OperationsEventProperty: {operationsEventProperties.length}</Typography>
+                        <Typography variant="caption" display="block">SegmentData: {segmentData.length}</Typography>
+                        <Typography variant="caption" display="block">MaterialLot: {generatedMaterialLotsForDisplay.length}</Typography>
+                        <Typography variant="caption" display="block">MaterialSublot: {generatedMaterialSublotsForDisplay.length}</Typography>
+                        <Typography variant="caption" display="block">TestResult: {testResults.length}</Typography>
+                      </Box>
+
                       <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mt: 2 }}>
                         Segment Responses:
                       </Typography>
-                      {segmentResponses.map((sr, idx) => {
+                      {segmentResponses.slice(0, PREVIEW_ROW_LIMIT).map((sr, idx) => {
                         const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
                         const matActs = materialActuals.filter(ma => ma.segmentResponseId === sr.id);
                         const eqActs = equipmentActuals.filter(ea => ea.segmentResponseId === sr.id);
@@ -4694,6 +4751,11 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           </Box>
                         );
                       })}
+                      {segmentResponses.length > PREVIEW_ROW_LIMIT && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          Preview limited to first {PREVIEW_ROW_LIMIT} segment responses. Export CSV for full data.
+                        </Typography>
+                      )}
                     </Box>
                   )}
                 </CardContent>
@@ -4873,6 +4935,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           return sr.id?.toLowerCase().includes(segmentResponsesFilter.toLowerCase()) ||
                                  segment?.name?.toLowerCase().includes(segmentResponsesFilter.toLowerCase());
                         })
+                        .slice(0, PREVIEW_ROW_LIMIT)
                         .map((sr) => {
                           const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
                           return (
@@ -4892,6 +4955,18 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {segmentResponses.filter(sr => {
+                  if (!segmentResponsesFilter) return true;
+                  const segment = processSegments.find(ps => ps.id === sr.processSegmentId);
+                  return sr.id?.toLowerCase().includes(segmentResponsesFilter.toLowerCase()) ||
+                         segment?.name?.toLowerCase().includes(segmentResponsesFilter.toLowerCase());
+                }).length > PREVIEW_ROW_LIMIT && (
+                  <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
 
               {/* Material Actuals Table */}
@@ -4923,6 +4998,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     <TableBody>
                       {materialActuals
                         .filter(ma => materialActualsFilter === 'ALL' || ma.direction === materialActualsFilter)
+                        .slice(0, PREVIEW_ROW_LIMIT)
                         .map((ma) => {
                           const material = materials.find(m => m.id === ma.materialId);
                           return (
@@ -4945,6 +5021,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {materialActuals.filter(ma => materialActualsFilter === 'ALL' || ma.direction === materialActualsFilter).length > PREVIEW_ROW_LIMIT && (
+                  <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
 
               {/* Equipment Actuals Table */}
@@ -4974,7 +5057,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {equipmentActuals.map((ea) => {
+                      {equipmentActuals.slice(0, PREVIEW_ROW_LIMIT).map((ea) => {
                         const equipmentItem = equipment.find(e => e.id === ea.equipmentId);
                         return (
                           <TableRow key={ea.id}>
@@ -4990,6 +5073,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {equipmentActuals.length > PREVIEW_ROW_LIMIT && (
+                  <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
 
               {/* Equipment Property Tracking Table */}
@@ -5074,7 +5164,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {operationsEvents.map((event) => {
+                        {operationsEvents.slice(0, PREVIEW_ROW_LIMIT).map((event) => {
                           const eventDef = operationEventDefinitions.find(oed => oed.id === event.operationsEventDefinitionId);
                           return (
                             <TableRow key={event.id}>
@@ -5104,6 +5194,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  {operationsEvents.length > PREVIEW_ROW_LIMIT && (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
               )}
 
@@ -5131,7 +5228,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {operationsEventRecords.map((record) => {
+                        {operationsEventRecords.slice(0, PREVIEW_ROW_LIMIT).map((record) => {
                           const eventDef = operationEventDefinitions.find(oed => oed.id === record.operationsEventDefinitionId);
                           return (
                             <TableRow key={record.id}>
@@ -5161,6 +5258,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  {operationsEventRecords.length > PREVIEW_ROW_LIMIT && (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
               )}
 
@@ -5187,7 +5291,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {operationsEventEntries.map((entry) => (
+                        {operationsEventEntries.slice(0, PREVIEW_ROW_LIMIT).map((entry) => (
                           <TableRow key={entry.id}>
                             <TableCell>{entry.id}</TableCell>
                             <TableCell>{entry.operationsEventRecordId}</TableCell>
@@ -5203,6 +5307,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  {operationsEventEntries.length > PREVIEW_ROW_LIMIT && (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
               )}
 
@@ -5228,7 +5339,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {operationsEventProperties.map((prop) => {
+                        {operationsEventProperties.slice(0, PREVIEW_ROW_LIMIT).map((prop) => {
                           const propertyDef = operationEventDefinitionProperties.find(p => p.id === prop.operationsEventDefinitionPropertyId);
                           return (
                             <TableRow key={prop.id}>
@@ -5246,6 +5357,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  {operationsEventProperties.length > PREVIEW_ROW_LIMIT && (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
               )}
 
@@ -5269,7 +5387,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {segmentData.map((sd) => {
+                        {segmentData.slice(0, PREVIEW_ROW_LIMIT).map((sd) => {
                           const shift = sd.recordType === 'shift' ? shifts.find(s => s.id === sd.shiftId) : null;
                           const crew = sd.recordType === 'crew' ? crews.find(c => c.id === sd.crewId) : null;
                           return (
@@ -5296,6 +5414,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  {segmentData.length > PREVIEW_ROW_LIMIT && (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
               )}
 
@@ -5328,7 +5453,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {generatedMaterialLotsForDisplay.map((lot) => {
+                      {generatedMaterialLotsForDisplay.slice(0, PREVIEW_ROW_LIMIT).map((lot) => {
                         const materialItem = materials.find(m => m.id === lot.materialId);
                         return (
                           <TableRow key={lot.id}>
@@ -5352,6 +5477,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {generatedMaterialLotsForDisplay.length > PREVIEW_ROW_LIMIT && (
+                  <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
 
               {/* Material Sublots Table */}
@@ -5376,7 +5508,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {generatedMaterialSublotsForDisplay.map((sublot) => {
+                      {generatedMaterialSublotsForDisplay.slice(0, PREVIEW_ROW_LIMIT).map((sublot) => {
                         const parentLot = generatedMaterialLotsForDisplay.find(l => l.id === sublot.materialLotId);
                         const materialItem = materials.find(m => m.id === parentLot?.materialId);
                         return (
@@ -5400,6 +5532,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {generatedMaterialSublotsForDisplay.length > PREVIEW_ROW_LIMIT && (
+                  <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
 
               {/* Test Results Table */}
@@ -5431,7 +5570,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {testResults.map((tr) => (
+                      {testResults.slice(0, PREVIEW_ROW_LIMIT).map((tr) => (
                         <TableRow key={tr.id}>
                           <TableCell>{tr.id}</TableCell>
                           <TableCell>{tr.materialLotId}</TableCell>
@@ -5449,6 +5588,13 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {testResults.length > PREVIEW_ROW_LIMIT && (
+                  <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                    </Typography>
+                  </Box>
+                )}
               </Paper>
             </Box>
           )}
