@@ -2367,6 +2367,64 @@ public class MasterDataController : ControllerBase
 
     #endregion
 
+    #region Summary
+
+    /// <summary>
+    /// Get record counts for master-data stores.
+    /// </summary>
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetSummary([FromQuery] string? storeNames = null)
+    {
+        var requested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(storeNames))
+        {
+            foreach (var n in storeNames.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                requested.Add(n);
+            }
+        }
+
+        bool includeAll = requested.Count == 0;
+        bool Include(string key) => includeAll || requested.Contains(key);
+
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        if (Include("materialClasses")) result["materialClasses"] = await _context.MaterialClasses.CountAsync();
+        if (Include("materials")) result["materials"] = await _context.Materials.CountAsync();
+        if (Include("materialLots")) result["materialLots"] = await _context.MaterialLots.CountAsync();
+        if (Include("materialSublots")) result["materialSublots"] = await _context.MaterialSublots.CountAsync();
+        if (Include("materialClassProperties")) result["materialClassProperties"] = await _context.MaterialClassProperties.CountAsync();
+        if (Include("materialClassPropertiesAssignments")) result["materialClassPropertiesAssignments"] = await _context.MaterialClassPropertyAssignments.CountAsync();
+        if (Include("materialDefinitionProperties")) result["materialDefinitionProperties"] = await _context.MaterialDefinitionProperties.CountAsync();
+        if (Include("materialDefinitionPropertyAssignments")) result["materialDefinitionPropertyAssignments"] = await _context.MaterialDefinitionPropertyAssignments.CountAsync();
+        if (Include("equipmentClasses")) result["equipmentClasses"] = await _context.EquipmentClasses.CountAsync();
+        if (Include("equipment")) result["equipment"] = await _context.Equipments.CountAsync();
+        if (Include("equipmentProperties")) result["equipmentProperties"] = await _context.EquipmentProperties.CountAsync();
+        if (Include("equipmentPropertyAssignments")) result["equipmentPropertyAssignments"] = await _context.EquipmentPropertyAssignments.CountAsync();
+        if (Include("equipmentClassProperties")) result["equipmentClassProperties"] = await _context.EquipmentClassProperties.CountAsync();
+        if (Include("equipmentClassPropertiesAssignments")) result["equipmentClassPropertiesAssignments"] = await _context.EquipmentClassPropertyAssignments.CountAsync();
+        if (Include("plants")) result["plants"] = await _context.Plants.CountAsync();
+        if (Include("productionLines")) result["productionLines"] = await _context.ProductionLines.CountAsync();
+        if (Include("lineEquipment")) result["lineEquipment"] = await _context.LineEquipments.CountAsync();
+        if (Include("processSegments")) result["processSegments"] = await _context.ProcessSegments.CountAsync();
+        if (Include("segmentBOMs")) result["segmentBOMs"] = await _context.SegmentBOMs.CountAsync();
+        if (Include("equipmentUsages")) result["equipmentUsages"] = await _context.EquipmentUsages.CountAsync();
+        if (Include("operationEventDefinitions")) result["operationEventDefinitions"] = await _context.OperationEventDefinitions.CountAsync();
+        if (Include("operationEventDefSegmentAssignments")) result["operationEventDefSegmentAssignments"] = await _context.OperationEventDefSegmentAssignments.CountAsync();
+        if (Include("operationEventDefinitionProperties")) result["operationEventDefinitionProperties"] = await _context.OperationEventDefinitionProperties.CountAsync();
+        if (Include("operationEventDefinitionPropertyAssignments")) result["operationEventDefinitionPropertyAssignments"] = await _context.OperationEventDefinitionPropertyAssignments.CountAsync();
+        if (Include("operationsEventClasses")) result["operationsEventClasses"] = await _context.OperationsEventClasses.CountAsync();
+        if (Include("shifts")) result["shifts"] = await _context.Shifts.CountAsync();
+        if (Include("crews")) result["crews"] = await _context.Crews.CountAsync();
+        if (Include("shiftCrewAssignments")) result["shiftCrewAssignments"] = await _context.ShiftCrewAssignments.CountAsync();
+        if (Include("hierarchyScopes")) result["hierarchyScopes"] = await _context.HierarchyScopes.CountAsync();
+        if (Include("hierarchyScopeParentChild")) result["hierarchyScopeParentChild"] = await _context.HierarchyScopeParentChilds.CountAsync();
+
+        return Ok(result);
+    }
+
+    #endregion
+
     #region Bulk Delete
 
     /// <summary>

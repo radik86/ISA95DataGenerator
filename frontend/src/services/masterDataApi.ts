@@ -146,6 +146,19 @@ const storeToImportEndpoint: Record<string, string> = {
  * Master Data API - provides same interface as masterDataDB but uses backend SQL Server
  */
 export const masterDataApi = {
+  async getSummary(storeNames?: string[]): Promise<Record<string, number>> {
+    const query = storeNames && storeNames.length > 0
+      ? `?storeNames=${encodeURIComponent(storeNames.join(','))}`
+      : '';
+
+    try {
+      return await apiCall<Record<string, number>>(`/masterdata/summary${query}`);
+    } catch (error) {
+      console.error('Failed to get master data summary:', error);
+      return {};
+    }
+  },
+
   /**
    * Get all records from a store
    */
