@@ -65,6 +65,41 @@ function normalizeHierarchyScopeFlatFromApi(record: any): any {
   };
 }
 
+function normalizeOperationsEventClassFromApi(record: any): any {
+  if (!record || typeof record !== 'object') return record;
+  return {
+    ...record,
+    OperationsEventClassID: record.OperationsEventClassID ?? record.operationsEventClassID ?? '',
+    ClassName: record.ClassName ?? record.className ?? '',
+    Description: record.Description ?? record.description ?? '',
+  };
+}
+
+function normalizeOperationsEventRecordFromApi(record: any): any {
+  if (!record || typeof record !== 'object') return record;
+  return {
+    ...record,
+    id: record.id ?? record.OperationsEventRecordID ?? record.operationsEventRecordID ?? '',
+    OperationsEventRecordID: record.OperationsEventRecordID ?? record.operationsEventRecordID ?? '',
+    OperationsEventDefinitionID: record.OperationsEventDefinitionID ?? record.operationsEventDefinitionID ?? '',
+    Severity: record.Severity ?? record.severity ?? '',
+    Status: record.Status ?? record.status ?? '',
+    Comments: record.Comments ?? record.comments ?? '',
+  };
+}
+
+function normalizeOperationsEventEntryFromApi(record: any): any {
+  if (!record || typeof record !== 'object') return record;
+  return {
+    ...record,
+    id: record.id ?? record.OperationsEventEntryID ?? record.operationsEventEntryID ?? '',
+    OperationsEventEntryID: record.OperationsEventEntryID ?? record.operationsEventEntryID ?? '',
+    OperationsEventRecordID: record.OperationsEventRecordID ?? record.operationsEventRecordID ?? '',
+    EntryType: record.EntryType ?? record.entryType ?? '',
+    Description: record.Description ?? record.description ?? '',
+  };
+}
+
 // Helper function for API calls
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -175,6 +210,18 @@ export const masterDataApi = {
 
       if (storeName === 'hierarchyScopesFlat') {
         return result.map(item => normalizeHierarchyScopeFlatFromApi(item)) as T[];
+      }
+
+      if (storeName === 'operationsEventClasses') {
+        return result.map(item => normalizeOperationsEventClassFromApi(item)) as T[];
+      }
+
+      if (storeName === 'operationsEventRecords') {
+        return result.map(item => normalizeOperationsEventRecordFromApi(item)) as T[];
+      }
+
+      if (storeName === 'operationsEventEntries') {
+        return result.map(item => normalizeOperationsEventEntryFromApi(item)) as T[];
       }
 
       return result;

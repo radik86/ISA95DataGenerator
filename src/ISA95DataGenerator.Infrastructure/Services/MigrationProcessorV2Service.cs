@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using CsvHelper;
 using CsvHelper.Configuration;
 using ISA95DataGenerator.Domain.Entities;
+using ISA95DataGenerator.Domain.Entities.MasterData;
 using ISA95DataGenerator.Domain.Models;
 using ISA95DataGenerator.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -108,6 +109,44 @@ public class MigrationProcessorV2Service
         ["operations_event_entries"] = "operationsEventEntries",
         ["operations_event_properties"] = "operationsEventProperties",
         ["segment_data"] = "segmentData",
+    };
+
+    /// <summary>
+    /// Maps GenericStoreMap values (store names) to the CLR type of the dedicated EF table.
+    /// Used as a third fallback tier when data is not in MigrationSourceData or GenericDataStores.
+    /// </summary>
+    private static readonly Dictionary<string, Type> DedicatedEntityTypeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["materialClasses"] = typeof(MaterialClass),
+        ["materials"] = typeof(Material),
+        ["materialLots"] = typeof(MaterialLot),
+        ["materialSublots"] = typeof(MaterialSublot),
+        ["materialDefinitionProperties"] = typeof(MaterialDefinitionProperty),
+        ["materialClassProperties"] = typeof(MaterialClassProperty),
+        ["materialClassPropertiesAssignments"] = typeof(MaterialClassPropertyAssignment),
+        ["materialDefinitionPropertyAssignments"] = typeof(MaterialDefinitionPropertyAssignment),
+        ["equipmentClasses"] = typeof(EquipmentClass),
+        ["equipment"] = typeof(Equipment),
+        ["equipmentProperties"] = typeof(EquipmentProperty),
+        ["equipmentPropertyAssignments"] = typeof(EquipmentPropertyAssignment),
+        ["equipmentClassProperties"] = typeof(EquipmentClassProperty),
+        ["equipmentClassPropertyAssignments"] = typeof(EquipmentClassPropertyAssignment),
+        ["plants"] = typeof(Plant),
+        ["productionLines"] = typeof(ProductionLine),
+        ["processSegments"] = typeof(ProcessSegment),
+        ["lineEquipment"] = typeof(LineEquipment),
+        ["segmentBOMs"] = typeof(SegmentBOM),
+        ["equipmentUsages"] = typeof(EquipmentUsage),
+        ["operationEventDefinitions"] = typeof(OperationEventDefinition),
+        ["operationEventDefSegmentAssignments"] = typeof(OperationEventDefSegmentAssignment),
+        ["operationEventDefinitionProperties"] = typeof(OperationEventDefinitionProperty),
+        ["operationEventDefinitionPropertyAssignments"] = typeof(OperationEventDefinitionPropertyAssignment),
+        ["hierarchyScopes"] = typeof(HierarchyScope),
+        ["hierarchyScopeParentChild"] = typeof(HierarchyScopeParentChild),
+        ["shifts"] = typeof(Shift),
+        ["crews"] = typeof(Crew),
+        ["shiftCrewAssignments"] = typeof(ShiftCrewAssignment),
+        ["operationsEventClasses"] = typeof(OperationsEventClass),
     };
 
     private static readonly string[] KnownIsa95Terms =
@@ -683,10 +722,47 @@ public class MigrationProcessorV2Service
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return 0;
 
-        return await _dbContext.GenericDataStores
+        var genericCount = await _dbContext.GenericDataStores
             .AsNoTracking()
             .Where(r => r.StoreName == genericStoreName)
             .CountAsync(ct);
+
+        if (genericCount > 0)
+            return genericCount;
+
+        // ── Third fallback: dedicated EF master data table ──
+        if (!DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
+            return 0;
+
+        var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
+        if (dedicatedEntityType == null)
+            return 0;
+
+        var dedSchema = dedicatedEntityType.GetSchema();
+        var dedTable = dedicatedEntityType.GetTableName();
+        if (string.IsNullOrEmpty(dedTable))
+            return 0;
+
+        var qualifiedDedTable = string.IsNullOrEmpty(dedSchema)
+            ? $"\"{dedTable}\""
+            : $"\"{dedSchema}\".\"{dedTable}\"";
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConn = conn.State != ConnectionState.Open;
+        if (ownConn) await conn.OpenAsync(ct);
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+            cmd.CommandText = $"SELECT COUNT(*) FROM {qualifiedDedTable}";
+            var countObj = await cmd.ExecuteScalarAsync(ct);
+            return Convert.ToInt32(countObj);
+        }
+        finally
+        {
+            if (ownConn && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
     }
 
     private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, CancellationToken ct)
@@ -783,7 +859,66 @@ public class MigrationProcessorV2Service
                 await conn.CloseAsync();
         }
 
+        // ── Third fallback: dedicated EF master data table ──
+        if (result.Count == 0 && DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
+        {
+            result = await LoadFromDedicatedTableAsync(entityClrType, ct);
+        }
+
         AddComputedFieldsForStore(sourceTable, result);
+        return result;
+    }
+
+    /// <summary>
+    /// Reads all rows from a dedicated EF master data table using raw DbDataReader
+    /// and returns them as generic dictionaries (column name → value).
+    /// </summary>
+    private async Task<List<Dictionary<string, object?>>> LoadFromDedicatedTableAsync(Type entityClrType, CancellationToken ct)
+    {
+        var result = new List<Dictionary<string, object?>>();
+
+        var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
+        if (dedicatedEntityType == null) return result;
+
+        var dedTable = dedicatedEntityType.GetTableName();
+        if (string.IsNullOrEmpty(dedTable)) return result;
+        var dedSchema = dedicatedEntityType.GetSchema();
+
+        var qualifiedTable = string.IsNullOrEmpty(dedSchema)
+            ? $"\"{dedTable}\""
+            : $"\"{dedSchema}\".\"{dedTable}\"";
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConn = conn.State != ConnectionState.Open;
+        if (ownConn) await conn.OpenAsync(ct);
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+            cmd.CommandText = $"SELECT * FROM {qualifiedTable}";
+
+            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+            var fieldCount = reader.FieldCount;
+            var colNames = new string[fieldCount];
+            for (var i = 0; i < fieldCount; i++)
+                colNames[i] = reader.GetName(i);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var dict = new Dictionary<string, object?>(fieldCount, StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < fieldCount; i++)
+                {
+                    dict[colNames[i]] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                }
+                result.Add(dict);
+            }
+        }
+        finally
+        {
+            if (ownConn && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+
         return result;
     }
 
@@ -859,64 +994,87 @@ public class MigrationProcessorV2Service
             yield break;
 
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
-            yield break;
-
-        // ── Raw DbDataReader path — DB-provider-agnostic, avoids EF materialization ──
-        var conn = _dbContext.Database.GetDbConnection();
-        var ownConnection = conn.State != ConnectionState.Open;
-        if (ownConnection) await conn.OpenAsync(ct);
-
-        try
         {
-            // Get the actual table name from EF Core's model metadata
-            var entityType = _dbContext.Model.FindEntityType(typeof(GenericDataStore));
-            var schema = entityType?.GetSchema();
-            var tableName = entityType?.GetTableName() ?? "GenericDataStores";
+            // No GenericStoreMap entry — skip directly to dedicated table fallback
+            genericStoreName = null;
+        }
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+        var hasGenericData = false;
 
-            // Parameterised query — works with any ADO.NET provider (SQL Server, PostgreSQL, SQLite, etc.)
-            var param = cmd.CreateParameter();
-            param.ParameterName = "@storeName";
-            param.Value = genericStoreName;
-            param.DbType = DbType.String;
-            cmd.Parameters.Add(param);
+        if (genericStoreName != null)
+        {
+            // ── Raw DbDataReader path — DB-provider-agnostic, avoids EF materialization ──
+            var conn = _dbContext.Database.GetDbConnection();
+            var ownConnection = conn.State != ConnectionState.Open;
+            if (ownConnection) await conn.OpenAsync(ct);
 
-            var qualifiedTable = string.IsNullOrEmpty(schema)
-                ? $"\"{tableName}\""
-                : $"\"{schema}\".\"{tableName}\"";
-            cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
-
-            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
-
-            while (await reader.ReadAsync(ct))
+            try
             {
-                var rowJson = reader.GetString(0);
+                // Get the actual table name from EF Core's model metadata
+                var entityType = _dbContext.Model.FindEntityType(typeof(GenericDataStore));
+                var schema = entityType?.GetSchema();
+                var tableName = entityType?.GetTableName() ?? "GenericDataStores";
 
-                Dictionary<string, JsonElement>? doc;
-                try
+                using var cmd = conn.CreateCommand();
+                cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+
+                // Parameterised query — works with any ADO.NET provider (SQL Server, PostgreSQL, SQLite, etc.)
+                var param = cmd.CreateParameter();
+                param.ParameterName = "@storeName";
+                param.Value = genericStoreName;
+                param.DbType = DbType.String;
+                cmd.Parameters.Add(param);
+
+                var qualifiedTable = string.IsNullOrEmpty(schema)
+                    ? $"\"{tableName}\""
+                    : $"\"{schema}\".\"{tableName}\"";
+                cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+
+                using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+
+                while (await reader.ReadAsync(ct))
                 {
-                    doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
-                }
-                catch
-                {
-                    continue;
-                }
+                    var rowJson = reader.GetString(0);
 
-                if (doc == null) continue;
+                    Dictionary<string, JsonElement>? doc;
+                    try
+                    {
+                        doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
 
-                var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
-                foreach (var kv in doc)
-                    dict[kv.Key] = ConvertJsonElement(kv.Value);
-                AddComputedFieldsForRecord(sourceTable, dict);
-                yield return dict;
+                    if (doc == null) continue;
+
+                    hasGenericData = true;
+                    var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (var kv in doc)
+                        dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    AddComputedFieldsForRecord(sourceTable, dict);
+                    yield return dict;
+                }
+            }
+            finally
+            {
+                if (ownConnection && conn.State == ConnectionState.Open)
+                    await conn.CloseAsync();
             }
         }
-        finally
+
+        if (hasGenericData)
+            yield break;
+
+        // ── Third fallback: dedicated EF master data table ──
+        if (genericStoreName != null && DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
         {
-            if (ownConnection && conn.State == ConnectionState.Open)
-                await conn.CloseAsync();
+            var rows = await LoadFromDedicatedTableAsync(entityClrType, ct);
+            foreach (var row in rows)
+            {
+                AddComputedFieldsForRecord(sourceTable, row);
+                yield return row;
+            }
         }
     }
 
