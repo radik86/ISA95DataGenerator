@@ -1,6 +1,9 @@
+using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CsvHelper;
@@ -10,6 +13,7 @@ using ISA95DataGenerator.Domain.Models;
 using ISA95DataGenerator.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ISA95DataGenerator.Infrastructure.Services;
@@ -23,10 +27,18 @@ public class MigrationProcessorV2Service
     private readonly MigrationDbContext _dbContext;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MigrationProcessorV2Service> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    private const int PROGRESS_FLUSH_INTERVAL = 500; // flush progress every N records
-    private const int CSV_FLUSH_INTERVAL = 1_000; // flush CSV stream every N rows
-    private const int SESSION_PROGRESS_SAVE_INTERVAL = 5_000; // persist session progress every N filtered source rows during long mappings
+    private const int PROGRESS_FLUSH_INTERVAL = 5_000; // flush progress every N records
+    private const int CSV_FLUSH_INTERVAL = 10_000; // flush CSV stream every N rows
+    private const int CSV_WRITE_BATCH_LINES = 2_000; // buffer writes to reduce I/O calls
+    private const int RAW_DB_BATCH_SIZE = 5_000; // buffer this many rows from DbDataReader before yielding
+    private const int SESSION_PROGRESS_SAVE_INTERVAL = 50_000; // persist session progress every N filtered source rows during long mappings
+    private const int SESSION_PROGRESS_SAVE_SECONDS = 10; // also persist progress at least every N seconds during long mappings
+    private const int MINIMAL_PERSISTENCE_SAVE_SECONDS = 60; // coarse progress persistence interval in minimal mode
+    private const int DB_COMMAND_TIMEOUT_SECONDS = 600;
+    private const int MAX_PERSISTED_LOG_MESSAGES = 500;
+    private static readonly char[] CsvSpecialChars = { ',', '"', '\n', '\r' };
     private static readonly HashSet<string> ProcessSourceTables = new(StringComparer.OrdinalIgnoreCase)
     {
         "operations_requests",
@@ -48,6 +60,39 @@ public class MigrationProcessorV2Service
 
     private static readonly Dictionary<string, string> GenericStoreMap = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Master data stores
+        ["material_classes"] = "materialClasses",
+        ["materials"] = "materials",
+        ["material_lots"] = "materialLots",
+        ["material_sublots"] = "materialSublots",
+        ["material_definition_properties"] = "materialDefinitionProperties",
+        ["material_class_properties"] = "materialClassProperties",
+        ["material_class_properties_assignments"] = "materialClassPropertiesAssignments",
+        ["material_definition_property_assignments"] = "materialDefinitionPropertyAssignments",
+        ["equipment_classes"] = "equipmentClasses",
+        ["equipment"] = "equipment",
+        ["equipment_properties"] = "equipmentProperties",
+        ["equipment_property_assignments"] = "equipmentPropertyAssignments",
+        ["equipment_class_properties"] = "equipmentClassProperties",
+        ["equipment_class_property_assignments"] = "equipmentClassPropertyAssignments",
+        ["plants"] = "plants",
+        ["production_lines"] = "productionLines",
+        ["process_segments"] = "processSegments",
+        ["line_equipment"] = "lineEquipment",
+        ["segment_boms"] = "segmentBOMs",
+        ["equipment_usages"] = "equipmentUsages",
+        ["operation_event_definitions"] = "operationEventDefinitions",
+        ["operation_event_def_segment_assignments"] = "operationEventDefSegmentAssignments",
+        ["operation_event_definition_properties"] = "operationEventDefinitionProperties",
+        ["operation_event_definition_property_assignments"] = "operationEventDefinitionPropertyAssignments",
+        ["hierarchy_scopes"] = "hierarchyScopes",
+        ["hierarchy_scope_parent_child"] = "hierarchyScopeParentChild",
+        ["shifts"] = "shifts",
+        ["crews"] = "crews",
+        ["shift_crew_assignments"] = "shiftCrewAssignments",
+        ["operations_event_classes"] = "operationsEventClasses",
+
+        // Process data stores
         ["operations_requests"] = "operationsRequests",
         ["segment_requirements"] = "segmentRequirements",
         ["segment_material_requirements"] = "segmentMaterialRequirements",
@@ -91,11 +136,13 @@ public class MigrationProcessorV2Service
     public MigrationProcessorV2Service(
         MigrationDbContext dbContext,
         IConfiguration configuration,
-        ILogger<MigrationProcessorV2Service> logger)
+        ILogger<MigrationProcessorV2Service> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _dbContext = dbContext;
         _configuration = configuration;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     // ────────────────────────────────────────────
@@ -108,6 +155,7 @@ public class MigrationProcessorV2Service
         bool separateMasterProcessFiles = false,
         bool sourceIncludeTimestampSuffix = false,
         bool sourceSplitFiles = false,
+        bool minimalPersistenceMode = true,
         CancellationToken ct = default)
     {
         var session = await _dbContext.MigrationSessions.FindAsync(new object[] { sessionId }, ct)
@@ -116,13 +164,25 @@ public class MigrationProcessorV2Service
         var logMessages = new List<string>();
         void Log(string msg)
         {
+            if (minimalPersistenceMode && msg.StartsWith("  ... ", StringComparison.Ordinal))
+                return;
+            if (minimalPersistenceMode && msg.StartsWith("  Released source data", StringComparison.Ordinal))
+                return;
+            if (minimalPersistenceMode && msg.StartsWith("  Cached ", StringComparison.Ordinal))
+                return;
+
             var entry = $"{DateTime.UtcNow:HH:mm:ss}: {msg}";
             logMessages.Add(entry);
             _logger.LogInformation("[Migration {SessionId}] {Message}", sessionId, msg);
         }
 
+        var lastPeriodicSessionSaveAt = DateTime.UtcNow;
+
         try
         {
+            // Long-running mappings (especially bridge joins on large stores) can exceed default SQL timeout.
+            _dbContext.Database.SetCommandTimeout(DB_COMMAND_TIMEOUT_SECONDS);
+
             session.Status = "Processing";
             session.StartedAt = DateTime.UtcNow;
             session.ProgressPercentage = 0;
@@ -272,11 +332,19 @@ public class MigrationProcessorV2Service
                             Log,
                             async (currentFilteredCount) =>
                             {
+                                if ((DateTime.UtcNow - lastPeriodicSessionSaveAt).TotalSeconds < MINIMAL_PERSISTENCE_SAVE_SECONDS)
+                                    return;
+
                                 session.ProcessedRecords = processedTotal + currentFilteredCount;
                                 session.ProgressPercentage = totalRecords > 0
                                     ? (int)(((processedTotal + currentFilteredCount) * 100.0) / totalRecords)
                                     : 0;
+
+                                if (minimalPersistenceMode)
+                                    Log($"  Heartbeat: processed {currentFilteredCount} source rows for {mapping.TargetEntity}");
+
                                 await SaveSession(session, logMessages, ct);
+                                lastPeriodicSessionSaveAt = DateTime.UtcNow;
                             },
                             streamCacheFields,
                             streamCacheTarget,
@@ -664,26 +732,55 @@ public class MigrationProcessorV2Service
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return result;
 
-        var genericRows = await _dbContext.GenericDataStores
-            .AsNoTracking()
-            .Where(r => r.StoreName == genericStoreName)
-            .ToListAsync(ct);
+        // ── Raw DbDataReader path — avoids EF materialization of full entity objects ──
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConnection = conn.State != ConnectionState.Open;
+        if (ownConnection) await conn.OpenAsync(ct);
 
-        foreach (var row in genericRows)
+        try
         {
-            try
+            var entityType = _dbContext.Model.FindEntityType(typeof(GenericDataStore));
+            var schema = entityType?.GetSchema();
+            var tableName = entityType?.GetTableName() ?? "GenericDataStores";
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+
+            var param = cmd.CreateParameter();
+            param.ParameterName = "@storeName";
+            param.Value = genericStoreName;
+            param.DbType = DbType.String;
+            cmd.Parameters.Add(param);
+
+            var qualifiedTable = string.IsNullOrEmpty(schema)
+                ? $"\"{tableName}\""
+                : $"\"{schema}\".\"{tableName}\"";
+            cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+
+            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+
+            while (await reader.ReadAsync(ct))
             {
-                var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(row.DataJson);
-                if (doc == null) continue;
-                var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                foreach (var kv in doc)
-                    dict[kv.Key] = ConvertJsonElement(kv.Value);
-                result.Add(dict);
+                try
+                {
+                    var rowJson = reader.GetString(0);
+                    var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
+                    if (doc == null) continue;
+                    var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (var kv in doc)
+                        dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    result.Add(dict);
+                }
+                catch
+                {
+                    // Skip malformed row and continue.
+                }
             }
-            catch
-            {
-                // Skip malformed row and continue.
-            }
+        }
+        finally
+        {
+            if (ownConnection && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
         }
 
         AddComputedFieldsForStore(sourceTable, result);
@@ -764,32 +861,62 @@ public class MigrationProcessorV2Service
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             yield break;
 
-        var genericRows = _dbContext.GenericDataStores
-            .AsNoTracking()
-            .Where(r => r.StoreName == genericStoreName)
-            .OrderBy(r => r.Id)
-            .Select(r => r.DataJson)
-            .AsAsyncEnumerable();
+        // ── Raw DbDataReader path — DB-provider-agnostic, avoids EF materialization ──
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConnection = conn.State != ConnectionState.Open;
+        if (ownConnection) await conn.OpenAsync(ct);
 
-        await foreach (var rowJson in genericRows.WithCancellation(ct))
+        try
         {
-            Dictionary<string, JsonElement>? doc;
-            try
-            {
-                doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
-            }
-            catch
-            {
-                continue;
-            }
+            // Get the actual table name from EF Core's model metadata
+            var entityType = _dbContext.Model.FindEntityType(typeof(GenericDataStore));
+            var schema = entityType?.GetSchema();
+            var tableName = entityType?.GetTableName() ?? "GenericDataStores";
 
-            if (doc == null) continue;
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
 
-            var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kv in doc)
-                dict[kv.Key] = ConvertJsonElement(kv.Value);
-            AddComputedFieldsForRecord(sourceTable, dict);
-            yield return dict;
+            // Parameterised query — works with any ADO.NET provider (SQL Server, PostgreSQL, SQLite, etc.)
+            var param = cmd.CreateParameter();
+            param.ParameterName = "@storeName";
+            param.Value = genericStoreName;
+            param.DbType = DbType.String;
+            cmd.Parameters.Add(param);
+
+            var qualifiedTable = string.IsNullOrEmpty(schema)
+                ? $"\"{tableName}\""
+                : $"\"{schema}\".\"{tableName}\"";
+            cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+
+            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var rowJson = reader.GetString(0);
+
+                Dictionary<string, JsonElement>? doc;
+                try
+                {
+                    doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (doc == null) continue;
+
+                var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in doc)
+                    dict[kv.Key] = ConvertJsonElement(kv.Value);
+                AddComputedFieldsForRecord(sourceTable, dict);
+                yield return dict;
+            }
+        }
+        finally
+        {
+            if (ownConnection && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
         }
     }
 
@@ -979,6 +1106,7 @@ public class MigrationProcessorV2Service
         long currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
         int recordsInCurrentFile = 0;
         files.Add(filePath);
+        var pendingLines = new List<string>(CSV_WRITE_BATCH_LINES);
 
         try
         {
@@ -1033,6 +1161,12 @@ public class MigrationProcessorV2Service
 
                 if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
                 {
+                    if (pendingLines.Count > 0)
+                    {
+                        await writer.WriteAsync(string.Join(Environment.NewLine, pendingLines) + Environment.NewLine);
+                        pendingLines.Clear();
+                    }
+
                     await writer.FlushAsync(ct);
                     await writer.DisposeAsync();
 
@@ -1045,7 +1179,13 @@ public class MigrationProcessorV2Service
                     files.Add(filePath);
                 }
 
-                await writer.WriteLineAsync(line);
+                pendingLines.Add(line);
+                if (pendingLines.Count >= CSV_WRITE_BATCH_LINES)
+                {
+                    await writer.WriteAsync(string.Join(Environment.NewLine, pendingLines) + Environment.NewLine);
+                    pendingLines.Clear();
+                }
+
                 currentFileBytes += lineBytes;
                 recordsInCurrentFile++;
                 totalRecords++;
@@ -1064,6 +1204,9 @@ public class MigrationProcessorV2Service
         }
         finally
         {
+            if (pendingLines.Count > 0)
+                await writer.WriteAsync(string.Join(Environment.NewLine, pendingLines) + Environment.NewLine);
+
             await writer.FlushAsync(ct);
             await writer.DisposeAsync();
         }
@@ -1084,6 +1227,7 @@ public class MigrationProcessorV2Service
         CancellationToken ct)
     {
         var lookupTables = await PreLoadLookupTablesAsync(mapping, sourceStoreProvider, ct);
+        var lookupIndexes = BuildLookupIndexes(lookupTables);
 
         var enabledFilters = (mapping.Filters ?? new List<FilterDto>())
             .Where(f => f.Enabled)
@@ -1103,6 +1247,7 @@ public class MigrationProcessorV2Service
         int totalRecords = 0;
         int filteredSourceCount = 0;
         var startedAt = DateTime.UtcNow;
+        var lastProgressSaveAt = DateTime.UtcNow;
 
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
         int fileIndex = 1;
@@ -1113,6 +1258,8 @@ public class MigrationProcessorV2Service
         int recordsInCurrentFile = 0;
         files.Add(filePath);
 
+        var csvSb = new StringBuilder(256); // reusable across rows
+
         try
         {
             await foreach (var record in sourceStoreProvider.StreamStoreAsync(mapping.SourceTable, ct))
@@ -1122,7 +1269,7 @@ public class MigrationProcessorV2Service
 
                 filteredSourceCount++;
 
-                var transformed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                var transformed = new Dictionary<string, object?>(columns.Count, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var fm in mapping.FieldMappings)
                 {
@@ -1131,9 +1278,9 @@ public class MigrationProcessorV2Service
                     if (fm.FieldRule != null)
                     {
                         if (fm.FieldRule.RuleType == "Lookup")
-                            transformed[fm.FieldName] = ResolveLookup(record, fm.FieldRule, lookupTables);
+                            transformed[fm.FieldName] = ResolveLookup(record, fm.FieldRule, lookupTables, lookupIndexes);
                         else if (fm.FieldRule.RuleType == "MultipleLookups")
-                            transformed[fm.FieldName] = ResolveMultipleLookups(record, fm.FieldRule, lookupTables);
+                            transformed[fm.FieldName] = ResolveMultipleLookups(record, fm.FieldRule, lookupTables, lookupIndexes);
                         else
                             transformed[fm.FieldName] = ApplyFieldRule(fm.FieldRule, record, filteredSourceCount - 1, transformed);
                     }
@@ -1164,16 +1311,25 @@ public class MigrationProcessorV2Service
                     bridgeCacheTarget.Add(slim);
                 }
 
-                var values = columns.Select(col =>
+                // ── Build CSV line using reusable StringBuilder (avoids LINQ + string allocs) ──
+                csvSb.Clear();
+                for (int ci = 0; ci < columns.Count; ci++)
                 {
-                    var val = transformed.GetValueOrDefault(col);
-                    var str = FormatCsvValue(col, val);
-                    if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
-                        return $"\"{str.Replace("\"", "\"\"")}\"";
-                    return str;
-                });
-                var line = string.Join(",", values);
-                var lineBytes = System.Text.Encoding.UTF8.GetByteCount(line + Environment.NewLine);
+                    if (ci > 0) csvSb.Append(',');
+                    var str = FormatCsvValue(columns[ci], transformed.GetValueOrDefault(columns[ci]));
+                    if (str.IndexOfAny(CsvSpecialChars) >= 0)
+                    {
+                        csvSb.Append('"');
+                        csvSb.Append(str.Replace("\"", "\"\""));
+                        csvSb.Append('"');
+                    }
+                    else
+                    {
+                        csvSb.Append(str);
+                    }
+                }
+                var line = csvSb.ToString();
+                var lineBytes = Encoding.UTF8.GetByteCount(line) + Encoding.UTF8.GetByteCount(Environment.NewLine);
 
                 if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
                 {
@@ -1201,9 +1357,12 @@ public class MigrationProcessorV2Service
                     log($"  ... {mapping.SourceTable} -> {mapping.TargetEntity}: processed {totalRecords} filtered records (~{rps} rec/s)");
                 }
 
-                if (onProgressAsync != null && filteredSourceCount % SESSION_PROGRESS_SAVE_INTERVAL == 0)
+                if (onProgressAsync != null &&
+                    (filteredSourceCount % SESSION_PROGRESS_SAVE_INTERVAL == 0 ||
+                     (DateTime.UtcNow - lastProgressSaveAt).TotalSeconds >= SESSION_PROGRESS_SAVE_SECONDS))
                 {
                     await onProgressAsync(filteredSourceCount);
+                    lastProgressSaveAt = DateTime.UtcNow;
                 }
 
                 if (totalRecords % CSV_FLUSH_INTERVAL == 0)
@@ -1506,6 +1665,61 @@ public class MigrationProcessorV2Service
         }
     }
 
+    /// <summary>
+    /// Build O(1) dictionary indexes for lookup tables.
+    /// Key: "tableName||fieldName" (lowercase), Value: dict mapping (trimmed lowercase value → record).
+    /// Only the first matching record is stored per key (matches FirstOrDefault semantics).
+    /// </summary>
+    private static Dictionary<string, Dictionary<string, Dictionary<string, object?>>> BuildLookupIndexes(
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+    {
+        var indexes = new Dictionary<string, Dictionary<string, Dictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (tableName, data) in lookupTables)
+        {
+            if (data.Count == 0) continue;
+
+            // Index every field in the first record as potential match fields
+            var sampleRecord = data[0];
+            foreach (var fieldName in sampleRecord.Keys)
+            {
+                var indexKey = $"{tableName}||{fieldName}";
+                var fieldIndex = new Dictionary<string, Dictionary<string, object?>>(data.Count, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var record in data)
+                {
+                    var val = (record.GetValueOrDefault(fieldName)?.ToString() ?? "").Trim();
+                    // FirstOrDefault semantics: keep first match only
+                    fieldIndex.TryAdd(val, record);
+                }
+
+                indexes[indexKey] = fieldIndex;
+            }
+        }
+
+        return indexes;
+    }
+
+    /// <summary>
+    /// O(1) indexed lookup for simple field-based joins.
+    /// Returns null if no index is available for the given table+field combination.
+    /// </summary>
+    private static Dictionary<string, object?>? IndexedLookup(
+        Dictionary<string, Dictionary<string, Dictionary<string, object?>>>? lookupIndexes,
+        string tableName,
+        string matchField,
+        string matchValue)
+    {
+        if (lookupIndexes == null) return null;
+
+        var indexKey = $"{tableName}||{matchField}";
+        if (!lookupIndexes.TryGetValue(indexKey, out var fieldIndex))
+            return null;
+
+        fieldIndex.TryGetValue(matchValue.Trim(), out var record);
+        return record;
+    }
+
     // ────────────────────────────────────────────
     //  Apply PK Rule
     // ────────────────────────────────────────────
@@ -1753,7 +1967,8 @@ public class MigrationProcessorV2Service
     private object? ResolveLookup(
         Dictionary<string, object?> sourceRecord,
         FieldRuleDto rule,
-        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables,
+        Dictionary<string, Dictionary<string, Dictionary<string, object?>>>? lookupIndexes = null)
     {
         var p = rule.Parameters;
         if (p == null) return GetJsonString(p, "defaultValue") ?? "";
@@ -1765,6 +1980,8 @@ public class MigrationProcessorV2Service
         // Resolve field names from joinConditions (saved format) or flat params (preview format)
         string? localField = GetJsonString(p, "sourceField");
         string? matchField = GetJsonString(p, "matchField");
+
+        bool isComposite = false;
 
         // Check joinConditions
         if (p.Value.TryGetProperty("joinConditions", out var jcEl) && jcEl.ValueKind == JsonValueKind.Array)
@@ -1780,6 +1997,7 @@ public class MigrationProcessorV2Service
                 }
                 else if (jcType == "composite")
                 {
+                    isComposite = true;
                     // Use first field pair for simple lookup
                     localField = GetJsonStringArrayFromElement(first, "localFields").FirstOrDefault();
                     matchField = GetJsonStringArrayFromElement(first, "sourceFields").FirstOrDefault();
@@ -1793,12 +2011,12 @@ public class MigrationProcessorV2Service
         var sourceValue = sourceRecord.GetValueOrDefault(localField ?? "")?.ToString();
         if (string.IsNullOrEmpty(sourceValue)) return defaultVal;
 
-        // Check for composite join
+        // Check for composite join — must fall back to linear scan
         Dictionary<string, object?>? matchedRecord = null;
-        if (p.Value.TryGetProperty("joinConditions", out var jcEl2) && jcEl2.ValueKind == JsonValueKind.Array)
+        if (isComposite && p.Value.TryGetProperty("joinConditions", out var jcEl2) && jcEl2.ValueKind == JsonValueKind.Array)
         {
             var first = jcEl2.EnumerateArray().FirstOrDefault();
-            if (first.ValueKind == JsonValueKind.Object && GetJsonStringFromElement(first, "type") == "composite")
+            if (first.ValueKind == JsonValueKind.Object)
             {
                 var localFields = GetJsonStringArrayFromElement(first, "localFields");
                 var sourceFields = GetJsonStringArrayFromElement(first, "sourceFields");
@@ -1814,6 +2032,13 @@ public class MigrationProcessorV2Service
             }
         }
 
+        // ── O(1) indexed lookup for simple field joins ──
+        if (matchedRecord == null && !string.IsNullOrEmpty(matchField))
+        {
+            matchedRecord = IndexedLookup(lookupIndexes, tableName, matchField, sourceValue);
+        }
+
+        // Final fallback: linear scan (only if index miss or no indexes)
         matchedRecord ??= lookupData.FirstOrDefault(r =>
             string.Equals(
                 (r.GetValueOrDefault(matchField ?? "")?.ToString() ?? "").Trim(),
@@ -1826,7 +2051,8 @@ public class MigrationProcessorV2Service
     private object? ResolveMultipleLookups(
         Dictionary<string, object?> sourceRecord,
         FieldRuleDto rule,
-        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables,
+        Dictionary<string, Dictionary<string, Dictionary<string, object?>>>? lookupIndexes = null)
     {
         var p = rule.Parameters;
         if (p == null) return "";
@@ -1898,7 +2124,11 @@ public class MigrationProcessorV2Service
                 if (jcType == "field")
                 {
                     var sf = GetJsonStringFromElement(first, "sourceField");
-                    matchedRecord = lookupData.FirstOrDefault(r =>
+                    // ── Try O(1) indexed lookup first ──
+                    if (!string.IsNullOrEmpty(sf))
+                        matchedRecord = IndexedLookup(lookupIndexes, lookupTableName, sf, matchValue);
+                    // Fallback to linear scan
+                    matchedRecord ??= lookupData.FirstOrDefault(r =>
                         string.Equals(
                             (r.GetValueOrDefault(sf ?? "")?.ToString() ?? "").Trim(),
                             matchValue.Trim(),
@@ -1907,7 +2137,6 @@ public class MigrationProcessorV2Service
                 else if (jcType == "composite")
                 {
                     var sfs = GetJsonStringArrayFromElement(first, "sourceFields");
-                    var compositeKey = string.Join("|", sfs.Select(sf => "{" + sf + "}"));
                     matchedRecord = lookupData.FirstOrDefault(r =>
                     {
                         var key = string.Join("|", sfs.Select(sf => r.GetValueOrDefault(sf)?.ToString() ?? ""));
@@ -2321,7 +2550,52 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     private async Task SaveSession(MigrationSession session, List<string> logMessages, CancellationToken ct)
     {
-        session.LogMessages = JsonSerializer.Serialize(logMessages);
-        await _dbContext.SaveChangesAsync(ct);
+        if (logMessages.Count > MAX_PERSISTED_LOG_MESSAGES)
+        {
+            var removeCount = logMessages.Count - MAX_PERSISTED_LOG_MESSAGES;
+            logMessages.RemoveRange(0, removeCount);
+        }
+
+        var serializedLogs = JsonSerializer.Serialize(logMessages);
+
+        try
+        {
+            // Use a separate DbContext scope to avoid saving with the same connection
+            // while a streaming query keeps an open DataReader.
+            using var scope = _scopeFactory.CreateScope();
+            var writeDb = scope.ServiceProvider.GetRequiredService<MigrationDbContext>();
+
+            // Update by key without re-querying to keep persistence overhead minimal.
+            var persisted = new MigrationSession { Id = session.Id };
+            writeDb.MigrationSessions.Attach(persisted);
+
+            persisted.Status = session.Status;
+            persisted.StartedAt = session.StartedAt;
+            persisted.CompletedAt = session.CompletedAt;
+            persisted.ProgressPercentage = session.ProgressPercentage;
+            persisted.ProcessedRecords = session.ProcessedRecords;
+            persisted.TotalRecords = session.TotalRecords;
+            persisted.ErrorMessage = session.ErrorMessage;
+            persisted.ResultFilesPaths = session.ResultFilesPaths;
+            persisted.LogMessages = serializedLogs;
+
+            var entry = writeDb.Entry(persisted);
+            entry.Property(x => x.Status).IsModified = true;
+            entry.Property(x => x.StartedAt).IsModified = true;
+            entry.Property(x => x.CompletedAt).IsModified = true;
+            entry.Property(x => x.ProgressPercentage).IsModified = true;
+            entry.Property(x => x.ProcessedRecords).IsModified = true;
+            entry.Property(x => x.TotalRecords).IsModified = true;
+            entry.Property(x => x.ErrorMessage).IsModified = true;
+            entry.Property(x => x.ResultFilesPaths).IsModified = true;
+            entry.Property(x => x.LogMessages).IsModified = true;
+
+            await writeDb.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // Progress persistence must not fail a mapping; we'll continue and try saving again later.
+            _logger.LogWarning(ex, "Failed to persist migration session progress for {SessionId}", session.Id);
+        }
     }
 }

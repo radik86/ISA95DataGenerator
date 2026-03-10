@@ -509,12 +509,15 @@ public class DataMigrationController : ControllerBase
         if (request.Mappings == null || request.Mappings.Count == 0)
             return BadRequest("No mappings provided");
 
-        // Verify source data exists
-        var storeCount = await _dbContext.Set<MigrationSourceData>()
-            .CountAsync(s => s.MigrationSessionId == sessionId);
+        // Verify source data exists unless backend is instructed to read directly from server-side stores.
+        if (!request.PreferServerSideSource)
+        {
+            var storeCount = await _dbContext.Set<MigrationSourceData>()
+                .CountAsync(s => s.MigrationSessionId == sessionId);
 
-        if (storeCount == 0)
-            return BadRequest("No source data uploaded. Upload data via /source-data first.");
+            if (storeCount == 0)
+                return BadRequest("No source data uploaded. Upload data via /source-data first, or set PreferServerSideSource=true.");
+        }
 
         session.Status = "Processing";
         session.StartedAt = DateTime.UtcNow;
@@ -533,7 +536,8 @@ public class DataMigrationController : ControllerBase
                     request.MaxFileSizeMb,
                     request.SeparateMasterProcessFiles,
                     request.SourceIncludeTimestampSuffix,
-                    request.SourceSplitFiles);
+                    request.SourceSplitFiles,
+                    request.MinimalPersistenceMode);
             }
             catch (Exception ex)
             {

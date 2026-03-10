@@ -5492,6 +5492,10 @@ const DataMigration: React.FC = () => {
 
       log(`${referencedTables.size} source table(s) needed`);
 
+      const hasImportedReferencedTables = Array.from(referencedTables)
+        .some((tableName) => (importedTablesData[tableName]?.length ?? 0) > 0);
+      const preferServerSideSource = migrationLoadMode === 'full' && !hasImportedReferencedTables;
+
       // Upload each referenced store in partitions to avoid huge browser memory spikes.
       let uploadedCount = 0;
       let totalUploadedRecords = 0;
@@ -5499,7 +5503,15 @@ const DataMigration: React.FC = () => {
       const UPLOAD_LOG_EVERY_PARTS = 10;
       const uploadedStoreNames = new Set<string>();
 
-      log(`Upload chunk size: ${PARTITION_UPLOAD_SIZE} records/request`);
+      if (preferServerSideSource) {
+        log(`Mode: ${migrationLoadMode}. Using backend source stores directly; upload chunk size (${PARTITION_UPLOAD_SIZE}) is ignored in this mode.`);
+        setMigrationProgress(30);
+      } else {
+        log(`Mode: ${migrationLoadMode}. Upload chunk size: ${PARTITION_UPLOAD_SIZE} records/request`);
+        if (migrationLoadMode === 'full' && hasImportedReferencedTables) {
+          log('Imported source tables are present, so frontend upload remains enabled for those mappings.');
+        }
+      }
 
       const shouldIncludeForDeltaMigration = (record: any): boolean => {
         const lastMigrationAt = record?.LastDataMigrationAt ?? record?.lastDataMigrationAt;
@@ -5509,6 +5521,8 @@ const DataMigration: React.FC = () => {
       };
 
       for (const tableName of referencedTables) {
+        if (preferServerSideSource) break;
+
         try {
           let data: any[] = [];
           let storeNameForUpdate: string | null = null;
@@ -5648,7 +5662,9 @@ const DataMigration: React.FC = () => {
         setMigrationProgress(uploadProgress);
       }
 
-      log(`✓ Uploaded ${uploadedCount} stores (${totalUploadedRecords} total records) to SQL Server`);
+      if (!preferServerSideSource) {
+        log(`✓ Uploaded ${uploadedCount} stores (${totalUploadedRecords} total records) to SQL Server`);
+      }
 
       // 3. Execute migration on the server
       log('Starting server-side migration processing...');
@@ -5659,12 +5675,14 @@ const DataMigration: React.FC = () => {
         separateMasterProcessFiles,
         sourceIncludeTimestampSuffix,
         sourceSplitFiles,
+        preferServerSideSource,
+        true,
       );
       log('Migration processing started on server');
 
       // 4. Poll for progress
       let lastLogIndex = 0;
-      const pollInterval = 1000; // 1 second
+      const pollInterval = 8000; // 8 seconds
       let completed = false;
 
       while (!completed) {
