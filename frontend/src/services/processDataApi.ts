@@ -159,6 +159,37 @@ class ProcessDataApiService {
     }
   }
 
+  async getPage<K extends ProcessDataStoreName>(
+    storeName: K,
+    skip = 0,
+    take = 200,
+  ): Promise<{ items: any[]; total: number; skip: number; take: number }> {
+    try {
+      const qs = `?skip=${encodeURIComponent(String(skip))}&take=${encodeURIComponent(String(take))}`;
+      return await apiFetch<{ items: any[]; total: number; skip: number; take: number }>(`${API_BASE}/${storeName}/page${qs}`);
+    } catch (err) {
+      console.error(`processDataApi.getPage(${storeName}) failed:`, err);
+      return { items: [], total: 0, skip, take };
+    }
+  }
+
+  async getPageKeyset<K extends ProcessDataStoreName>(
+    storeName: K,
+    lastId: number | null,
+    take = 1000,
+  ): Promise<{ items: any[]; hasMore: boolean; nextLastId: number | null; take: number }> {
+    try {
+      const query = new URLSearchParams();
+      if (lastId !== null) query.set('lastId', String(lastId));
+      query.set('take', String(take));
+      const qs = `?${query.toString()}`;
+      return await apiFetch<{ items: any[]; hasMore: boolean; nextLastId: number | null; take: number }>(`${API_BASE}/${storeName}/page-keyset${qs}`);
+    } catch (err) {
+      console.error(`processDataApi.getPageKeyset(${storeName}) failed:`, err);
+      return { items: [], hasMore: false, nextLastId: lastId, take };
+    }
+  }
+
   async getAllByIndex<K extends ProcessDataStoreName>(
     storeName: K,
     _indexName: string,

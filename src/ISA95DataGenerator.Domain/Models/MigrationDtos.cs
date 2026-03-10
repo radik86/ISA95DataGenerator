@@ -26,6 +26,8 @@ public class ExecuteMigrationRequest
     public bool SeparateMasterProcessFiles { get; set; }
     public bool SourceIncludeTimestampSuffix { get; set; }
     public bool SourceSplitFiles { get; set; }
+    public bool PreferServerSideSource { get; set; } = false;
+    public bool MinimalPersistenceMode { get; set; } = true;
 }
 
 /// <summary>

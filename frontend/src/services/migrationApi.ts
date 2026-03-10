@@ -117,6 +117,8 @@ export const migrationApi = {
     separateMasterProcessFiles?: boolean,
     sourceIncludeTimestampSuffix?: boolean,
     sourceSplitFiles?: boolean,
+    preferServerSideSource?: boolean,
+    minimalPersistenceMode?: boolean,
   ): Promise<{ message: string; sessionId: string }> {
     const res = await fetch(`${API_BASE_URL}/session/${sessionId}/execute-v2`, {
       method: 'POST',
@@ -127,6 +129,8 @@ export const migrationApi = {
         separateMasterProcessFiles,
         sourceIncludeTimestampSuffix,
         sourceSplitFiles,
+        preferServerSideSource,
+        minimalPersistenceMode,
       }),
     });
     if (!res.ok) throw new Error(`Execute failed: ${await res.text()}`);

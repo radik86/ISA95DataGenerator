@@ -1,14 +1,20 @@
+using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CsvHelper;
 using CsvHelper.Configuration;
 using ISA95DataGenerator.Domain.Entities;
+using ISA95DataGenerator.Domain.Entities.MasterData;
 using ISA95DataGenerator.Domain.Models;
 using ISA95DataGenerator.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ISA95DataGenerator.Infrastructure.Services;
@@ -22,9 +28,18 @@ public class MigrationProcessorV2Service
     private readonly MigrationDbContext _dbContext;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MigrationProcessorV2Service> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    private const int PROGRESS_FLUSH_INTERVAL = 500; // flush progress every N records
-    private const int CSV_FLUSH_INTERVAL = 1_000; // flush CSV stream every N rows
+    private const int PROGRESS_FLUSH_INTERVAL = 5_000; // flush progress every N records
+    private const int CSV_FLUSH_INTERVAL = 10_000; // flush CSV stream every N rows
+    private const int CSV_WRITE_BATCH_LINES = 2_000; // buffer writes to reduce I/O calls
+    private const int RAW_DB_BATCH_SIZE = 5_000; // buffer this many rows from DbDataReader before yielding
+    private const int SESSION_PROGRESS_SAVE_INTERVAL = 50_000; // persist session progress every N filtered source rows during long mappings
+    private const int SESSION_PROGRESS_SAVE_SECONDS = 10; // also persist progress at least every N seconds during long mappings
+    private const int MINIMAL_PERSISTENCE_SAVE_SECONDS = 60; // coarse progress persistence interval in minimal mode
+    private const int DB_COMMAND_TIMEOUT_SECONDS = 600;
+    private const int MAX_PERSISTED_LOG_MESSAGES = 500;
+    private static readonly char[] CsvSpecialChars = { ',', '"', '\n', '\r' };
     private static readonly HashSet<string> ProcessSourceTables = new(StringComparer.OrdinalIgnoreCase)
     {
         "operations_requests",
@@ -44,6 +59,96 @@ public class MigrationProcessorV2Service
         "segment_data",
     };
 
+    private static readonly Dictionary<string, string> GenericStoreMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Master data stores
+        ["material_classes"] = "materialClasses",
+        ["materials"] = "materials",
+        ["material_lots"] = "materialLots",
+        ["material_sublots"] = "materialSublots",
+        ["material_definition_properties"] = "materialDefinitionProperties",
+        ["material_class_properties"] = "materialClassProperties",
+        ["material_class_properties_assignments"] = "materialClassPropertiesAssignments",
+        ["material_definition_property_assignments"] = "materialDefinitionPropertyAssignments",
+        ["equipment_classes"] = "equipmentClasses",
+        ["equipment"] = "equipment",
+        ["equipment_properties"] = "equipmentProperties",
+        ["equipment_property_assignments"] = "equipmentPropertyAssignments",
+        ["equipment_class_properties"] = "equipmentClassProperties",
+        ["equipment_class_property_assignments"] = "equipmentClassPropertyAssignments",
+        ["plants"] = "plants",
+        ["production_lines"] = "productionLines",
+        ["process_segments"] = "processSegments",
+        ["line_equipment"] = "lineEquipment",
+        ["segment_boms"] = "segmentBOMs",
+        ["equipment_usages"] = "equipmentUsages",
+        ["operation_event_definitions"] = "operationEventDefinitions",
+        ["operation_event_def_segment_assignments"] = "operationEventDefSegmentAssignments",
+        ["operation_event_definition_properties"] = "operationEventDefinitionProperties",
+        ["operation_event_definition_property_assignments"] = "operationEventDefinitionPropertyAssignments",
+        ["hierarchy_scopes"] = "hierarchyScopes",
+        ["hierarchy_scope_parent_child"] = "hierarchyScopeParentChild",
+        ["shifts"] = "shifts",
+        ["crews"] = "crews",
+        ["shift_crew_assignments"] = "shiftCrewAssignments",
+        ["operations_event_classes"] = "operationsEventClasses",
+
+        // Process data stores
+        ["operations_requests"] = "operationsRequests",
+        ["segment_requirements"] = "segmentRequirements",
+        ["segment_material_requirements"] = "segmentMaterialRequirements",
+        ["segment_equipment_requirements"] = "segmentEquipmentRequirements",
+        ["operations_responses"] = "operationsResponses",
+        ["segment_responses"] = "segmentResponses",
+        ["segment_material_actuals"] = "segmentMaterialActuals",
+        ["segment_equipment_actuals"] = "segmentEquipmentActuals",
+        ["equipment_property_tracking"] = "equipmentPropertyTracking",
+        ["test_results"] = "testResults",
+        ["operations_events"] = "operationsEvents",
+        ["operations_event_records"] = "operationsEventRecords",
+        ["operations_event_entries"] = "operationsEventEntries",
+        ["operations_event_properties"] = "operationsEventProperties",
+        ["segment_data"] = "segmentData",
+    };
+
+    /// <summary>
+    /// Maps GenericStoreMap values (store names) to the CLR type of the dedicated EF table.
+    /// Used as a third fallback tier when data is not in MigrationSourceData or GenericDataStores.
+    /// </summary>
+    private static readonly Dictionary<string, Type> DedicatedEntityTypeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["materialClasses"] = typeof(MaterialClass),
+        ["materials"] = typeof(Material),
+        ["materialLots"] = typeof(MaterialLot),
+        ["materialSublots"] = typeof(MaterialSublot),
+        ["materialDefinitionProperties"] = typeof(MaterialDefinitionProperty),
+        ["materialClassProperties"] = typeof(MaterialClassProperty),
+        ["materialClassPropertiesAssignments"] = typeof(MaterialClassPropertyAssignment),
+        ["materialDefinitionPropertyAssignments"] = typeof(MaterialDefinitionPropertyAssignment),
+        ["equipmentClasses"] = typeof(EquipmentClass),
+        ["equipment"] = typeof(Equipment),
+        ["equipmentProperties"] = typeof(EquipmentProperty),
+        ["equipmentPropertyAssignments"] = typeof(EquipmentPropertyAssignment),
+        ["equipmentClassProperties"] = typeof(EquipmentClassProperty),
+        ["equipmentClassPropertyAssignments"] = typeof(EquipmentClassPropertyAssignment),
+        ["plants"] = typeof(Plant),
+        ["productionLines"] = typeof(ProductionLine),
+        ["processSegments"] = typeof(ProcessSegment),
+        ["lineEquipment"] = typeof(LineEquipment),
+        ["segmentBOMs"] = typeof(SegmentBOM),
+        ["equipmentUsages"] = typeof(EquipmentUsage),
+        ["operationEventDefinitions"] = typeof(OperationEventDefinition),
+        ["operationEventDefSegmentAssignments"] = typeof(OperationEventDefSegmentAssignment),
+        ["operationEventDefinitionProperties"] = typeof(OperationEventDefinitionProperty),
+        ["operationEventDefinitionPropertyAssignments"] = typeof(OperationEventDefinitionPropertyAssignment),
+        ["hierarchyScopes"] = typeof(HierarchyScope),
+        ["hierarchyScopeParentChild"] = typeof(HierarchyScopeParentChild),
+        ["shifts"] = typeof(Shift),
+        ["crews"] = typeof(Crew),
+        ["shiftCrewAssignments"] = typeof(ShiftCrewAssignment),
+        ["operationsEventClasses"] = typeof(OperationsEventClass),
+    };
+
     private static readonly string[] KnownIsa95Terms =
     {
         "operations", "operation", "segment", "material", "equipment", "event", "record", "entry",
@@ -58,14 +163,25 @@ public class MigrationProcessorV2Service
         .OrderByDescending(t => t.Length)
         .ToArray();
 
+    private sealed class ExportSummary
+    {
+        public string TargetEntity { get; set; } = string.Empty;
+        public bool IsBridge { get; set; }
+        public int SourceRows { get; set; }
+        public int ExportedRows { get; set; }
+        public int FileCount { get; set; }
+    }
+
     public MigrationProcessorV2Service(
         MigrationDbContext dbContext,
         IConfiguration configuration,
-        ILogger<MigrationProcessorV2Service> logger)
+        ILogger<MigrationProcessorV2Service> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _dbContext = dbContext;
         _configuration = configuration;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     // ────────────────────────────────────────────
@@ -78,6 +194,7 @@ public class MigrationProcessorV2Service
         bool separateMasterProcessFiles = false,
         bool sourceIncludeTimestampSuffix = false,
         bool sourceSplitFiles = false,
+        bool minimalPersistenceMode = true,
         CancellationToken ct = default)
     {
         var session = await _dbContext.MigrationSessions.FindAsync(new object[] { sessionId }, ct)
@@ -86,13 +203,25 @@ public class MigrationProcessorV2Service
         var logMessages = new List<string>();
         void Log(string msg)
         {
+            if (minimalPersistenceMode && msg.StartsWith("  ... ", StringComparison.Ordinal))
+                return;
+            if (minimalPersistenceMode && msg.StartsWith("  Released source data", StringComparison.Ordinal))
+                return;
+            if (minimalPersistenceMode && msg.StartsWith("  Cached ", StringComparison.Ordinal))
+                return;
+
             var entry = $"{DateTime.UtcNow:HH:mm:ss}: {msg}";
             logMessages.Add(entry);
             _logger.LogInformation("[Migration {SessionId}] {Message}", sessionId, msg);
         }
 
+        var lastPeriodicSessionSaveAt = DateTime.UtcNow;
+
         try
         {
+            // Long-running mappings (especially bridge joins on large stores) can exceed default SQL timeout.
+            _dbContext.Database.SetCommandTimeout(DB_COMMAND_TIMEOUT_SECONDS);
+
             session.Status = "Processing";
             session.StartedAt = DateTime.UtcNow;
             session.ProgressPercentage = 0;
@@ -100,23 +229,18 @@ public class MigrationProcessorV2Service
 
             Log("Starting backend migration execution...");
 
-            // 1. Load ALL source data stores into memory (Dictionary<storeName, List<record>>)
-            var allStoreData = await LoadAllSourceDataAsync(sessionId, ct);
-            Log($"Loaded {allStoreData.Count} source data stores from SQL Server");
-
-            // Add computed fields for specific stores
-            AddComputedFields(allStoreData);
+            // 1. Initialize lazy source-store provider (loads stores only when requested)
+            var sourceStoreProvider = new SourceStoreProvider(this, sessionId);
 
             // 2. Sort mappings: non-bridge first (smallest first), bridge last
             var enabledMappings = mappings.Where(m => m.Enabled).ToList();
+            var sourceTableCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var sourceTable in enabledMappings.Select(m => m.SourceTable).Distinct(StringComparer.OrdinalIgnoreCase))
+                sourceTableCounts[sourceTable] = await sourceStoreProvider.GetStoreCountAsync(sourceTable, ct);
+
             var sortedMappings = enabledMappings
                 .OrderBy(m => m.IsBridge ? 1 : 0)
-                .ThenBy(m =>
-                {
-                    if (allStoreData.TryGetValue(m.SourceTable, out var data))
-                        return data.Count;
-                    return 0;
-                })
+                .ThenBy(m => sourceTableCounts.TryGetValue(m.SourceTable, out var count) ? count : 0)
                 .ToList();
 
             var bridgeCount = sortedMappings.Count(m => m.IsBridge);
@@ -140,12 +264,9 @@ public class MigrationProcessorV2Service
             }
 
             // 4. Compute total record count
-            int totalRecords = 0;
-            foreach (var m in sortedMappings)
-            {
-                if (allStoreData.TryGetValue(m.SourceTable, out var d))
-                    totalRecords += d.Count;
-            }
+            var totalRecords = sortedMappings
+                .Select(m => sourceTableCounts.TryGetValue(m.SourceTable, out var count) ? count : 0)
+                .Sum();
             session.TotalRecords = totalRecords;
 
             // 5. Prepare output directory
@@ -169,7 +290,8 @@ public class MigrationProcessorV2Service
             if (separateMasterProcessFiles)
             {
                 var exportedSourceFiles = await ExportSourceStoresToCsvAsync(
-                    allStoreData,
+                    sourceStoreProvider,
+                    sortedMappings.Select(m => m.SourceTable),
                     sourceSubDir,
                     maxFileSizeBytes,
                     sourceIncludeTimestampSuffix,
@@ -191,6 +313,7 @@ public class MigrationProcessorV2Service
             int skippedCount = 0;
             var skippedItems = new List<string>();
             var failedItems = new List<string>();
+            var exportSummaries = new Dictionary<string, ExportSummary>(StringComparer.OrdinalIgnoreCase);
 
             // Slim cache for transformed entity data (used by bridge tables)
             // Only stores PrimaryKey + join fields, NOT full transformed records
@@ -206,8 +329,107 @@ public class MigrationProcessorV2Service
                 {
                     Log($"[{i + 1}/{sortedMappings.Count}] {mapping.SourceTable} → {mapping.TargetEntity}{(mapping.IsBridge ? " (BRIDGE)" : "")}");
 
+                    var requiresMaterializedSource = mapping.IsBridge;
+
+                    if (!requiresMaterializedSource)
+                    {
+                        var sourceCount = sourceTableCounts.TryGetValue(mapping.SourceTable, out var c) ? c : 0;
+                        if (sourceCount == 0)
+                        {
+                            Log($"  ⚠ Source table '{mapping.SourceTable}' empty or not found — skipping");
+                            skippedCount++;
+                            skippedItems.Add($"{mapping.SourceTable} → {mapping.TargetEntity}");
+
+                            if (sourceTableUseCount.ContainsKey(mapping.SourceTable))
+                                sourceTableUseCount[mapping.SourceTable]--;
+                            continue;
+                        }
+
+                        var streamEntityOutputName = FormatEntityNameForOutput(mapping.TargetEntity);
+                        var streamTargetDir = isa95SubDir;
+                        HashSet<string>? streamCacheFields = null;
+                        List<Dictionary<string, object?>>? streamCacheTarget = null;
+
+                        if (bridgeFieldReqs.TryGetValue(mapping.TargetEntity, out var neededFieldsForBridge))
+                        {
+                            streamCacheFields = neededFieldsForBridge;
+                            var cacheKey = $"COMBINED_{mapping.TargetEntity}";
+                            if (!entityDataCache.TryGetValue(cacheKey, out var existingCache))
+                            {
+                                existingCache = new List<Dictionary<string, object?>>();
+                                entityDataCache[cacheKey] = existingCache;
+                            }
+                            streamCacheTarget = existingCache;
+                        }
+
+                        var streamResult = await StreamRegularMappingByStoreToCsvAsync(
+                            mapping,
+                            sourceStoreProvider,
+                            streamEntityOutputName,
+                            streamTargetDir,
+                            maxFileSizeBytes,
+                            Log,
+                            async (currentFilteredCount) =>
+                            {
+                                if ((DateTime.UtcNow - lastPeriodicSessionSaveAt).TotalSeconds < MINIMAL_PERSISTENCE_SAVE_SECONDS)
+                                    return;
+
+                                session.ProcessedRecords = processedTotal + currentFilteredCount;
+                                session.ProgressPercentage = totalRecords > 0
+                                    ? (int)(((processedTotal + currentFilteredCount) * 100.0) / totalRecords)
+                                    : 0;
+
+                                if (minimalPersistenceMode)
+                                    Log($"  Heartbeat: processed {currentFilteredCount} source rows for {mapping.TargetEntity}");
+
+                                await SaveSession(session, logMessages, ct);
+                                lastPeriodicSessionSaveAt = DateTime.UtcNow;
+                            },
+                            streamCacheFields,
+                            streamCacheTarget,
+                            ct);
+
+                        outputFiles.AddRange(streamResult.Files);
+                        Log($"  ✓ {streamResult.RecordCount} records → {streamResult.Files.Count} file(s)");
+                        successCount++;
+
+                        var streamSummaryKey = $"{mapping.TargetEntity}|entity";
+                        if (!exportSummaries.TryGetValue(streamSummaryKey, out var streamSummary))
+                        {
+                            streamSummary = new ExportSummary
+                            {
+                                TargetEntity = mapping.TargetEntity,
+                                IsBridge = false,
+                            };
+                            exportSummaries[streamSummaryKey] = streamSummary;
+                        }
+                        streamSummary.SourceRows += streamResult.FilteredSourceCount;
+                        streamSummary.ExportedRows += streamResult.RecordCount;
+                        streamSummary.FileCount += streamResult.Files.Count;
+
+                        if (streamCacheFields != null)
+                            Log($"  Cached {streamCacheFields.Count} fields for bridge lookups");
+
+                        processedTotal += streamResult.FilteredSourceCount;
+                        session.ProcessedRecords = processedTotal;
+                        session.ProgressPercentage = totalRecords > 0
+                            ? (int)((processedTotal * 100.0) / totalRecords)
+                            : 0;
+                        await SaveSession(session, logMessages, ct);
+
+                        sourceTableUseCount[mapping.SourceTable]--;
+                        if (sourceTableUseCount[mapping.SourceTable] <= 0)
+                        {
+                            sourceStoreProvider.ReleaseStore(mapping.SourceTable);
+                            Log($"  Released source data for '{mapping.SourceTable}' (no longer needed)");
+                        }
+
+                        continue;
+                    }
+
                     // Load source data for this mapping
-                    if (!allStoreData.TryGetValue(mapping.SourceTable, out var sourceData) || sourceData.Count == 0)
+                    var sourceData = await sourceStoreProvider.GetStoreAsync(mapping.SourceTable, ct);
+                    if (sourceData.Count == 0)
                     {
                         Log($"  ⚠ Source table '{mapping.SourceTable}' empty or not found — skipping");
                         skippedCount++;
@@ -228,57 +450,31 @@ public class MigrationProcessorV2Service
                     var targetDir = mapping.IsBridge
                         ? mappingSubDir
                         : isa95SubDir;
-                    int recordCount;
-                    List<string> written;
+                    // Bridge: keep current approach (bridges are typically small)
+                    var transformedData = await ProcessBridgeMappingAsync(
+                        mapping, filteredData, sortedMappings, sourceStoreProvider,
+                        entityDataCache, Log, ct);
 
-                    if (mapping.IsBridge)
-                    {
-                        // Bridge: keep current approach (bridges are typically small)
-                        var transformedData = ProcessBridgeMapping(
-                            mapping, filteredData, sortedMappings, allStoreData,
-                            entityDataCache, Log);
-
-                        written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
-                        recordCount = transformedData.Count;
-                    }
-                    else if (bridgeFieldReqs.TryGetValue(mapping.TargetEntity, out var neededFields))
-                    {
-                        // Bridge-referenced entity: build full list, write CSV, then slim-cache only needed fields
-                        var transformedData = ProcessRegularMapping(
-                            mapping, filteredData, allStoreData, Log);
-
-                        written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
-                        recordCount = transformedData.Count;
-
-                        // Cache ONLY the fields needed for bridge lookups (PK + join columns)
-                        var cacheKey = $"COMBINED_{mapping.TargetEntity}";
-                        if (!entityDataCache.ContainsKey(cacheKey))
-                            entityDataCache[cacheKey] = new List<Dictionary<string, object?>>();
-
-                        foreach (var fullRec in transformedData)
-                        {
-                            var slim = new Dictionary<string, object?>(neededFields.Count, StringComparer.OrdinalIgnoreCase);
-                            foreach (var field in neededFields)
-                                if (fullRec.TryGetValue(field, out var val))
-                                    slim[field] = val;
-                            entityDataCache[cacheKey].Add(slim);
-                        }
-
-                        Log($"  Cached {neededFields.Count} fields for bridge lookups");
-                        // Let full transformedData be GC'd
-                    }
-                    else
-                    {
-                        // NOT bridge-referenced: stream transform → CSV directly, no in-memory list
-                        var result = await StreamRegularMappingToCsvAsync(
-                            mapping, filteredData, allStoreData, entityOutputName, targetDir, maxFileSizeBytes, Log, ct);
-                        written = result.Files;
-                        recordCount = result.RecordCount;
-                    }
+                    var written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
+                    var recordCount = transformedData.Count;
 
                     outputFiles.AddRange(written);
                     Log($"  ✓ {recordCount} records → {written.Count} file(s)");
                     successCount++;
+
+                    var summaryKey = $"{mapping.TargetEntity}|{(mapping.IsBridge ? "bridge" : "entity")}";
+                    if (!exportSummaries.TryGetValue(summaryKey, out var summary))
+                    {
+                        summary = new ExportSummary
+                        {
+                            TargetEntity = mapping.TargetEntity,
+                            IsBridge = mapping.IsBridge,
+                        };
+                        exportSummaries[summaryKey] = summary;
+                    }
+                    summary.SourceRows += filteredData.Count;
+                    summary.ExportedRows += recordCount;
+                    summary.FileCount += written.Count;
 
                     processedTotal += filteredData.Count;
                     session.ProcessedRecords = processedTotal;
@@ -291,7 +487,7 @@ public class MigrationProcessorV2Service
                     sourceTableUseCount[mapping.SourceTable]--;
                     if (sourceTableUseCount[mapping.SourceTable] <= 0)
                     {
-                        allStoreData.Remove(mapping.SourceTable);
+                        sourceStoreProvider.ReleaseStore(mapping.SourceTable);
                         Log($"  Released source data for '{mapping.SourceTable}' (no longer needed)");
                     }
                 }
@@ -306,7 +502,7 @@ public class MigrationProcessorV2Service
 
             // Release caches before ZIP creation
             entityDataCache.Clear();
-            allStoreData.Clear();
+            sourceStoreProvider.Clear();
 
             // 6. Create ZIP
             var zipFileName = $"migration_{sessionId:N}_{DateTime.UtcNow:yyyyMMddHHmmss}.zip";
@@ -339,6 +535,16 @@ public class MigrationProcessorV2Service
                 foreach (var skipped in skippedItems)
                 {
                     Log($"  - {skipped}");
+                }
+            }
+
+            if (exportSummaries.Count > 0)
+            {
+                Log("Export counts by target:");
+                foreach (var summary in exportSummaries.Values.OrderBy(s => s.TargetEntity, StringComparer.OrdinalIgnoreCase))
+                {
+                    var kind = summary.IsBridge ? "mapping" : "entity";
+                    Log($"  - {summary.TargetEntity} ({kind}): source={summary.SourceRows}, exported={summary.ExportedRows}, files={summary.FileCount}");
                 }
             }
 
@@ -394,8 +600,22 @@ public class MigrationProcessorV2Service
                     return dict;
                 }).ToList();
 
-                result[store.StoreName] = converted;
-                _logger.LogDebug("Loaded uploaded store {StoreName}: {Count} records", store.StoreName, converted.Count);
+                // Support partitioned uploads: storeName__part_0001, storeName__part_0002, ...
+                var logicalStoreName = store.StoreName;
+                var partMarkerIndex = logicalStoreName.IndexOf("__part_", StringComparison.OrdinalIgnoreCase);
+                if (partMarkerIndex > 0)
+                    logicalStoreName = logicalStoreName[..partMarkerIndex];
+
+                if (result.TryGetValue(logicalStoreName, out var existing))
+                {
+                    existing.AddRange(converted);
+                }
+                else
+                {
+                    result[logicalStoreName] = converted;
+                }
+
+                _logger.LogDebug("Loaded uploaded store {StoreName} (logical {LogicalStoreName}): {Count} records", store.StoreName, logicalStoreName, converted.Count);
             }
             catch (Exception ex)
             {
@@ -487,6 +707,428 @@ public class MigrationProcessorV2Service
         _ => el.GetRawText() // arrays, objects → keep as string for now
     };
 
+    private async Task<int> GetStoreRecordCountAsync(Guid sessionId, string sourceTable, CancellationToken ct)
+    {
+        var uploadedRows = await _dbContext.Set<MigrationSourceData>()
+            .AsNoTracking()
+            .Where(s => s.MigrationSessionId == sessionId &&
+                        (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
+            .Select(s => (int?)s.RecordCount)
+            .ToListAsync(ct);
+
+        if (uploadedRows.Count > 0)
+            return uploadedRows.Sum(x => x ?? 0);
+
+        if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
+            return 0;
+
+        var genericCount = await _dbContext.GenericDataStores
+            .AsNoTracking()
+            .Where(r => r.StoreName == genericStoreName)
+            .CountAsync(ct);
+
+        if (genericCount > 0)
+            return genericCount;
+
+        // ── Third fallback: dedicated EF master data table ──
+        if (!DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
+            return 0;
+
+        var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
+        if (dedicatedEntityType == null)
+            return 0;
+
+        var dedSchema = dedicatedEntityType.GetSchema();
+        var dedTable = dedicatedEntityType.GetTableName();
+        if (string.IsNullOrEmpty(dedTable))
+            return 0;
+
+        var qualifiedDedTable = string.IsNullOrEmpty(dedSchema)
+            ? $"\"{dedTable}\""
+            : $"\"{dedSchema}\".\"{dedTable}\"";
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConn = conn.State != ConnectionState.Open;
+        if (ownConn) await conn.OpenAsync(ct);
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+            cmd.CommandText = $"SELECT COUNT(*) FROM {qualifiedDedTable}";
+            var countObj = await cmd.ExecuteScalarAsync(ct);
+            return Convert.ToInt32(countObj);
+        }
+        finally
+        {
+            if (ownConn && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+    }
+
+    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, CancellationToken ct)
+    {
+        var result = new List<Dictionary<string, object?>>();
+
+        var uploadedStores = await _dbContext.Set<MigrationSourceData>()
+            .AsNoTracking()
+            .Where(s => s.MigrationSessionId == sessionId &&
+                        (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
+            .OrderBy(s => s.StoreName)
+            .ToListAsync(ct);
+
+        if (uploadedStores.Count > 0)
+        {
+            foreach (var store in uploadedStores)
+            {
+                try
+                {
+                    var records = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(store.DataJson);
+                    if (records == null) continue;
+
+                    var converted = records.Select(r =>
+                    {
+                        var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var kv in r)
+                            dict[kv.Key] = ConvertJsonElement(kv.Value);
+                        return dict;
+                    });
+
+                    result.AddRange(converted);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to deserialize uploaded store {StoreName}", store.StoreName);
+                }
+            }
+
+            AddComputedFieldsForStore(sourceTable, result);
+            return result;
+        }
+
+        if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
+            return result;
+
+        // ── Raw DbDataReader path — avoids EF materialization of full entity objects ──
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConnection = conn.State != ConnectionState.Open;
+        if (ownConnection) await conn.OpenAsync(ct);
+
+        try
+        {
+            var entityType = _dbContext.Model.FindEntityType(typeof(GenericDataStore));
+            var schema = entityType?.GetSchema();
+            var tableName = entityType?.GetTableName() ?? "GenericDataStores";
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+
+            var param = cmd.CreateParameter();
+            param.ParameterName = "@storeName";
+            param.Value = genericStoreName;
+            param.DbType = DbType.String;
+            cmd.Parameters.Add(param);
+
+            var qualifiedTable = string.IsNullOrEmpty(schema)
+                ? $"\"{tableName}\""
+                : $"\"{schema}\".\"{tableName}\"";
+            cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+
+            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                try
+                {
+                    var rowJson = reader.GetString(0);
+                    var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
+                    if (doc == null) continue;
+                    var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (var kv in doc)
+                        dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    result.Add(dict);
+                }
+                catch
+                {
+                    // Skip malformed row and continue.
+                }
+            }
+        }
+        finally
+        {
+            if (ownConnection && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+
+        // ── Third fallback: dedicated EF master data table ──
+        if (result.Count == 0 && DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
+        {
+            result = await LoadFromDedicatedTableAsync(entityClrType, ct);
+        }
+
+        AddComputedFieldsForStore(sourceTable, result);
+        return result;
+    }
+
+    /// <summary>
+    /// Reads all rows from a dedicated EF master data table using raw DbDataReader
+    /// and returns them as generic dictionaries (column name → value).
+    /// </summary>
+    private async Task<List<Dictionary<string, object?>>> LoadFromDedicatedTableAsync(Type entityClrType, CancellationToken ct)
+    {
+        var result = new List<Dictionary<string, object?>>();
+
+        var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
+        if (dedicatedEntityType == null) return result;
+
+        var dedTable = dedicatedEntityType.GetTableName();
+        if (string.IsNullOrEmpty(dedTable)) return result;
+        var dedSchema = dedicatedEntityType.GetSchema();
+
+        var qualifiedTable = string.IsNullOrEmpty(dedSchema)
+            ? $"\"{dedTable}\""
+            : $"\"{dedSchema}\".\"{dedTable}\"";
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConn = conn.State != ConnectionState.Open;
+        if (ownConn) await conn.OpenAsync(ct);
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+            cmd.CommandText = $"SELECT * FROM {qualifiedTable}";
+
+            using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+            var fieldCount = reader.FieldCount;
+            var colNames = new string[fieldCount];
+            for (var i = 0; i < fieldCount; i++)
+                colNames[i] = reader.GetName(i);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var dict = new Dictionary<string, object?>(fieldCount, StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < fieldCount; i++)
+                {
+                    dict[colNames[i]] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                }
+                result.Add(dict);
+            }
+        }
+        finally
+        {
+            if (ownConn && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+
+        return result;
+    }
+
+    private static void AddComputedFieldsForStore(string sourceTable, List<Dictionary<string, object?>> data)
+    {
+        if (!string.Equals(sourceTable, "segment_requirements", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        foreach (var rec in data)
+        {
+            var start = rec.GetValueOrDefault("earliestStartDateTime")?.ToString();
+            var end = rec.GetValueOrDefault("latestEndDateTime")?.ToString();
+            if (DateTime.TryParse(start, out var s) && DateTime.TryParse(end, out var e))
+                rec["durationHours"] = (e - s).TotalHours;
+            else
+                rec["durationHours"] = 0.0;
+        }
+    }
+
+    private static void AddComputedFieldsForRecord(string sourceTable, Dictionary<string, object?> rec)
+    {
+        if (!string.Equals(sourceTable, "segment_requirements", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var start = rec.GetValueOrDefault("earliestStartDateTime")?.ToString();
+        var end = rec.GetValueOrDefault("latestEndDateTime")?.ToString();
+        if (DateTime.TryParse(start, out var s) && DateTime.TryParse(end, out var e))
+            rec["durationHours"] = (e - s).TotalHours;
+        else
+            rec["durationHours"] = 0.0;
+    }
+
+    private async IAsyncEnumerable<Dictionary<string, object?>> StreamStoreDataAsync(
+        Guid sessionId,
+        string sourceTable,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var uploadedStores = _dbContext.Set<MigrationSourceData>()
+            .AsNoTracking()
+            .Where(s => s.MigrationSessionId == sessionId &&
+                        (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
+            .OrderBy(s => s.StoreName)
+            .Select(s => s.DataJson)
+            .AsAsyncEnumerable();
+
+        var hasUploaded = false;
+        await foreach (var dataJson in uploadedStores.WithCancellation(ct))
+        {
+            hasUploaded = true;
+            List<Dictionary<string, JsonElement>>? records;
+            try
+            {
+                records = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(dataJson);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (records == null) continue;
+
+            foreach (var r in records)
+            {
+                var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in r)
+                    dict[kv.Key] = ConvertJsonElement(kv.Value);
+                AddComputedFieldsForRecord(sourceTable, dict);
+                yield return dict;
+            }
+        }
+
+        if (hasUploaded)
+            yield break;
+
+        if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
+        {
+            // No GenericStoreMap entry — skip directly to dedicated table fallback
+            genericStoreName = null;
+        }
+
+        var hasGenericData = false;
+
+        if (genericStoreName != null)
+        {
+            // ── Raw DbDataReader path — DB-provider-agnostic, avoids EF materialization ──
+            var conn = _dbContext.Database.GetDbConnection();
+            var ownConnection = conn.State != ConnectionState.Open;
+            if (ownConnection) await conn.OpenAsync(ct);
+
+            try
+            {
+                // Get the actual table name from EF Core's model metadata
+                var entityType = _dbContext.Model.FindEntityType(typeof(GenericDataStore));
+                var schema = entityType?.GetSchema();
+                var tableName = entityType?.GetTableName() ?? "GenericDataStores";
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+
+                // Parameterised query — works with any ADO.NET provider (SQL Server, PostgreSQL, SQLite, etc.)
+                var param = cmd.CreateParameter();
+                param.ParameterName = "@storeName";
+                param.Value = genericStoreName;
+                param.DbType = DbType.String;
+                cmd.Parameters.Add(param);
+
+                var qualifiedTable = string.IsNullOrEmpty(schema)
+                    ? $"\"{tableName}\""
+                    : $"\"{schema}\".\"{tableName}\"";
+                cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+
+                using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+
+                while (await reader.ReadAsync(ct))
+                {
+                    var rowJson = reader.GetString(0);
+
+                    Dictionary<string, JsonElement>? doc;
+                    try
+                    {
+                        doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (doc == null) continue;
+
+                    hasGenericData = true;
+                    var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (var kv in doc)
+                        dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    AddComputedFieldsForRecord(sourceTable, dict);
+                    yield return dict;
+                }
+            }
+            finally
+            {
+                if (ownConnection && conn.State == ConnectionState.Open)
+                    await conn.CloseAsync();
+            }
+        }
+
+        if (hasGenericData)
+            yield break;
+
+        // ── Third fallback: dedicated EF master data table ──
+        if (genericStoreName != null && DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
+        {
+            var rows = await LoadFromDedicatedTableAsync(entityClrType, ct);
+            foreach (var row in rows)
+            {
+                AddComputedFieldsForRecord(sourceTable, row);
+                yield return row;
+            }
+        }
+    }
+
+    private sealed class SourceStoreProvider
+    {
+        private readonly MigrationProcessorV2Service _owner;
+        private readonly Guid _sessionId;
+        private readonly Dictionary<string, List<Dictionary<string, object?>>> _cache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _countCache = new(StringComparer.OrdinalIgnoreCase);
+
+        public SourceStoreProvider(MigrationProcessorV2Service owner, Guid sessionId)
+        {
+            _owner = owner;
+            _sessionId = sessionId;
+        }
+
+        public async Task<int> GetStoreCountAsync(string sourceTable, CancellationToken ct)
+        {
+            if (_countCache.TryGetValue(sourceTable, out var count))
+                return count;
+
+            count = await _owner.GetStoreRecordCountAsync(_sessionId, sourceTable, ct);
+            _countCache[sourceTable] = count;
+            return count;
+        }
+
+        public async Task<List<Dictionary<string, object?>>> GetStoreAsync(string sourceTable, CancellationToken ct)
+        {
+            if (_cache.TryGetValue(sourceTable, out var cached))
+                return cached;
+
+            var loaded = await _owner.LoadStoreDataAsync(_sessionId, sourceTable, ct);
+            _cache[sourceTable] = loaded;
+            _countCache[sourceTable] = loaded.Count;
+            return loaded;
+        }
+
+        public IAsyncEnumerable<Dictionary<string, object?>> StreamStoreAsync(string sourceTable, CancellationToken ct)
+        {
+            return _owner.StreamStoreDataAsync(_sessionId, sourceTable, ct);
+        }
+
+        public void ReleaseStore(string sourceTable)
+        {
+            _cache.Remove(sourceTable);
+        }
+
+        public void Clear()
+        {
+            _cache.Clear();
+            _countCache.Clear();
+        }
+    }
+
     // ────────────────────────────────────────────
     //  Add computed fields (mirrors frontend loadSourceData)
     // ────────────────────────────────────────────
@@ -519,36 +1161,39 @@ public class MigrationProcessorV2Service
         var enabledFilters = filters.Where(f => f.Enabled).ToList();
         if (enabledFilters.Count == 0) return data;
 
-        return data.Where(rec =>
+        return data.Where(rec => MatchesFilters(rec, enabledFilters)).ToList();
+    }
+
+    private static bool MatchesFilters(Dictionary<string, object?> rec, List<FilterDto> enabledFilters)
+    {
+        foreach (var filter in enabledFilters)
         {
-            foreach (var filter in enabledFilters)
+            var rawValue = rec.GetValueOrDefault(filter.Field);
+            var isNull = rawValue == null;
+            var value = rawValue?.ToString() ?? "";
+            var filterValue = filter.Value ?? "";
+
+            bool match = filter.Operator switch
             {
-                var rawValue = rec.GetValueOrDefault(filter.Field);
-                var isNull = rawValue == null;
-                var value = rawValue?.ToString() ?? "";
-                var filterValue = filter.Value ?? "";
+                "equals" => string.Equals(value, filterValue, StringComparison.OrdinalIgnoreCase),
+                "not_equals" => !string.Equals(value, filterValue, StringComparison.OrdinalIgnoreCase),
+                "contains" => value.Contains(filterValue, StringComparison.OrdinalIgnoreCase),
+                "not_contains" => !value.Contains(filterValue, StringComparison.OrdinalIgnoreCase),
+                "starts_with" => value.StartsWith(filterValue, StringComparison.OrdinalIgnoreCase),
+                "ends_with" => value.EndsWith(filterValue, StringComparison.OrdinalIgnoreCase),
+                "greater_than" => double.TryParse(value, out var v1) && double.TryParse(filterValue, out var v2) && v1 > v2,
+                "less_than" => double.TryParse(value, out var v3) && double.TryParse(filterValue, out var v4) && v3 < v4,
+                "is_null" => isNull || string.IsNullOrEmpty(value),
+                "is_not_null" => !isNull && !string.IsNullOrEmpty(value),
+                "is_empty" => string.IsNullOrWhiteSpace(value),
+                "is_not_empty" => !string.IsNullOrWhiteSpace(value),
+                _ => true
+            };
 
-                bool match = filter.Operator switch
-                {
-                    "equals" => string.Equals(value, filterValue, StringComparison.OrdinalIgnoreCase),
-                    "not_equals" => !string.Equals(value, filterValue, StringComparison.OrdinalIgnoreCase),
-                    "contains" => value.Contains(filterValue, StringComparison.OrdinalIgnoreCase),
-                    "not_contains" => !value.Contains(filterValue, StringComparison.OrdinalIgnoreCase),
-                    "starts_with" => value.StartsWith(filterValue, StringComparison.OrdinalIgnoreCase),
-                    "ends_with" => value.EndsWith(filterValue, StringComparison.OrdinalIgnoreCase),
-                    "greater_than" => double.TryParse(value, out var v1) && double.TryParse(filterValue, out var v2) && v1 > v2,
-                    "less_than" => double.TryParse(value, out var v3) && double.TryParse(filterValue, out var v4) && v3 < v4,
-                    "is_null" => isNull || string.IsNullOrEmpty(value),
-                    "is_not_null" => !isNull && !string.IsNullOrEmpty(value),
-                    "is_empty" => string.IsNullOrWhiteSpace(value),
-                    "is_not_empty" => !string.IsNullOrWhiteSpace(value),
-                    _ => true
-                };
+            if (!match) return false;
+        }
 
-                if (!match) return false;
-            }
-            return true;
-        }).ToList();
+        return true;
     }
 
     // ────────────────────────────────────────────
@@ -587,14 +1232,14 @@ public class MigrationProcessorV2Service
     private async Task<(List<string> Files, int RecordCount)> StreamRegularMappingToCsvAsync(
         TableMappingDto mapping,
         List<Dictionary<string, object?>> sourceData,
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
+        SourceStoreProvider sourceStoreProvider,
         string entityDisplayName,
         string outputDir,
         long maxFileSizeBytes,
         Action<string> log,
         CancellationToken ct)
     {
-        var lookupTables = PreLoadLookupTables(mapping, allStoreData);
+        var lookupTables = await PreLoadLookupTablesAsync(mapping, sourceStoreProvider, ct);
 
         // Pre-determine CSV columns from field mappings (avoids needing full list)
         var columns = new List<string>();
@@ -609,6 +1254,7 @@ public class MigrationProcessorV2Service
         var files = new List<string>();
         int pkSequenceCounter = GetSequenceStart(mapping.PrimaryKeyRule);
         int totalRecords = 0;
+        var startedAt = DateTime.UtcNow;
 
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
         int fileIndex = 1;
@@ -618,6 +1264,7 @@ public class MigrationProcessorV2Service
         long currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
         int recordsInCurrentFile = 0;
         files.Add(filePath);
+        var pendingLines = new List<string>(CSV_WRITE_BATCH_LINES);
 
         try
         {
@@ -672,6 +1319,178 @@ public class MigrationProcessorV2Service
 
                 if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
                 {
+                    if (pendingLines.Count > 0)
+                    {
+                        await writer.WriteAsync(string.Join(Environment.NewLine, pendingLines) + Environment.NewLine);
+                        pendingLines.Clear();
+                    }
+
+                    await writer.FlushAsync(ct);
+                    await writer.DisposeAsync();
+
+                    fileIndex++;
+                    filePath = Path.Combine(outputDir, $"{entityDisplayName}_{timestamp}_{fileIndex:D2}.csv");
+                    writer = new StreamWriter(filePath, append: false, encoding: System.Text.Encoding.UTF8, bufferSize: 65536);
+                    await writer.WriteLineAsync(string.Join(",", columns));
+                    currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+                    recordsInCurrentFile = 0;
+                    files.Add(filePath);
+                }
+
+                pendingLines.Add(line);
+                if (pendingLines.Count >= CSV_WRITE_BATCH_LINES)
+                {
+                    await writer.WriteAsync(string.Join(Environment.NewLine, pendingLines) + Environment.NewLine);
+                    pendingLines.Clear();
+                }
+
+                currentFileBytes += lineBytes;
+                recordsInCurrentFile++;
+                totalRecords++;
+
+                if (totalRecords % PROGRESS_FLUSH_INTERVAL == 0)
+                {
+                    var elapsedSec = Math.Max(1, (DateTime.UtcNow - startedAt).TotalSeconds);
+                    var rps = (int)(totalRecords / elapsedSec);
+                    log($"  ... {mapping.SourceTable} -> {mapping.TargetEntity}: processed {totalRecords}/{sourceData.Count} records (~{rps} rec/s)");
+                }
+
+                // Periodic flush to avoid large buffered data
+                if (totalRecords % CSV_FLUSH_INTERVAL == 0)
+                    await writer.FlushAsync(ct);
+            }
+        }
+        finally
+        {
+            if (pendingLines.Count > 0)
+                await writer.WriteAsync(string.Join(Environment.NewLine, pendingLines) + Environment.NewLine);
+
+            await writer.FlushAsync(ct);
+            await writer.DisposeAsync();
+        }
+
+        return (files, totalRecords);
+    }
+
+    private async Task<(List<string> Files, int RecordCount, int FilteredSourceCount)> StreamRegularMappingByStoreToCsvAsync(
+        TableMappingDto mapping,
+        SourceStoreProvider sourceStoreProvider,
+        string entityDisplayName,
+        string outputDir,
+        long maxFileSizeBytes,
+        Action<string> log,
+        Func<int, Task>? onProgressAsync,
+        HashSet<string>? bridgeCacheFields,
+        List<Dictionary<string, object?>>? bridgeCacheTarget,
+        CancellationToken ct)
+    {
+        var lookupTables = await PreLoadLookupTablesAsync(mapping, sourceStoreProvider, ct);
+        var lookupIndexes = BuildLookupIndexes(lookupTables);
+
+        var enabledFilters = (mapping.Filters ?? new List<FilterDto>())
+            .Where(f => f.Enabled)
+            .ToList();
+
+        var columns = new List<string>();
+        if (mapping.PrimaryKeyRule != null)
+            columns.Add("PrimaryKey");
+        foreach (var fm in mapping.FieldMappings)
+        {
+            if (fm.Generate && !columns.Contains(fm.FieldName, StringComparer.OrdinalIgnoreCase))
+                columns.Add(fm.FieldName);
+        }
+
+        var files = new List<string>();
+        int pkSequenceCounter = GetSequenceStart(mapping.PrimaryKeyRule);
+        int totalRecords = 0;
+        int filteredSourceCount = 0;
+        var startedAt = DateTime.UtcNow;
+        var lastProgressSaveAt = DateTime.UtcNow;
+
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        int fileIndex = 1;
+        var filePath = Path.Combine(outputDir, $"{entityDisplayName}_{timestamp}.csv");
+        var writer = new StreamWriter(filePath, append: false, encoding: System.Text.Encoding.UTF8, bufferSize: 65536);
+        await writer.WriteLineAsync(string.Join(",", columns));
+        long currentFileBytes = System.Text.Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+        int recordsInCurrentFile = 0;
+        files.Add(filePath);
+
+        var csvSb = new StringBuilder(256); // reusable across rows
+
+        try
+        {
+            await foreach (var record in sourceStoreProvider.StreamStoreAsync(mapping.SourceTable, ct))
+            {
+                if (enabledFilters.Count > 0 && !MatchesFilters(record, enabledFilters))
+                    continue;
+
+                filteredSourceCount++;
+
+                var transformed = new Dictionary<string, object?>(columns.Count, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var fm in mapping.FieldMappings)
+                {
+                    if (!fm.Generate) continue;
+
+                    if (fm.FieldRule != null)
+                    {
+                        if (fm.FieldRule.RuleType == "Lookup")
+                            transformed[fm.FieldName] = ResolveLookup(record, fm.FieldRule, lookupTables, lookupIndexes);
+                        else if (fm.FieldRule.RuleType == "MultipleLookups")
+                            transformed[fm.FieldName] = ResolveMultipleLookups(record, fm.FieldRule, lookupTables, lookupIndexes);
+                        else
+                            transformed[fm.FieldName] = ApplyFieldRule(fm.FieldRule, record, filteredSourceCount - 1, transformed);
+                    }
+                    else if (!string.IsNullOrEmpty(fm.SourceColumn))
+                    {
+                        transformed[fm.FieldName] = record.GetValueOrDefault(fm.SourceColumn);
+                    }
+                    else
+                    {
+                        transformed[fm.FieldName] = "";
+                    }
+                }
+
+                if (mapping.PrimaryKeyRule != null)
+                {
+                    transformed["PrimaryKey"] = ApplyPkRule(
+                        mapping.PrimaryKeyRule, record, filteredSourceCount - 1, transformed, lookupTables, ref pkSequenceCounter);
+                }
+
+                if (bridgeCacheFields != null && bridgeCacheTarget != null)
+                {
+                    var slim = new Dictionary<string, object?>(bridgeCacheFields.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (var field in bridgeCacheFields)
+                    {
+                        if (transformed.TryGetValue(field, out var val))
+                            slim[field] = val;
+                    }
+                    bridgeCacheTarget.Add(slim);
+                }
+
+                // ── Build CSV line using reusable StringBuilder (avoids LINQ + string allocs) ──
+                csvSb.Clear();
+                for (int ci = 0; ci < columns.Count; ci++)
+                {
+                    if (ci > 0) csvSb.Append(',');
+                    var str = FormatCsvValue(columns[ci], transformed.GetValueOrDefault(columns[ci]));
+                    if (str.IndexOfAny(CsvSpecialChars) >= 0)
+                    {
+                        csvSb.Append('"');
+                        csvSb.Append(str.Replace("\"", "\"\""));
+                        csvSb.Append('"');
+                    }
+                    else
+                    {
+                        csvSb.Append(str);
+                    }
+                }
+                var line = csvSb.ToString();
+                var lineBytes = Encoding.UTF8.GetByteCount(line) + Encoding.UTF8.GetByteCount(Environment.NewLine);
+
+                if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
+                {
                     await writer.FlushAsync(ct);
                     await writer.DisposeAsync();
 
@@ -689,7 +1508,21 @@ public class MigrationProcessorV2Service
                 recordsInCurrentFile++;
                 totalRecords++;
 
-                // Periodic flush to avoid large buffered data
+                if (totalRecords % PROGRESS_FLUSH_INTERVAL == 0)
+                {
+                    var elapsedSec = Math.Max(1, (DateTime.UtcNow - startedAt).TotalSeconds);
+                    var rps = (int)(totalRecords / elapsedSec);
+                    log($"  ... {mapping.SourceTable} -> {mapping.TargetEntity}: processed {totalRecords} filtered records (~{rps} rec/s)");
+                }
+
+                if (onProgressAsync != null &&
+                    (filteredSourceCount % SESSION_PROGRESS_SAVE_INTERVAL == 0 ||
+                     (DateTime.UtcNow - lastProgressSaveAt).TotalSeconds >= SESSION_PROGRESS_SAVE_SECONDS))
+                {
+                    await onProgressAsync(filteredSourceCount);
+                    lastProgressSaveAt = DateTime.UtcNow;
+                }
+
                 if (totalRecords % CSV_FLUSH_INTERVAL == 0)
                     await writer.FlushAsync(ct);
             }
@@ -700,23 +1533,25 @@ public class MigrationProcessorV2Service
             await writer.DisposeAsync();
         }
 
-        return (files, totalRecords);
+        return (files, totalRecords, filteredSourceCount);
     }
 
     // ────────────────────────────────────────────
     //  Process REGULAR (non-bridge) mapping
     // ────────────────────────────────────────────
-    private List<Dictionary<string, object?>> ProcessRegularMapping(
+    private async Task<List<Dictionary<string, object?>>> ProcessRegularMappingAsync(
         TableMappingDto mapping,
         List<Dictionary<string, object?>> sourceData,
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
-        Action<string> log)
+        SourceStoreProvider sourceStoreProvider,
+        Action<string> log,
+        CancellationToken ct)
     {
         // Pre-load lookup tables
-        var lookupTables = PreLoadLookupTables(mapping, allStoreData);
+        var lookupTables = await PreLoadLookupTablesAsync(mapping, sourceStoreProvider, ct);
 
         var result = new List<Dictionary<string, object?>>(sourceData.Count);
         int pkSequenceCounter = GetSequenceStart(mapping.PrimaryKeyRule);
+        var startedAt = DateTime.UtcNow;
 
         for (int idx = 0; idx < sourceData.Count; idx++)
         {
@@ -761,6 +1596,14 @@ public class MigrationProcessorV2Service
             }
 
             result.Add(transformed);
+
+            var current = idx + 1;
+            if (current % PROGRESS_FLUSH_INTERVAL == 0)
+            {
+                var elapsedSec = Math.Max(1, (DateTime.UtcNow - startedAt).TotalSeconds);
+                var rps = (int)(current / elapsedSec);
+                log($"  ... {mapping.SourceTable} -> {mapping.TargetEntity}: transformed {current}/{sourceData.Count} records (~{rps} rec/s)");
+            }
         }
 
         return result;
@@ -769,13 +1612,14 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     //  Process BRIDGE mapping
     // ────────────────────────────────────────────
-    private List<Dictionary<string, object?>> ProcessBridgeMapping(
+    private async Task<List<Dictionary<string, object?>>> ProcessBridgeMappingAsync(
         TableMappingDto mapping,
         List<Dictionary<string, object?>> bridgeSourceData,
         List<TableMappingDto> allMappings,
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
+        SourceStoreProvider sourceStoreProvider,
         Dictionary<string, List<Dictionary<string, object?>>> entityDataCache,
-        Action<string> log)
+        Action<string> log,
+        CancellationToken ct)
     {
         var entity1Name = mapping.BridgeEntity1 ?? "";
         var entity2Name = mapping.BridgeEntity2 ?? "";
@@ -783,8 +1627,8 @@ public class MigrationProcessorV2Service
         var entity2DisplayName = FormatEntityNameForOutput(entity2Name);
 
         // Get combined transformed data for both entities (from cache built during regular processing)
-        var entity1Data = GetOrBuildEntityData(entity1Name, allMappings, allStoreData, entityDataCache);
-        var entity2Data = GetOrBuildEntityData(entity2Name, allMappings, allStoreData, entityDataCache);
+        var entity1Data = await GetOrBuildEntityDataAsync(entity1Name, allMappings, sourceStoreProvider, entityDataCache, ct);
+        var entity2Data = await GetOrBuildEntityDataAsync(entity2Name, allMappings, sourceStoreProvider, entityDataCache, ct);
 
         // Build indexed lookups for fast joining
         var entity1Index = BuildIndex(entity1Data, mapping.BridgeEntity1JoinFields);
@@ -794,6 +1638,7 @@ public class MigrationProcessorV2Service
 
         var result = new List<Dictionary<string, object?>>(bridgeSourceData.Count);
         int pkSequenceCounter = GetSequenceStart(mapping.PrimaryKeyRule);
+        var startedAt = DateTime.UtcNow;
 
         for (int idx = 0; idx < bridgeSourceData.Count; idx++)
         {
@@ -831,6 +1676,14 @@ public class MigrationProcessorV2Service
             }
 
             result.Add(transformed);
+
+            var current = idx + 1;
+            if (current % PROGRESS_FLUSH_INTERVAL == 0)
+            {
+                var elapsedSec = Math.Max(1, (DateTime.UtcNow - startedAt).TotalSeconds);
+                var rps = (int)(current / elapsedSec);
+                log($"  ... bridge {mapping.SourceTable} -> {mapping.TargetEntity}: processed {current}/{bridgeSourceData.Count} records (~{rps} rec/s)");
+            }
         }
 
         return result;
@@ -839,11 +1692,12 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     //  Get or build entity data for bridge lookups
     // ────────────────────────────────────────────
-    private List<Dictionary<string, object?>> GetOrBuildEntityData(
+    private async Task<List<Dictionary<string, object?>>> GetOrBuildEntityDataAsync(
         string targetEntity,
         List<TableMappingDto> allMappings,
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
-        Dictionary<string, List<Dictionary<string, object?>>> entityDataCache)
+        SourceStoreProvider sourceStoreProvider,
+        Dictionary<string, List<Dictionary<string, object?>>> entityDataCache,
+        CancellationToken ct)
     {
         var cacheKey = $"COMBINED_{targetEntity}";
         if (entityDataCache.TryGetValue(cacheKey, out var cached))
@@ -857,9 +1711,10 @@ public class MigrationProcessorV2Service
         var combined = new List<Dictionary<string, object?>>();
         foreach (var em in entityMappings)
         {
-            if (!allStoreData.TryGetValue(em.SourceTable, out var srcData)) continue;
+            var srcData = await sourceStoreProvider.GetStoreAsync(em.SourceTable, ct);
+            if (srcData.Count == 0) continue;
             var filtered = ApplyFilters(srcData, em.Filters);
-            var transformed = ProcessRegularMapping(em, filtered, allStoreData, _ => { });
+            var transformed = await ProcessRegularMappingAsync(em, filtered, sourceStoreProvider, _ => { }, ct);
             combined.AddRange(transformed);
         }
 
@@ -908,9 +1763,10 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     //  Pre-load lookup tables for a mapping
     // ────────────────────────────────────────────
-    private Dictionary<string, List<Dictionary<string, object?>>> PreLoadLookupTables(
+    private async Task<Dictionary<string, List<Dictionary<string, object?>>>> PreLoadLookupTablesAsync(
         TableMappingDto mapping,
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData)
+        SourceStoreProvider sourceStoreProvider,
+        CancellationToken ct)
     {
         var lookupTables = new Dictionary<string, List<Dictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase);
         var allFieldRules = mapping.FieldMappings
@@ -924,16 +1780,17 @@ public class MigrationProcessorV2Service
 
         foreach (var rule in allFieldRules)
         {
-            CollectLookupTableNames(rule, allStoreData, lookupTables);
+            await CollectLookupTableNamesAsync(rule, sourceStoreProvider, lookupTables, ct);
         }
 
         return lookupTables;
     }
 
-    private void CollectLookupTableNames(
+    private async Task CollectLookupTableNamesAsync(
         FieldRuleDto rule,
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
-        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+        SourceStoreProvider sourceStoreProvider,
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables,
+        CancellationToken ct)
     {
         var p = rule.Parameters;
         if (p == null) return;
@@ -943,7 +1800,8 @@ public class MigrationProcessorV2Service
             var tableName = GetJsonString(p.Value, "sourceTable") ?? GetJsonString(p.Value, "lookupTable");
             if (tableName != null && !lookupTables.ContainsKey(tableName))
             {
-                if (allStoreData.TryGetValue(tableName, out var data))
+                var data = await sourceStoreProvider.GetStoreAsync(tableName, ct);
+                if (data.Count > 0)
                     lookupTables[tableName] = data;
             }
         }
@@ -956,12 +1814,68 @@ public class MigrationProcessorV2Service
                     var tableName = GetJsonStringFromElement(step, "lookupTable");
                     if (tableName != null && !lookupTables.ContainsKey(tableName))
                     {
-                        if (allStoreData.TryGetValue(tableName, out var data))
+                        var data = await sourceStoreProvider.GetStoreAsync(tableName, ct);
+                        if (data.Count > 0)
                             lookupTables[tableName] = data;
                     }
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Build O(1) dictionary indexes for lookup tables.
+    /// Key: "tableName||fieldName" (lowercase), Value: dict mapping (trimmed lowercase value → record).
+    /// Only the first matching record is stored per key (matches FirstOrDefault semantics).
+    /// </summary>
+    private static Dictionary<string, Dictionary<string, Dictionary<string, object?>>> BuildLookupIndexes(
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+    {
+        var indexes = new Dictionary<string, Dictionary<string, Dictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (tableName, data) in lookupTables)
+        {
+            if (data.Count == 0) continue;
+
+            // Index every field in the first record as potential match fields
+            var sampleRecord = data[0];
+            foreach (var fieldName in sampleRecord.Keys)
+            {
+                var indexKey = $"{tableName}||{fieldName}";
+                var fieldIndex = new Dictionary<string, Dictionary<string, object?>>(data.Count, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var record in data)
+                {
+                    var val = (record.GetValueOrDefault(fieldName)?.ToString() ?? "").Trim();
+                    // FirstOrDefault semantics: keep first match only
+                    fieldIndex.TryAdd(val, record);
+                }
+
+                indexes[indexKey] = fieldIndex;
+            }
+        }
+
+        return indexes;
+    }
+
+    /// <summary>
+    /// O(1) indexed lookup for simple field-based joins.
+    /// Returns null if no index is available for the given table+field combination.
+    /// </summary>
+    private static Dictionary<string, object?>? IndexedLookup(
+        Dictionary<string, Dictionary<string, Dictionary<string, object?>>>? lookupIndexes,
+        string tableName,
+        string matchField,
+        string matchValue)
+    {
+        if (lookupIndexes == null) return null;
+
+        var indexKey = $"{tableName}||{matchField}";
+        if (!lookupIndexes.TryGetValue(indexKey, out var fieldIndex))
+            return null;
+
+        fieldIndex.TryGetValue(matchValue.Trim(), out var record);
+        return record;
     }
 
     // ────────────────────────────────────────────
@@ -1211,7 +2125,8 @@ public class MigrationProcessorV2Service
     private object? ResolveLookup(
         Dictionary<string, object?> sourceRecord,
         FieldRuleDto rule,
-        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables,
+        Dictionary<string, Dictionary<string, Dictionary<string, object?>>>? lookupIndexes = null)
     {
         var p = rule.Parameters;
         if (p == null) return GetJsonString(p, "defaultValue") ?? "";
@@ -1223,6 +2138,8 @@ public class MigrationProcessorV2Service
         // Resolve field names from joinConditions (saved format) or flat params (preview format)
         string? localField = GetJsonString(p, "sourceField");
         string? matchField = GetJsonString(p, "matchField");
+
+        bool isComposite = false;
 
         // Check joinConditions
         if (p.Value.TryGetProperty("joinConditions", out var jcEl) && jcEl.ValueKind == JsonValueKind.Array)
@@ -1238,6 +2155,7 @@ public class MigrationProcessorV2Service
                 }
                 else if (jcType == "composite")
                 {
+                    isComposite = true;
                     // Use first field pair for simple lookup
                     localField = GetJsonStringArrayFromElement(first, "localFields").FirstOrDefault();
                     matchField = GetJsonStringArrayFromElement(first, "sourceFields").FirstOrDefault();
@@ -1251,12 +2169,12 @@ public class MigrationProcessorV2Service
         var sourceValue = sourceRecord.GetValueOrDefault(localField ?? "")?.ToString();
         if (string.IsNullOrEmpty(sourceValue)) return defaultVal;
 
-        // Check for composite join
+        // Check for composite join — must fall back to linear scan
         Dictionary<string, object?>? matchedRecord = null;
-        if (p.Value.TryGetProperty("joinConditions", out var jcEl2) && jcEl2.ValueKind == JsonValueKind.Array)
+        if (isComposite && p.Value.TryGetProperty("joinConditions", out var jcEl2) && jcEl2.ValueKind == JsonValueKind.Array)
         {
             var first = jcEl2.EnumerateArray().FirstOrDefault();
-            if (first.ValueKind == JsonValueKind.Object && GetJsonStringFromElement(first, "type") == "composite")
+            if (first.ValueKind == JsonValueKind.Object)
             {
                 var localFields = GetJsonStringArrayFromElement(first, "localFields");
                 var sourceFields = GetJsonStringArrayFromElement(first, "sourceFields");
@@ -1272,6 +2190,13 @@ public class MigrationProcessorV2Service
             }
         }
 
+        // ── O(1) indexed lookup for simple field joins ──
+        if (matchedRecord == null && !string.IsNullOrEmpty(matchField))
+        {
+            matchedRecord = IndexedLookup(lookupIndexes, tableName, matchField, sourceValue);
+        }
+
+        // Final fallback: linear scan (only if index miss or no indexes)
         matchedRecord ??= lookupData.FirstOrDefault(r =>
             string.Equals(
                 (r.GetValueOrDefault(matchField ?? "")?.ToString() ?? "").Trim(),
@@ -1284,7 +2209,8 @@ public class MigrationProcessorV2Service
     private object? ResolveMultipleLookups(
         Dictionary<string, object?> sourceRecord,
         FieldRuleDto rule,
-        Dictionary<string, List<Dictionary<string, object?>>> lookupTables)
+        Dictionary<string, List<Dictionary<string, object?>>> lookupTables,
+        Dictionary<string, Dictionary<string, Dictionary<string, object?>>>? lookupIndexes = null)
     {
         var p = rule.Parameters;
         if (p == null) return "";
@@ -1356,7 +2282,11 @@ public class MigrationProcessorV2Service
                 if (jcType == "field")
                 {
                     var sf = GetJsonStringFromElement(first, "sourceField");
-                    matchedRecord = lookupData.FirstOrDefault(r =>
+                    // ── Try O(1) indexed lookup first ──
+                    if (!string.IsNullOrEmpty(sf))
+                        matchedRecord = IndexedLookup(lookupIndexes, lookupTableName, sf, matchValue);
+                    // Fallback to linear scan
+                    matchedRecord ??= lookupData.FirstOrDefault(r =>
                         string.Equals(
                             (r.GetValueOrDefault(sf ?? "")?.ToString() ?? "").Trim(),
                             matchValue.Trim(),
@@ -1365,7 +2295,6 @@ public class MigrationProcessorV2Service
                 else if (jcType == "composite")
                 {
                     var sfs = GetJsonStringArrayFromElement(first, "sourceFields");
-                    var compositeKey = string.Join("|", sfs.Select(sf => "{" + sf + "}"));
                     matchedRecord = lookupData.FirstOrDefault(r =>
                     {
                         var key = string.Join("|", sfs.Select(sf => r.GetValueOrDefault(sf)?.ToString() ?? ""));
@@ -1433,7 +2362,8 @@ public class MigrationProcessorV2Service
     //  CSV writing
     // ────────────────────────────────────────────
     private async Task<List<string>> ExportSourceStoresToCsvAsync(
-        Dictionary<string, List<Dictionary<string, object?>>> allStoreData,
+        SourceStoreProvider sourceStoreProvider,
+        IEnumerable<string> sourceTables,
         string sourceOutputDir,
         long maxFileSizeBytes,
         bool includeTimestampSuffix,
@@ -1452,26 +2382,31 @@ public class MigrationProcessorV2Service
             Directory.CreateDirectory(sourceProcessDir);
         }
 
-        foreach (var kv in allStoreData.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var sourceTable in sourceTables.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
         {
             ct.ThrowIfCancellationRequested();
 
-            if (kv.Value == null || kv.Value.Count == 0)
+            var sourceData = await sourceStoreProvider.GetStoreAsync(sourceTable, ct);
+
+            if (sourceData.Count == 0)
                 continue;
 
             var targetDir = exportByMasterProcess
-                ? (IsProcessSourceTable(kv.Key) ? sourceProcessDir : sourceMasterDir)
+                ? (IsProcessSourceTable(sourceTable) ? sourceProcessDir : sourceMasterDir)
                 : sourceOutputDir;
 
             var storeFiles = await WriteCsvFilesAsync(
-                kv.Key,
-                kv.Value,
+                sourceTable,
+                sourceData,
                 targetDir,
                 maxFileSizeBytes,
                 ct,
                 includeTimestampSuffix,
                 splitFiles);
             files.AddRange(storeFiles);
+
+            // Keep export memory bounded; store will be reloaded on-demand when mappings execute.
+            sourceStoreProvider.ReleaseStore(sourceTable);
         }
 
         return files;
@@ -1616,7 +2551,7 @@ public class MigrationProcessorV2Service
             }
         }
 
-        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.000'z'", CultureInfo.InvariantCulture);
+        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.000'Z'", CultureInfo.InvariantCulture);
     }
 
     private static string FormatEntityNameForOutput(string? entityName)
@@ -1773,7 +2708,52 @@ public class MigrationProcessorV2Service
     // ────────────────────────────────────────────
     private async Task SaveSession(MigrationSession session, List<string> logMessages, CancellationToken ct)
     {
-        session.LogMessages = JsonSerializer.Serialize(logMessages);
-        await _dbContext.SaveChangesAsync(ct);
+        if (logMessages.Count > MAX_PERSISTED_LOG_MESSAGES)
+        {
+            var removeCount = logMessages.Count - MAX_PERSISTED_LOG_MESSAGES;
+            logMessages.RemoveRange(0, removeCount);
+        }
+
+        var serializedLogs = JsonSerializer.Serialize(logMessages);
+
+        try
+        {
+            // Use a separate DbContext scope to avoid saving with the same connection
+            // while a streaming query keeps an open DataReader.
+            using var scope = _scopeFactory.CreateScope();
+            var writeDb = scope.ServiceProvider.GetRequiredService<MigrationDbContext>();
+
+            // Update by key without re-querying to keep persistence overhead minimal.
+            var persisted = new MigrationSession { Id = session.Id };
+            writeDb.MigrationSessions.Attach(persisted);
+
+            persisted.Status = session.Status;
+            persisted.StartedAt = session.StartedAt;
+            persisted.CompletedAt = session.CompletedAt;
+            persisted.ProgressPercentage = session.ProgressPercentage;
+            persisted.ProcessedRecords = session.ProcessedRecords;
+            persisted.TotalRecords = session.TotalRecords;
+            persisted.ErrorMessage = session.ErrorMessage;
+            persisted.ResultFilesPaths = session.ResultFilesPaths;
+            persisted.LogMessages = serializedLogs;
+
+            var entry = writeDb.Entry(persisted);
+            entry.Property(x => x.Status).IsModified = true;
+            entry.Property(x => x.StartedAt).IsModified = true;
+            entry.Property(x => x.CompletedAt).IsModified = true;
+            entry.Property(x => x.ProgressPercentage).IsModified = true;
+            entry.Property(x => x.ProcessedRecords).IsModified = true;
+            entry.Property(x => x.TotalRecords).IsModified = true;
+            entry.Property(x => x.ErrorMessage).IsModified = true;
+            entry.Property(x => x.ResultFilesPaths).IsModified = true;
+            entry.Property(x => x.LogMessages).IsModified = true;
+
+            await writeDb.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // Progress persistence must not fail a mapping; we'll continue and try saving again later.
+            _logger.LogWarning(ex, "Failed to persist migration session progress for {SessionId}", session.Id);
+        }
     }
 }

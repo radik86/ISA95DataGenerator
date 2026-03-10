@@ -164,14 +164,67 @@ interface SourceColumn {
   sample?: string;
 }
 
+const MASTER_STORE_MAP: Record<string, string> = {
+  'material_classes': 'materialClasses',
+  'materials': 'materials',
+  'material_lots': 'materialLots',
+  'material_sublots': 'materialSublots',
+  'material_definition_properties': 'materialDefinitionProperties',
+  'material_class_properties': 'materialClassProperties',
+  'material_class_properties_assignments': 'materialClassPropertiesAssignments',
+  'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
+  'equipment_classes': 'equipmentClasses',
+  'equipment': 'equipment',
+  'equipment_properties': 'equipmentProperties',
+  'equipment_property_assignments': 'equipmentPropertyAssignments',
+  'equipment_class_properties': 'equipmentClassProperties',
+  'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
+  'plants': 'plants',
+  'production_lines': 'productionLines',
+  'process_segments': 'processSegments',
+  'line_equipment': 'lineEquipment',
+  'segment_boms': 'segmentBOMs',
+  'equipment_usages': 'equipmentUsages',
+  'operation_event_definitions': 'operationEventDefinitions',
+  'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
+  'operation_event_definition_properties': 'operationEventDefinitionProperties',
+  'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
+  'hierarchy_scopes': 'hierarchyScopes',
+  'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
+  'shifts': 'shifts',
+  'crews': 'crews',
+  'shift_crew_assignments': 'shiftCrewAssignments',
+  'operations_event_classes': 'operationsEventClasses',
+};
+
+const PROCESS_STORE_MAP: Record<string, string> = {
+  'operations_requests': 'operationsRequests',
+  'segment_requirements': 'segmentRequirements',
+  'segment_material_requirements': 'segmentMaterialRequirements',
+  'segment_equipment_requirements': 'segmentEquipmentRequirements',
+  'operations_responses': 'operationsResponses',
+  'segment_responses': 'segmentResponses',
+  'segment_material_actuals': 'segmentMaterialActuals',
+  'segment_equipment_actuals': 'segmentEquipmentActuals',
+  'equipment_property_tracking': 'equipmentPropertyTracking',
+  'test_results': 'testResults',
+  'operations_events': 'operationsEvents',
+  'operations_event_records': 'operationsEventRecords',
+  'operations_event_entries': 'operationsEventEntries',
+  'operations_event_properties': 'operationsEventProperties',
+  'segment_data': 'segmentData',
+};
+
 const DataMigration: React.FC = () => {
   const hasLoadedMappingsRef = useRef(false);
+  const sourceDataCacheRef = useRef<Record<string, any[]>>({});
   const [activeStep, setActiveStep] = useState(0);
   const [dataSource, setDataSource] = useState<DataSource | null>(null);
   const [tableMappings, setTableMappings] = useState<TableMapping[]>([]);
   const [loadedMappingsCount, setLoadedMappingsCount] = useState<number | null>(null);
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [maxSplitFileSizeMB, setMaxSplitFileSizeMB] = useState(10);
+  const [uploadChunkSize, setUploadChunkSize] = useState(2000);
   const [separateMasterProcessFiles, setSeparateMasterProcessFiles] = useState(false);
   const [migrationLoadMode, setMigrationLoadMode] = useState<'full' | 'delta'>('delta');
   const [sourceIncludeTimestampSuffix, setSourceIncludeTimestampSuffix] = useState(false);
@@ -543,45 +596,36 @@ const DataMigration: React.FC = () => {
         'operationsEventRecords', 'operationsEventEntries', 'operationsEventProperties', 'segmentData'
       ];
       
-      // Load all data dynamically
+      // Load only metadata counts up front. Full table data is loaded lazily.
       const masterDataResults: { [key: string]: any[] } = {};
-      console.log('[DataMigration] Loading master data stores...');
-      for (const storeName of masterDataStores) {
-        try {
-          const data = await masterDataApi.getAll(storeName as any);
-          masterDataResults[storeName] = data || [];
-          console.log(`[DataMigration] Loaded ${storeName}: ${data?.length || 0} records`);
-        } catch (error) {
-          console.warn(`[DataMigration] Store ${storeName} not found in master-data-db, skipping`, error);
-          masterDataResults[storeName] = [];
-        }
-      }
-      
-      console.log('[DataMigration] Loading process data stores...');
+      console.log('[DataMigration] Loading master/process summaries...');
       const processDataResults: { [key: string]: any[] } = {};
+      const [masterSummary, processSummary] = await Promise.all([
+        masterDataApi.getSummary(masterDataStores),
+        processDataApi.getSummary(processDataStores as any),
+      ]);
+
+      for (const storeName of masterDataStores) {
+        const count = Number(masterSummary?.[storeName] || 0);
+        // Keep only count metadata to avoid allocating huge sparse arrays.
+        masterDataResults[storeName] = ({ length: Math.max(0, count) } as any[]);
+      }
+
       for (const storeName of processDataStores) {
-        try {
-          const data = await processDataApi.getAll(storeName as any);
-          processDataResults[storeName] = data || [];
-          console.log(`[DataMigration] Loaded ${storeName}: ${data?.length || 0} records`);
-        } catch (error) {
-          console.warn(`[DataMigration] Store ${storeName} not found in process-data-db, skipping`, error);
-          processDataResults[storeName] = [];
-        }
+        const count = Number(processSummary?.[storeName] || 0);
+        // Keep only count metadata to avoid allocating huge sparse arrays.
+        processDataResults[storeName] = ({ length: Math.max(0, count) } as any[]);
       }
       
-      console.log('[DataMigration] All database operations completed, building table structures...');
+      sourceDataCacheRef.current = {};
+      console.log('[DataMigration] Summaries loaded, building table metadata...');
       
       // For backwards compatibility, keep these variables
       const materialClasses = masterDataResults['materialClasses'];
       const materials = masterDataResults['materials'];
       const materialLots = masterDataResults['materialLots'];
       const materialSublots = masterDataResults['materialSublots'];
-      console.log('[DataMigration] Material Sublots loaded:', {
-        count: materialSublots?.length || 0,
-        sample: materialSublots?.[0],
-        allIds: materialSublots?.map(s => s.id)
-      });
+      console.log('[DataMigration] Material Sublots count:', materialSublots?.length || 0);
       const materialDefinitionProperties = masterDataResults['materialDefinitionProperties'];
       const materialDefinitionPropertyAssignments = masterDataResults['materialDefinitionPropertyAssignments'];
       const materialClassProperties = masterDataResults['materialClassProperties'];
@@ -1715,71 +1759,7 @@ const DataMigration: React.FC = () => {
   // Load source data previews for bridge dialog
   const handleLoadBridgeSourcePreviews = async () => {
     try {
-      // Helper to get table data - check dataSource first, then IndexedDB stores, then importedTablesData
-      const getTableData = async (tableName: string): Promise<any[]> => {
-        // First check if data is in dataSource (uploaded CSV/Excel)
-        const dataSourceTable: any = dataSource?.tables.find(t => t.name === tableName);
-        if (dataSourceTable?.data && dataSourceTable.data.length > 0) {
-          console.log('[Bridge Preview] Found data in dataSource for:', tableName, dataSourceTable.data.length, 'rows');
-          return dataSourceTable.data;
-        }
-        
-        // Then check IndexedDB stores
-        const masterStoreMap: { [key: string]: string } = {
-          'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
-          'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
-          'material_class_properties': 'materialClassProperties',
-          'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-          'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-          'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
-          'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
-          'equipment_class_properties': 'equipmentClassProperties',
-          'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-          'plants': 'plants', 'production_lines': 'productionLines', 'process_segments': 'processSegments',
-          'line_equipment': 'lineEquipment', 'segment_boms': 'segmentBOMs', 'equipment_usages': 'equipmentUsages',
-          'operation_event_definitions': 'operationEventDefinitions',
-          'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-          'operation_event_definition_properties': 'operationEventDefinitionProperties',
-          'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-          'hierarchy_scopes': 'hierarchyScopes',
-          'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
-          'shifts': 'shifts', 'crews': 'crews', 'shift_crew_assignments': 'shiftCrewAssignments',
-          'operations_event_classes': 'operationsEventClasses',
-        };
-        const processStoreMap: { [key: string]: string } = {
-          'operations_requests': 'operationsRequests',
-          'segment_requirements': 'segmentRequirements',
-          'segment_material_requirements': 'segmentMaterialRequirements',
-          'segment_equipment_requirements': 'segmentEquipmentRequirements',
-          'operations_responses': 'operationsResponses',
-          'segment_responses': 'segmentResponses',
-          'segment_material_actuals': 'segmentMaterialActuals',
-          'segment_equipment_actuals': 'segmentEquipmentActuals',
-          'equipment_property_tracking': 'equipmentPropertyTracking',
-          'test_results': 'testResults',
-          'operations_events': 'operationsEvents',
-          'operations_event_records': 'operationsEventRecords',
-          'operations_event_entries': 'operationsEventEntries',
-          'operations_event_properties': 'operationsEventProperties',
-          'segment_data': 'segmentData',
-        };
-        const masterStoreName = masterStoreMap[tableName];
-        if (masterStoreName) {
-          const data = await masterDataApi.getAll(masterStoreName);
-          if (data.length > 0) return data;
-        }
-        const processStoreName = processStoreMap[tableName];
-        if (processStoreName) {
-          const data = await processDataApi.getAll(processStoreName);
-          if (data.length > 0) return data;
-        }
-        
-        // Finally check importedTablesData
-        if (importedTablesData[tableName]) return importedTablesData[tableName];
-        
-        console.log('[Bridge Preview] No data found for table:', tableName);
-        return [];
-      };
+      const getTableData = async (tableName: string): Promise<any[]> => loadSourceData(tableName, { limit: 1000 });
 
       // Load bridge source table data
       if (selectedSourceTable) {
@@ -3431,76 +3411,10 @@ const DataMigration: React.FC = () => {
     if (!sourceTable) return;
 
     try {
-      // Get source data - this function is defined later in the file
-      const getTableDataFunc = async (tableName: string): Promise<any[]> => {
-        const masterStoreMap: { [key: string]: string } = {
-          'material_classes': 'materialClasses',
-          'materials': 'materials',
-          'material_lots': 'materialLots',
-          'material_sublots': 'materialSublots',
-          'material_definition_properties': 'materialDefinitionProperties',
-          'material_class_properties': 'materialClassProperties',
-          'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-          'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-          'equipment_classes': 'equipmentClasses',
-          'equipment': 'equipment',
-          'equipment_properties': 'equipmentProperties',
-          'equipment_property_assignments': 'equipmentPropertyAssignments',
-          'equipment_class_properties': 'equipmentClassProperties',
-          'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-          'plants': 'plants',
-          'production_lines': 'productionLines',
-          'process_segments': 'processSegments',
-          'line_equipment': 'lineEquipment',
-          'segment_boms': 'segmentBOMs',
-          'equipment_usages': 'equipmentUsages',
-          'operation_event_definitions': 'operationEventDefinitions',
-          'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-          'operation_event_definition_properties': 'operationEventDefinitionProperties',
-          'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-          'hierarchy_scopes': 'hierarchyScopes',
-          'shifts': 'shifts',
-          'crews': 'crews',
-          'shift_crew_assignments': 'shiftCrewAssignments',
-        };
+      const getTableDataFunc = async (tableName: string, limit = 500): Promise<any[]> =>
+        loadSourceData(tableName, { limit });
 
-        const processStoreMap: { [key: string]: string } = {
-          'operations_requests': 'operationsRequests',
-          'segment_requirements': 'segmentRequirements',
-          'segment_material_requirements': 'segmentMaterialRequirements',
-          'segment_equipment_requirements': 'segmentEquipmentRequirements',
-          'operations_responses': 'operationsResponses',
-          'segment_responses': 'segmentResponses',
-          'segment_material_actuals': 'segmentMaterialActuals',
-          'segment_equipment_actuals': 'segmentEquipmentActuals',
-          'equipment_property_tracking': 'equipmentPropertyTracking',
-          'test_results': 'testResults',
-          'operations_events': 'operationsEvents',
-          'operations_event_records': 'operationsEventRecords',
-          'operations_event_entries': 'operationsEventEntries',
-          'operations_event_properties': 'operationsEventProperties',
-          'segment_data': 'segmentData',
-        };
-
-        const masterStoreName = masterStoreMap[tableName];
-        if (masterStoreName) {
-          return await masterDataApi.getAll(masterStoreName);
-        }
-
-        const processStoreName = processStoreMap[tableName];
-        if (processStoreName) {
-          return await processDataApi.getAll(processStoreName);
-        }
-
-        // Check imported tables
-        if (importedTablesData[tableName]) {
-          return importedTablesData[tableName];
-        }
-
-        return [];
-      };
-
-      const sourceData = await getTableDataFunc(mapping.sourceTable);
+      const sourceData = await getTableDataFunc(mapping.sourceTable, 1000);
       
       // Apply filters if configured
       let filteredSourceData = sourceData;
@@ -3536,46 +3450,7 @@ const DataMigration: React.FC = () => {
             // Entity 1 lookup
             if (entity1Mapping && mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
               try {
-                const getTableDataFunc = async (tableName: string): Promise<any[]> => {
-                  const masterStoreMap: { [key: string]: string } = {
-                    'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
-                    'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
-                    'material_class_properties': 'materialClassProperties',
-                    'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-                    'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-                    'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
-                    'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
-                    'equipment_class_properties': 'equipmentClassProperties',
-                    'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-                    'plants': 'plants', 'production_lines': 'productionLines', 'process_segments': 'processSegments',
-                    'line_equipment': 'lineEquipment', 'segment_boms': 'segmentBOMs', 'equipment_usages': 'equipmentUsages',
-                    'operation_event_definitions': 'operationEventDefinitions',
-                    'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-                    'operation_event_definition_properties': 'operationEventDefinitionProperties',
-                    'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-                    'hierarchy_scopes': 'hierarchyScopes', 'shifts': 'shifts', 'crews': 'crews',
-                    'shift_crew_assignments': 'shiftCrewAssignments',
-                  };
-                  const processStoreMap: { [key: string]: string } = {
-                    'operations_requests': 'operationsRequests', 'segment_requirements': 'segmentRequirements',
-                    'segment_material_requirements': 'segmentMaterialRequirements',
-                    'segment_equipment_requirements': 'segmentEquipmentRequirements',
-                    'operations_responses': 'operationsResponses', 'segment_responses': 'segmentResponses',
-                    'segment_material_actuals': 'segmentMaterialActuals', 'segment_equipment_actuals': 'segmentEquipmentActuals',
-                    'equipment_property_tracking': 'equipmentPropertyTracking', 'test_results': 'testResults',
-                    'operations_events': 'operationsEvents', 'operations_event_records': 'operationsEventRecords',
-                    'operations_event_entries': 'operationsEventEntries', 'operations_event_properties': 'operationsEventProperties',
-                    'segment_data': 'segmentData',
-                  };
-                  const masterStoreName = masterStoreMap[tableName];
-                  if (masterStoreName) return await masterDataApi.getAll(masterStoreName);
-                  const processStoreName = processStoreMap[tableName];
-                  if (processStoreName) return await processDataApi.getAll(processStoreName);
-                  if (importedTablesData[tableName]) return importedTablesData[tableName];
-                  return [];
-                };
-                
-                const entity1SourceData = await getTableDataFunc(entity1Mapping.sourceTable);
+                const entity1SourceData = await loadSourceData(entity1Mapping.sourceTable, { limit: 1000 });
                 const entity1TransformedData = entity1SourceData.slice(0, 100).map((srcRecord: any) => {
                   const entityTransformed: any = {};
                   entity1Mapping.fieldMappings?.forEach((fm) => {
@@ -3612,46 +3487,7 @@ const DataMigration: React.FC = () => {
             // Entity 2 lookup
             if (entity2Mapping && mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
               try {
-                const getTableDataFunc = async (tableName: string): Promise<any[]> => {
-                  const masterStoreMap: { [key: string]: string } = {
-                    'material_classes': 'materialClasses', 'materials': 'materials', 'material_lots': 'materialLots',
-                    'material_sublots': 'materialSublots', 'material_definition_properties': 'materialDefinitionProperties',
-                    'material_class_properties': 'materialClassProperties',
-                    'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-                    'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-                    'equipment_classes': 'equipmentClasses', 'equipment': 'equipment',
-                    'equipment_properties': 'equipmentProperties', 'equipment_property_assignments': 'equipmentPropertyAssignments',
-                    'equipment_class_properties': 'equipmentClassProperties',
-                    'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-                    'plants': 'plants', 'production_lines': 'productionLines', 'process_segments': 'processSegments',
-                    'line_equipment': 'lineEquipment', 'segment_boms': 'segmentBOMs', 'equipment_usages': 'equipmentUsages',
-                    'operation_event_definitions': 'operationEventDefinitions',
-                    'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-                    'operation_event_definition_properties': 'operationEventDefinitionProperties',
-                    'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-                    'hierarchy_scopes': 'hierarchyScopes', 'shifts': 'shifts', 'crews': 'crews',
-                    'shift_crew_assignments': 'shiftCrewAssignments',
-                  };
-                  const processStoreMap: { [key: string]: string } = {
-                    'operations_requests': 'operationsRequests', 'segment_requirements': 'segmentRequirements',
-                    'segment_material_requirements': 'segmentMaterialRequirements',
-                    'segment_equipment_requirements': 'segmentEquipmentRequirements',
-                    'operations_responses': 'operationsResponses', 'segment_responses': 'segmentResponses',
-                    'segment_material_actuals': 'segmentMaterialActuals', 'segment_equipment_actuals': 'segmentEquipmentActuals',
-                    'equipment_property_tracking': 'equipmentPropertyTracking', 'test_results': 'testResults',
-                    'operations_events': 'operationsEvents', 'operations_event_records': 'operationsEventRecords',
-                    'operations_event_entries': 'operationsEventEntries', 'operations_event_properties': 'operationsEventProperties',
-                    'segment_data': 'segmentData',
-                  };
-                  const masterStoreName = masterStoreMap[tableName];
-                  if (masterStoreName) return await masterDataApi.getAll(masterStoreName);
-                  const processStoreName = processStoreMap[tableName];
-                  if (processStoreName) return await processDataApi.getAll(processStoreName);
-                  if (importedTablesData[tableName]) return importedTablesData[tableName];
-                  return [];
-                };
-                
-                const entity2SourceData = await getTableDataFunc(entity2Mapping.sourceTable);
+                const entity2SourceData = await loadSourceData(entity2Mapping.sourceTable, { limit: 1000 });
                 const entity2TransformedData = entity2SourceData.slice(0, 100).map((srcRecord: any) => {
                   const entityTransformed: any = {};
                   entity2Mapping.fieldMappings?.forEach((fm) => {
@@ -4035,76 +3871,7 @@ const DataMigration: React.FC = () => {
     }
 
     try {
-      // Get sample data from source table (first 5 rows) - using same logic as generatePreviewData
-      const getTableDataFunc = async (tableName: string): Promise<any[]> => {
-        const masterStoreMap: { [key: string]: string } = {
-          'material_classes': 'materialClasses',
-          'materials': 'materials',
-          'material_lots': 'materialLots',
-          'material_sublots': 'materialSublots',
-          'material_definition_properties': 'materialDefinitionProperties',
-          'material_class_properties': 'materialClassProperties',
-          'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-          'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-          'equipment_classes': 'equipmentClasses',
-          'equipment': 'equipment',
-          'equipment_properties': 'equipmentProperties',
-          'equipment_property_assignments': 'equipmentPropertyAssignments',
-          'equipment_class_properties': 'equipmentClassProperties',
-          'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-          'plants': 'plants',
-          'production_lines': 'productionLines',
-          'process_segments': 'processSegments',
-          'line_equipment': 'lineEquipment',
-          'segment_boms': 'segmentBOMs',
-          'equipment_usages': 'equipmentUsages',
-          'operation_event_definitions': 'operationEventDefinitions',
-          'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-          'operation_event_definition_properties': 'operationEventDefinitionProperties',
-          'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-          'hierarchy_scopes': 'hierarchyScopes',
-          'shifts': 'shifts',
-          'crews': 'crews',
-          'shift_crew_assignments': 'shiftCrewAssignments',
-        };
-
-        const processStoreMap: { [key: string]: string } = {
-          'operations_requests': 'operationsRequests',
-          'segment_requirements': 'segmentRequirements',
-          'segment_material_requirements': 'segmentMaterialRequirements',
-          'segment_equipment_requirements': 'segmentEquipmentRequirements',
-          'operations_responses': 'operationsResponses',
-          'segment_responses': 'segmentResponses',
-          'segment_material_actuals': 'segmentMaterialActuals',
-          'segment_equipment_actuals': 'segmentEquipmentActuals',
-          'equipment_property_tracking': 'equipmentPropertyTracking',
-          'test_results': 'testResults',
-          'operations_events': 'operationsEvents',
-          'operations_event_records': 'operationsEventRecords',
-          'operations_event_entries': 'operationsEventEntries',
-          'operations_event_properties': 'operationsEventProperties',
-          'segment_data': 'segmentData',
-        };
-
-        // Check imported tables first
-        if (importedTablesData[tableName]) {
-          return importedTablesData[tableName];
-        }
-
-        const processStoreName = processStoreMap[tableName];
-        if (processStoreName) {
-          return await processDataApi.getAll(processStoreName);
-        }
-
-        const masterStoreName = masterStoreMap[tableName];
-        if (masterStoreName) {
-          return await masterDataApi.getAll(masterStoreName);
-        }
-
-        return [];
-      };
-
-      const sourceData = await getTableDataFunc(sourceTableName);
+      const sourceData = await loadSourceData(sourceTableName, { limit: 5 });
       const previewRows = sourceData.slice(0, 5); // Preview first 5 rows
 
       // Create a temporary field rule from current dialog state
@@ -5697,57 +5464,6 @@ const DataMigration: React.FC = () => {
       // 2. Collect and upload ALL source data from IndexedDB to SQL Server
       log('Uploading source data to SQL Server...');
 
-      const masterStoreMap: Record<string, string> = {
-        'material_classes': 'materialClasses',
-        'materials': 'materials',
-        'material_lots': 'materialLots',
-        'material_sublots': 'materialSublots',
-        'material_definition_properties': 'materialDefinitionProperties',
-        'material_class_properties': 'materialClassProperties',
-        'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-        'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-        'equipment_classes': 'equipmentClasses',
-        'equipment': 'equipment',
-        'equipment_properties': 'equipmentProperties',
-        'equipment_property_assignments': 'equipmentPropertyAssignments',
-        'equipment_class_properties': 'equipmentClassProperties',
-        'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-        'plants': 'plants',
-        'production_lines': 'productionLines',
-        'process_segments': 'processSegments',
-        'line_equipment': 'lineEquipment',
-        'segment_boms': 'segmentBOMs',
-        'equipment_usages': 'equipmentUsages',
-        'operation_event_definitions': 'operationEventDefinitions',
-        'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-        'operation_event_definition_properties': 'operationEventDefinitionProperties',
-        'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-        'hierarchy_scopes': 'hierarchyScopes',
-        'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
-        'shifts': 'shifts',
-        'crews': 'crews',
-        'shift_crew_assignments': 'shiftCrewAssignments',
-        'operations_event_classes': 'operationsEventClasses',
-      };
-
-      const processStoreMap: Record<string, string> = {
-        'operations_requests': 'operationsRequests',
-        'segment_requirements': 'segmentRequirements',
-        'segment_material_requirements': 'segmentMaterialRequirements',
-        'segment_equipment_requirements': 'segmentEquipmentRequirements',
-        'operations_responses': 'operationsResponses',
-        'segment_responses': 'segmentResponses',
-        'segment_material_actuals': 'segmentMaterialActuals',
-        'segment_equipment_actuals': 'segmentEquipmentActuals',
-        'equipment_property_tracking': 'equipmentPropertyTracking',
-        'test_results': 'testResults',
-        'operations_events': 'operationsEvents',
-        'operations_event_records': 'operationsEventRecords',
-        'operations_event_entries': 'operationsEventEntries',
-        'operations_event_properties': 'operationsEventProperties',
-        'segment_data': 'segmentData',
-      };
-
       // Determine which stores are actually referenced by the mappings
       const referencedTables = new Set<string>();
       for (const m of tableMappings) {
@@ -5776,10 +5492,26 @@ const DataMigration: React.FC = () => {
 
       log(`${referencedTables.size} source table(s) needed`);
 
-      // Upload each referenced store
+      const hasImportedReferencedTables = Array.from(referencedTables)
+        .some((tableName) => (importedTablesData[tableName]?.length ?? 0) > 0);
+      const preferServerSideSource = migrationLoadMode === 'full' && !hasImportedReferencedTables;
+
+      // Upload each referenced store in partitions to avoid huge browser memory spikes.
       let uploadedCount = 0;
       let totalUploadedRecords = 0;
-      const uploadedStoreRecords: Record<string, any[]> = {};
+      const PARTITION_UPLOAD_SIZE = Math.min(20000, Math.max(200, Math.floor(uploadChunkSize || 2000)));
+      const UPLOAD_LOG_EVERY_PARTS = 10;
+      const uploadedStoreNames = new Set<string>();
+
+      if (preferServerSideSource) {
+        log(`Mode: ${migrationLoadMode}. Using backend source stores directly; upload chunk size (${PARTITION_UPLOAD_SIZE}) is ignored in this mode.`);
+        setMigrationProgress(30);
+      } else {
+        log(`Mode: ${migrationLoadMode}. Upload chunk size: ${PARTITION_UPLOAD_SIZE} records/request`);
+        if (migrationLoadMode === 'full' && hasImportedReferencedTables) {
+          log('Imported source tables are present, so frontend upload remains enabled for those mappings.');
+        }
+      }
 
       const shouldIncludeForDeltaMigration = (record: any): boolean => {
         const lastMigrationAt = record?.LastDataMigrationAt ?? record?.lastDataMigrationAt;
@@ -5789,24 +5521,82 @@ const DataMigration: React.FC = () => {
       };
 
       for (const tableName of referencedTables) {
+        if (preferServerSideSource) break;
+
         try {
           let data: any[] = [];
           let storeNameForUpdate: string | null = null;
+          const processStoreName = PROCESS_STORE_MAP[tableName];
 
-          // Try master data store
-          const masterStoreName = masterStoreMap[tableName];
-          if (masterStoreName) {
-            data = await masterDataApi.getAll(masterStoreName as any);
-            storeNameForUpdate = masterStoreName;
+          // For process stores, stream pages directly to upload to avoid loading huge tables in browser memory.
+          if (processStoreName) {
+            storeNameForUpdate = processStoreName;
+            let lastId: number | null = null;
+            let partSequence = 1;
+            let uploadedForTable = 0;
+            let expectedForTable = 0;
+            const startMs = Date.now();
+
+            while (true) {
+              const page = await processDataApi.getPageKeyset(processStoreName as any, lastId, PARTITION_UPLOAD_SIZE);
+              const pageItems = page.items || [];
+              if (pageItems.length === 0) break;
+
+              const pageToUpload = migrationLoadMode === 'delta'
+                ? pageItems.filter(shouldIncludeForDeltaMigration)
+                : pageItems;
+
+              if (pageToUpload.length > 0) {
+                const nowIso = new Date().toISOString();
+                const part = pageToUpload.map((record) => ({
+                  ...record,
+                  DataGeneratedAt: record?.DataGeneratedAt ?? record?.dataGeneratedAt ?? record?.createdAt ?? nowIso,
+                  LastDataMigrationAt: record?.LastDataMigrationAt ?? record?.lastDataMigrationAt ?? null,
+                }));
+
+                const partStoreName = `${tableName}__part_${String(partSequence).padStart(4, '0')}`;
+                await migrationApi.uploadStoreData(sessionId, partStoreName, part);
+                uploadedForTable += part.length;
+                expectedForTable += pageToUpload.length;
+
+                if (partSequence === 1 || partSequence % UPLOAD_LOG_EVERY_PARTS === 0) {
+                  const elapsedSec = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+                  const rps = Math.floor(uploadedForTable / elapsedSec);
+                  log(`    ... ${tableName}: uploaded ${uploadedForTable} records in ${partSequence} part(s) (~${rps} rec/s)`);
+                }
+
+                partSequence++;
+              }
+
+              lastId = page.nextLastId ?? lastId;
+              if (!page.hasMore) break;
+            }
+
+            if (uploadedForTable !== expectedForTable) {
+              throw new Error(
+                `Chunk upload mismatch for ${tableName}: uploaded ${uploadedForTable}, expected ${expectedForTable}`
+              );
+            }
+
+            if (uploadedForTable > 0) {
+              uploadedCount++;
+              totalUploadedRecords += uploadedForTable;
+              log(`  ↑ ${tableName}: ${uploadedForTable} records (${migrationLoadMode}, paged)`);
+              uploadedStoreNames.add(storeNameForUpdate);
+            } else {
+              log(`  ⚠ ${tableName}: no records to upload for ${migrationLoadMode} mode`);
+            }
+
+            const uploadProgress = (uploadedCount / referencedTables.size) * 30;
+            setMigrationProgress(uploadProgress);
+            continue;
           }
 
-          // Try process data store
-          if (data.length === 0) {
-            const processStoreName = processStoreMap[tableName];
-            if (processStoreName) {
-              data = await processDataApi.getAll(processStoreName as any);
-              storeNameForUpdate = processStoreName;
-            }
+          // Try master data store
+          const masterStoreName = MASTER_STORE_MAP[tableName];
+          if (masterStoreName) {
+            data = await loadSourceData(tableName);
+            storeNameForUpdate = masterStoreName;
           }
 
           // Try imported tables
@@ -5814,28 +5604,57 @@ const DataMigration: React.FC = () => {
             data = importedTablesData[tableName];
           }
 
-          const recordsToUpload = (migrationLoadMode === 'delta' ? data.filter(shouldIncludeForDeltaMigration) : data)
-            .map((record) => ({
-              ...record,
-              DataGeneratedAt: record?.DataGeneratedAt ?? record?.dataGeneratedAt ?? record?.createdAt ?? new Date().toISOString(),
-              LastDataMigrationAt: record?.LastDataMigrationAt ?? record?.lastDataMigrationAt ?? null,
-            }));
+          const recordsToUpload = migrationLoadMode === 'delta'
+            ? data.filter(shouldIncludeForDeltaMigration)
+            : data;
 
           if (recordsToUpload.length > 0) {
-            await migrationApi.uploadStoreData(sessionId, tableName, recordsToUpload);
+            const totalParts = Math.ceil(recordsToUpload.length / PARTITION_UPLOAD_SIZE);
+            let uploadedForTable = 0;
+            const startMs = Date.now();
+
+            for (let partIndex = 0; partIndex < totalParts; partIndex++) {
+              const partStart = partIndex * PARTITION_UPLOAD_SIZE;
+              const partEnd = Math.min(partStart + PARTITION_UPLOAD_SIZE, recordsToUpload.length);
+              const part = recordsToUpload.slice(partStart, partEnd).map((record) => ({
+                ...record,
+                DataGeneratedAt: record?.DataGeneratedAt ?? record?.dataGeneratedAt ?? record?.createdAt ?? new Date().toISOString(),
+                LastDataMigrationAt: record?.LastDataMigrationAt ?? record?.lastDataMigrationAt ?? null,
+              }));
+
+              const partStoreName = totalParts > 1
+                ? `${tableName}__part_${String(partIndex + 1).padStart(4, '0')}`
+                : tableName;
+
+              await migrationApi.uploadStoreData(sessionId, partStoreName, part);
+              uploadedForTable += part.length;
+
+              const currentPart = partIndex + 1;
+              if (currentPart === 1 || currentPart % UPLOAD_LOG_EVERY_PARTS === 0 || currentPart === totalParts) {
+                const elapsedSec = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+                const rps = Math.floor(uploadedForTable / elapsedSec);
+                log(`    ... ${tableName}: uploaded ${uploadedForTable}/${recordsToUpload.length} records (${currentPart}/${totalParts} parts, ~${rps} rec/s)`);
+              }
+            }
+
+            if (uploadedForTable !== recordsToUpload.length) {
+              throw new Error(
+                `Chunk upload mismatch for ${tableName}: uploaded ${uploadedForTable}, expected ${recordsToUpload.length}`
+              );
+            }
+
             uploadedCount++;
             totalUploadedRecords += recordsToUpload.length;
             log(`  ↑ ${tableName}: ${recordsToUpload.length}/${data.length} records (${migrationLoadMode})`);
 
-            if (storeNameForUpdate) {
-              uploadedStoreRecords[storeNameForUpdate] = recordsToUpload;
-            }
+            if (storeNameForUpdate) uploadedStoreNames.add(storeNameForUpdate);
           } else {
             log(`  ⚠ ${tableName}: no records to upload for ${migrationLoadMode} mode`);
           }
         } catch (uploadErr: any) {
           log(`  ❌ ${tableName}: upload failed — ${uploadErr.message}`);
           console.error(`Upload failed for ${tableName}:`, uploadErr);
+          throw uploadErr;
         }
 
         // Update progress during upload phase (0-30%)
@@ -5843,7 +5662,9 @@ const DataMigration: React.FC = () => {
         setMigrationProgress(uploadProgress);
       }
 
-      log(`✓ Uploaded ${uploadedCount} stores (${totalUploadedRecords} total records) to SQL Server`);
+      if (!preferServerSideSource) {
+        log(`✓ Uploaded ${uploadedCount} stores (${totalUploadedRecords} total records) to SQL Server`);
+      }
 
       // 3. Execute migration on the server
       log('Starting server-side migration processing...');
@@ -5854,12 +5675,14 @@ const DataMigration: React.FC = () => {
         separateMasterProcessFiles,
         sourceIncludeTimestampSuffix,
         sourceSplitFiles,
+        preferServerSideSource,
+        true,
       );
       log('Migration processing started on server');
 
       // 4. Poll for progress
       let lastLogIndex = 0;
-      const pollInterval = 1000; // 1 second
+      const pollInterval = 8000; // 8 seconds
       let completed = false;
 
       while (!completed) {
@@ -5889,28 +5712,8 @@ const DataMigration: React.FC = () => {
           if (status.status === 'Completed' || status.status === 'CompletedWithErrors') {
             completed = true;
 
-            const migrationStamp = new Date().toISOString();
-            const storesToStamp: Record<string, any[]> = {};
-            for (const [storeName, rows] of Object.entries(uploadedStoreRecords)) {
-              storesToStamp[storeName] = rows.map((row) => ({
-                ...row,
-                DataGeneratedAt: row?.DataGeneratedAt ?? row?.dataGeneratedAt ?? row?.createdAt ?? migrationStamp,
-                LastDataMigrationAt: migrationStamp,
-                updatedAt: migrationStamp,
-              }));
-            }
-
-            if (Object.keys(storesToStamp).length > 0) {
-              try {
-                await fetch('http://localhost:5237/api/GenericData/bulk-multi', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ stores: storesToStamp }),
-                });
-                log(`✓ Updated LastDataMigrationAt for ${Object.keys(storesToStamp).length} store(s)`);
-              } catch (stampErr: any) {
-                log(`⚠ Could not update LastDataMigrationAt metadata: ${stampErr.message || stampErr}`);
-              }
+            if (uploadedStoreNames.size > 0) {
+              log(`INFO: Skipped LastDataMigrationAt bulk restamp for ${uploadedStoreNames.size} store(s) to prevent browser memory spikes`);
             }
 
             if (status.status === 'CompletedWithErrors') {
@@ -6202,84 +6005,56 @@ const DataMigration: React.FC = () => {
     });
   };
 
-  const loadSourceData = async (tableName: string): Promise<any[]> => {
+  const loadSourceData = async (
+    tableName: string,
+    options?: { limit?: number; forceRefresh?: boolean },
+  ): Promise<any[]> => {
+    const limit = options?.limit;
+    const forceRefresh = options?.forceRefresh === true;
+
     // Check if it's an imported table first
     if (importedTablesData[tableName]) {
-      return importedTablesData[tableName];
+      const imported = importedTablesData[tableName];
+      return typeof limit === 'number' ? imported.slice(0, limit) : imported;
     }
 
-    // Map table names to IndexedDB stores
-    const masterStoreMap: { [key: string]: string } = {
-      'material_classes': 'materialClasses',
-      'materials': 'materials',
-      'material_lots': 'materialLots',
-      'material_sublots': 'materialSublots',
-      'material_definition_properties': 'materialDefinitionProperties',
-      'material_class_properties': 'materialClassProperties',
-      'material_class_properties_assignments': 'materialClassPropertiesAssignments',
-      'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
-      'equipment_classes': 'equipmentClasses',
-      'equipment': 'equipment',
-      'equipment_properties': 'equipmentProperties',
-      'equipment_property_assignments': 'equipmentPropertyAssignments',
-      'equipment_class_properties': 'equipmentClassProperties',
-      'equipment_class_property_assignments': 'equipmentClassPropertyAssignments',
-      'plants': 'plants',
-      'production_lines': 'productionLines',
-      'process_segments': 'processSegments',
-      'line_equipment': 'lineEquipment',
-      'segment_boms': 'segmentBOMs',
-      'equipment_usages': 'equipmentUsages',
-      'operation_event_definitions': 'operationEventDefinitions',
-      'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
-      'operation_event_definition_properties': 'operationEventDefinitionProperties',
-      'operation_event_definition_property_assignments': 'operationEventDefinitionPropertyAssignments',
-      'hierarchy_scopes': 'hierarchyScopes',
-      'hierarchy_scope_parent_child': 'hierarchyScopeParentChild',
-      'shifts': 'shifts',
-      'crews': 'crews',
-      'shift_crew_assignments': 'shiftCrewAssignments',
-      'operations_event_classes': 'operationsEventClasses',
-    };
+    if (!forceRefresh) {
+      const cached = sourceDataCacheRef.current[tableName];
+      if (cached) {
+        return typeof limit === 'number' ? cached.slice(0, limit) : cached;
+      }
+    }
 
-    const processStoreMap: { [key: string]: string } = {
-      'operations_requests': 'operationsRequests',
-      'segment_requirements': 'segmentRequirements',
-      'segment_material_requirements': 'segmentMaterialRequirements',
-      'segment_equipment_requirements': 'segmentEquipmentRequirements',
-      'operations_responses': 'operationsResponses',
-      'segment_responses': 'segmentResponses',
-      'segment_material_actuals': 'segmentMaterialActuals',
-      'segment_equipment_actuals': 'segmentEquipmentActuals',
-      'equipment_property_tracking': 'equipmentPropertyTracking',
-      'test_results': 'testResults',
-      'operations_events': 'operationsEvents',
-      'operations_event_records': 'operationsEventRecords',
-      'operations_event_entries': 'operationsEventEntries',
-      'operations_event_properties': 'operationsEventProperties',
-      'segment_data': 'segmentData',
-    };
-
-    const masterStoreName = masterStoreMap[tableName];
+    const masterStoreName = MASTER_STORE_MAP[tableName];
     if (masterStoreName) {
-      return await masterDataApi.getAll(masterStoreName);
+      const data = await masterDataApi.getAll(masterStoreName);
+      sourceDataCacheRef.current[tableName] = data;
+      return typeof limit === 'number' ? data.slice(0, limit) : data;
     }
 
-    const processStoreName = processStoreMap[tableName];
+    const processStoreName = PROCESS_STORE_MAP[tableName];
     if (processStoreName) {
+      if (typeof limit === 'number' && limit > 0) {
+        const page = await processDataApi.getPage(processStoreName as any, 0, limit);
+        return page.items || [];
+      }
+
       const data = await processDataApi.getAll(processStoreName);
       
       // Add computed fields for segment_requirements
       if (tableName === 'segment_requirements') {
-        return data.map((record: any) => ({
+        const mapped = data.map((record: any) => ({
           ...record,
           durationHours: record.earliestStartDateTime && record.latestEndDateTime
             ? (new Date(record.latestEndDateTime).getTime() - new Date(record.earliestStartDateTime).getTime()) / (1000 * 60 * 60)
             : 0
         }));
+        sourceDataCacheRef.current[tableName] = mapped;
+        return typeof limit === 'number' ? mapped.slice(0, limit) : mapped;
       }
       
-      return data;
+      sourceDataCacheRef.current[tableName] = data;
+      return typeof limit === 'number' ? data.slice(0, limit) : data;
     }
 
     throw new Error(`Unknown table: ${tableName}`);
@@ -7806,6 +7581,24 @@ const DataMigration: React.FC = () => {
                 Delta uploads only rows where `LastDataMigrationAt` is empty or null.
               </Typography>
             </Box>
+            <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TextField
+                label="Upload chunk size (records)"
+                type="number"
+                size="small"
+                value={uploadChunkSize}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (Number.isNaN(value)) return;
+                  setUploadChunkSize(Math.min(20000, Math.max(200, Math.floor(value))));
+                }}
+                inputProps={{ min: 200, max: 20000, step: 100 }}
+                sx={{ width: 260 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Larger chunks increase throughput for very large tables. Recommended: 2000-10000 for stable machines.
+              </Typography>
+            </Box>
             <Box sx={{ mt: 1 }}>
               <FormControlLabel
                 control={
@@ -7976,7 +7769,7 @@ const DataMigration: React.FC = () => {
               color="secondary"
               size="small"
               startIcon={<PlayIcon />}
-              onClick={executeMigration}
+              onClick={executeServerMigration}
               disabled={loading}
               title="Process entirely in the browser (may crash on large datasets)"
             >

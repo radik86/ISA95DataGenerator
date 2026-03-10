@@ -49,6 +49,89 @@ public class GenericDataController : ControllerBase
     }
 
     /// <summary>
+    /// Get a paged slice of records from a store.
+    /// </summary>
+    [HttpGet("{storeName}/page")]
+    public async Task<ActionResult> GetPage(string storeName, [FromQuery] int skip = 0, [FromQuery] int take = 100)
+    {
+        skip = Math.Max(0, skip);
+        take = Math.Clamp(take, 1, 5000);
+
+        var baseQuery = _dbContext.GenericDataStores
+            .AsNoTracking()
+            .Where(r => r.StoreName == storeName);
+
+        var total = await baseQuery.CountAsync();
+
+        var rows = await baseQuery
+            .OrderBy(r => r.Id)
+            .Skip(skip)
+            .Take(take)
+            .Select(r => r.DataJson)
+            .ToListAsync();
+
+        var items = new List<JsonElement>(rows.Count);
+        foreach (var json in rows)
+        {
+            try { items.Add(JsonDocument.Parse(json).RootElement); }
+            catch { /* skip malformed */ }
+        }
+
+        return Ok(new
+        {
+            total,
+            skip,
+            take,
+            items,
+        });
+    }
+
+    /// <summary>
+    /// Get a keyset-paged slice of records from a store.
+    /// Uses Id &gt; lastId instead of Skip/Take, which scales better for very large stores.
+    /// </summary>
+    [HttpGet("{storeName}/page-keyset")]
+    public async Task<ActionResult> GetPageKeyset(string storeName, [FromQuery] long? lastId = null, [FromQuery] int take = 1000)
+    {
+        take = Math.Clamp(take, 1, 5000);
+
+        var query = _dbContext.GenericDataStores
+            .AsNoTracking()
+            .Where(r => r.StoreName == storeName);
+
+        if (lastId.HasValue)
+            query = query.Where(r => r.Id > lastId.Value);
+
+        // Fetch one extra row to determine whether there is another page.
+        var rows = await query
+            .OrderBy(r => r.Id)
+            .Take(take + 1)
+            .Select(r => new { r.Id, r.DataJson })
+            .ToListAsync();
+
+        var hasMore = rows.Count > take;
+        if (hasMore)
+            rows.RemoveAt(rows.Count - 1);
+
+        var items = new List<JsonElement>(rows.Count);
+        foreach (var row in rows)
+        {
+            try { items.Add(JsonDocument.Parse(row.DataJson).RootElement); }
+            catch { /* skip malformed */ }
+        }
+
+        var nextLastId = rows.Count > 0 ? rows[^1].Id : lastId;
+
+        return Ok(new
+        {
+            items,
+            hasMore,
+            nextLastId,
+            take,
+        });
+    }
+
+    /// <summary>
     /// Get a single record by its application-level ID.
     /// </summary>
     [HttpGet("{storeName}/{recordId}")]
