@@ -2551,7 +2551,7 @@ public class MigrationProcessorV2Service
             }
         }
 
-        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.000'z'", CultureInfo.InvariantCulture);
+        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.000'Z'", CultureInfo.InvariantCulture);
     }
 
     private static string FormatEntityNameForOutput(string? entityName)
