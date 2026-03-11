@@ -476,7 +476,7 @@ public class MasterDataController : ControllerBase
         var existing = await _context.ProcessSegments.FindAsync(entity.Id);
         if (existing != null)
         {
-            existing.ProductMaterialId = entity.ProductMaterialId;
+            existing.ProductMaterialId = entity.ProductMaterialId ?? string.Empty;
             existing.Name = entity.Name;
             existing.Sequence = entity.Sequence;
             existing.DurationHours = entity.DurationHours;
@@ -485,6 +485,7 @@ public class MasterDataController : ControllerBase
         }
         else
         {
+            entity.ProductMaterialId ??= string.Empty;
             entity.CreatedAt = DateTime.UtcNow;
             entity.UpdatedAt = DateTime.UtcNow;
             entity.Version = 1;
@@ -500,7 +501,7 @@ public class MasterDataController : ControllerBase
         var existing = await _context.ProcessSegments.FindAsync(id);
         if (existing == null) return NotFound();
         
-        existing.ProductMaterialId = entity.ProductMaterialId;
+        existing.ProductMaterialId = entity.ProductMaterialId ?? string.Empty;
         existing.Name = entity.Name;
         existing.Sequence = entity.Sequence;
         existing.DurationHours = entity.DurationHours;
@@ -587,6 +588,84 @@ public class MasterDataController : ControllerBase
         var entity = await _context.SegmentBOMs.FindAsync(id);
         if (entity == null) return NotFound();
         _context.SegmentBOMs.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
+    #region Maintenance BOMs
+
+    [HttpGet("maintenance-boms")]
+    public async Task<IActionResult> GetMaintenanceBOMs()
+    {
+        var data = await _context.MaintenanceBOMs
+            .OrderBy(x => x.EquipmentId)
+            .ThenBy(x => x.ProcessSegmentId)
+            .ThenBy(x => x.MaterialId)
+            .ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("maintenance-boms/{id}")]
+    public async Task<IActionResult> GetMaintenanceBOM(string id)
+    {
+        var entity = await _context.MaintenanceBOMs.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("maintenance-boms")]
+    public async Task<IActionResult> CreateMaintenanceBOM([FromBody] MaintenanceBOM entity)
+    {
+        var existing = await _context.MaintenanceBOMs.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.EquipmentId = entity.EquipmentId;
+            existing.ProcessSegmentId = entity.ProcessSegmentId;
+            existing.MaterialId = entity.MaterialId;
+            existing.QtyPerUnit = entity.QtyPerUnit;
+            existing.Uom = entity.Uom;
+            existing.MaterialUse = entity.MaterialUse;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.MaintenanceBOMs.Add(entity);
+        }
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("maintenance-boms/{id}")]
+    public async Task<IActionResult> UpdateMaintenanceBOM(string id, [FromBody] MaintenanceBOM entity)
+    {
+        var existing = await _context.MaintenanceBOMs.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.EquipmentId = entity.EquipmentId;
+        existing.ProcessSegmentId = entity.ProcessSegmentId;
+        existing.MaterialId = entity.MaterialId;
+        existing.QtyPerUnit = entity.QtyPerUnit;
+        existing.Uom = entity.Uom;
+        existing.MaterialUse = entity.MaterialUse;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("maintenance-boms/{id}")]
+    public async Task<IActionResult> DeleteMaintenanceBOM(string id)
+    {
+        var entity = await _context.MaintenanceBOMs.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.MaintenanceBOMs.Remove(entity);
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -2408,6 +2487,7 @@ public class MasterDataController : ControllerBase
         if (Include("lineEquipment")) result["lineEquipment"] = await _context.LineEquipments.CountAsync();
         if (Include("processSegments")) result["processSegments"] = await _context.ProcessSegments.CountAsync();
         if (Include("segmentBOMs")) result["segmentBOMs"] = await _context.SegmentBOMs.CountAsync();
+        if (Include("maintenanceBOMs")) result["maintenanceBOMs"] = await _context.MaintenanceBOMs.CountAsync();
         if (Include("equipmentUsages")) result["equipmentUsages"] = await _context.EquipmentUsages.CountAsync();
         if (Include("operationEventDefinitions")) result["operationEventDefinitions"] = await _context.OperationEventDefinitions.CountAsync();
         if (Include("operationEventDefSegmentAssignments")) result["operationEventDefSegmentAssignments"] = await _context.OperationEventDefSegmentAssignments.CountAsync();
@@ -2449,6 +2529,7 @@ public class MasterDataController : ControllerBase
             _context.Shifts.RemoveRange(_context.Shifts);
             
             _context.LineEquipments.RemoveRange(_context.LineEquipments);
+            _context.MaintenanceBOMs.RemoveRange(_context.MaintenanceBOMs);
             _context.EquipmentUsages.RemoveRange(_context.EquipmentUsages);
             _context.SegmentBOMs.RemoveRange(_context.SegmentBOMs);
             _context.ProcessSegments.RemoveRange(_context.ProcessSegments);

@@ -14,6 +14,7 @@ export interface ParsedCSVData {
   equipmentPropertyAssignments?: any[];
   processSegments?: any[];
   segmentBOMs?: any[];
+  maintenanceBOMs?: any[];
   equipmentUsages?: any[];
   plants?: any[];
   productionLines?: any[];
@@ -284,6 +285,19 @@ class CSVParser {
       materialId: r.MaterialID,
       qtyPerUnit: parseFloat(r.MaterialQtyPerUnit) || 0,
       uom: r.MaterialUoM,
+      materialUse: r.MaterialUse || 'CONSUME',
+    }));
+  }
+
+  parseMaintenanceBOMs(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map((r, index) => ({
+      id: r.MaintenanceBOMID || `MBOM-${index + 1}`,
+      equipmentId: r.EquipmentID,
+      processSegmentId: r.ProcessSegmentID,
+      materialId: r.MaterialID,
+      qtyPerUnit: parseFloat(r.QtyPerUnit) || 0,
+      uom: r.UoM || 'EA',
       materialUse: r.MaterialUse || 'CONSUME',
     }));
   }

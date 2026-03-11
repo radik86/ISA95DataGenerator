@@ -19,6 +19,7 @@ public class ProcessSegment
 
     // Navigation properties
     public ICollection<SegmentBOM> SegmentBOMs { get; set; } = new List<SegmentBOM>();
+    public ICollection<MaintenanceBOM> MaintenanceBOMs { get; set; } = new List<MaintenanceBOM>();
     public ICollection<EquipmentUsage> EquipmentUsages { get; set; } = new List<EquipmentUsage>();
     public ICollection<EquipmentPropertyAssignment> PropertyAssignments { get; set; } = new List<EquipmentPropertyAssignment>();
 }

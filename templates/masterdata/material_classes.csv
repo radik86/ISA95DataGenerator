@@ -1,6 +1,7 @@
-MaterialClassID,MaterialClassName,Description
+MaterialClassID,MaterialClassName,MaterialClassDescription
 FINISHEDPRODUCT,FinishedProduct,Final product ready for sale or shipment
 INPROCESSMATERIAL,InProcessMaterial,Semi-finished material produced and consumed within production
-RAWMATERIAL,RawMaterial,Externally supplied raw material used for production
+MAINTENANCE,Maintenance Material,Material related to maintenance activities
 PACKMATERIAL,PackagingMaterial,Packaging paper material
+RAWMATERIAL,RawMaterial,Externally supplied raw material used for production
 TRANSPORTMATERIAL,TransportMaterial,Transport utillities

@@ -34,6 +34,7 @@ export class TemplateDataLoader {
       { name: 'equipment_property_assignments.csv', parser: 'equipmentPropertyAssignments' },
       { name: 'process_segments.csv', parser: 'processSegments' },
       { name: 'segment_material_bom.csv', parser: 'segmentBOMs' },
+      { name: 'maintenance_bom.csv', parser: 'maintenanceBOMs' },
       { name: 'equipment_usage.csv', parser: 'equipmentUsages' },
       { name: 'plants.csv', parser: 'plants' },
       { name: 'production_lines.csv', parser: 'productionLines' },
@@ -115,6 +116,10 @@ export class TemplateDataLoader {
           case 'segmentBOMs':
             parsed = csvParser.parseSegmentBOMs(csvText);
             result.segmentBOMs = parsed;
+            break;
+          case 'maintenanceBOMs':
+            parsed = csvParser.parseMaintenanceBOMs(csvText);
+            result.maintenanceBOMs = parsed;
             break;
           case 'equipmentUsages':
             parsed = csvParser.parseEquipmentUsages(csvText);
@@ -199,13 +204,16 @@ export class TemplateDataLoader {
 
   /**
    * Loads all templates and imports them into the SQL Server database via API.
+   * Merge/upsert mode by default to preserve user-added records.
+   *
+   * @param replaceExisting When true, clear existing master data before import.
    * @returns Promise that resolves when all data has been imported
    */
-  async importTemplatesIntoDB(): Promise<void> {
+  async importTemplatesIntoDB(replaceExisting = false): Promise<void> {
     console.log('[TemplateLoader] Starting template import to DB');
     const csvData = await this.loadAllTemplates();
     console.log('[TemplateLoader] Loaded all templates, importing to DB');
-    await masterDataApi.importFromCSV(csvData);
+    await masterDataApi.importFromCSV(csvData, replaceExisting);
     console.log('[TemplateLoader] Template import to DB completed');
   }
 
@@ -215,9 +223,8 @@ export class TemplateDataLoader {
    */
   async resetToTemplateData(): Promise<void> {
     console.log('[TemplateLoader] Starting data reset to templates');
-    await masterDataApi.clearAll();
-    console.log('[TemplateLoader] Database cleared, importing templates');
-    await this.importTemplatesIntoDB();
+    console.log('[TemplateLoader] Clearing database and importing templates');
+    await this.importTemplatesIntoDB(true);
     console.log('[TemplateLoader] Data reset to templates completed');
   }
 }

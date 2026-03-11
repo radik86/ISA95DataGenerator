@@ -159,6 +159,16 @@ interface SegmentMaterialBOM {
   materialUse: string;
 }
 
+interface MaintenanceBOM {
+  id: string;
+  equipmentId: string;
+  processSegmentId: string;
+  materialId: string;
+  qtyPerUnit: number;
+  uom: string;
+  materialUse: string;
+}
+
 interface EquipmentUsage {
   id: string;
   processSegmentId: string;
@@ -424,6 +434,11 @@ const MasterDataManager: React.FC = () => {
   const [segmentBOMs, setSegmentBOMs] = useState<SegmentMaterialBOM[]>([]);
   const [bomDialog, setBomDialog] = useState(false);
   const [editingBOM, setEditingBOM] = useState<SegmentMaterialBOM | null>(null);
+
+  // Maintenance BOM State
+  const [maintenanceBOMs, setMaintenanceBOMs] = useState<MaintenanceBOM[]>([]);
+  const [maintenanceBomDialog, setMaintenanceBomDialog] = useState(false);
+  const [editingMaintenanceBom, setEditingMaintenanceBom] = useState<MaintenanceBOM | null>(null);
   
   // Equipment Usage State
   const [equipmentUsages, setEquipmentUsages] = useState<EquipmentUsage[]>([]);
@@ -523,7 +538,7 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, mcp, mcpa, mdp, mdpa, ec, e, ep, epa, ps, bom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
+      const [mc, m, ml, ms, mcp, mcpa, mdp, mdpa, ec, e, ep, epa, ps, bom, mbom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
         masterDataApi.getAll('materialClasses'),
         masterDataApi.getAll('materials'),
         masterDataApi.getAll('materialLots'),
@@ -538,6 +553,7 @@ const MasterDataManager: React.FC = () => {
         masterDataApi.getAll('equipmentPropertyAssignments'),
         masterDataApi.getAll('processSegments'),
         masterDataApi.getAll('segmentBOMs'),
+        masterDataApi.getAll('maintenanceBOMs'),
         masterDataApi.getAll('equipmentUsages'),
         masterDataApi.getAll('plants'),
         masterDataApi.getAll('productionLines'),
@@ -573,6 +589,7 @@ const MasterDataManager: React.FC = () => {
       setEquipmentPropertyAssignments(epa);
       setProcessSegments(ps);
       setSegmentBOMs(bom);
+      setMaintenanceBOMs(mbom);
       setEquipmentUsages(eu);
       setPlants(p);
       setProductionLines(pl);
@@ -1245,6 +1262,44 @@ const MasterDataManager: React.FC = () => {
     }
   };
 
+  // Maintenance BOM handlers (dedicated maintenanceBOMs table)
+  const handleSaveMaintenanceAssignment = async (data: MaintenanceBOM) => {
+    try {
+      if (editingMaintenanceBom) {
+        await masterDataApi.update('maintenanceBOMs', data);
+        setMaintenanceBOMs(prev => prev.map(item => item.id === data.id ? data : item));
+        showSnackbar('Maintenance BOM updated', 'success');
+      } else {
+        const newRecord: MaintenanceBOM = {
+          ...data,
+          id: data.id || `MBOM-${Date.now()}`,
+        };
+        await masterDataApi.add('maintenanceBOMs', newRecord);
+        setMaintenanceBOMs(prev => [...prev, newRecord]);
+        showSnackbar('Maintenance BOM added', 'success');
+      }
+
+      setMaintenanceBomDialog(false);
+      setEditingMaintenanceBom(null);
+    } catch (error) {
+      console.error('Failed to save maintenance BOM:', error);
+      showSnackbar('Failed to save maintenance BOM', 'error');
+    }
+  };
+
+  const handleDeleteMaintenanceAssignment = async (id: string) => {
+    if (!confirm('Delete this maintenance BOM line?')) return;
+
+    try {
+      await masterDataApi.delete('maintenanceBOMs', id);
+      setMaintenanceBOMs(prev => prev.filter(item => item.id !== id));
+      showSnackbar('Maintenance BOM deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete maintenance BOM:', error);
+      showSnackbar('Failed to delete maintenance BOM', 'error');
+    }
+  };
+
   // Operation Event Definition Handlers
   const handleDeleteOperationEventDefinition = async (id: string) => {
     if (!confirm('Delete this operation event definition?')) return;
@@ -1780,6 +1835,15 @@ const MasterDataManager: React.FC = () => {
         await sbWritable.write(sbCsv);
         await sbWritable.close();
 
+        // Export Maintenance BOM
+        const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
+        const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.uom},${mb.materialUse}`).join('\n');
+        const mbCsv = `${mbHeaders}\n${mbRows}`;
+        const mbFileHandle = await dirHandle.getFileHandle('maintenance_bom.csv', { create: true });
+        const mbWritable = await mbFileHandle.createWritable();
+        await mbWritable.write(mbCsv);
+        await mbWritable.close();
+
         // Export Equipment Usage
         const euHeaders = 'ProcessSegmentID,EquipmentID,Sequence';
         const euRows = equipmentUsages.map((eu: any) => `${eu.processSegmentId},${eu.equipmentId},${eu.sequence || ''}`).join('\n');
@@ -1906,6 +1970,11 @@ const MasterDataManager: React.FC = () => {
       const sbRows = segmentBOMs.map(sb => `${sb.processSegmentId},${sb.materialId},${sb.qtyPerUnit},${sb.uom},${sb.materialUse}`).join('\n');
       downloadCSV(`${sbHeaders}\n${sbRows}`, 'segment_material_bom.csv');
 
+      // Export Maintenance BOM
+      const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
+      const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.uom},${mb.materialUse}`).join('\n');
+      downloadCSV(`${mbHeaders}\n${mbRows}`, 'maintenance_bom.csv');
+
       // Export Equipment Usage
       const euHeaders = 'ProcessSegmentID,EquipmentID,Sequence';
       const euRows = equipmentUsages.map((eu: any) => `${eu.processSegmentId},${eu.equipmentId},${eu.sequence || ''}`).join('\n');
@@ -1915,6 +1984,133 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Fallback export failed:', error);
       showSnackbar('Failed to export master data', 'error');
+    }
+  };
+
+  const buildTemplateCsvPayloads = () => {
+    const mcHeaders = 'MaterialClassID,MaterialClassName,MaterialClassDescription';
+    const mcRows = materialClasses.map(mc => `${mc.id},${mc.name},${mc.description || ''}`).join('\n');
+
+    const mHeaders = 'MaterialID,MaterialName,MaterialClassID,MaterialDescription';
+    const mRows = materials.map(m => `${m.id},${m.name},${m.classId},${m.description || ''}`).join('\n');
+
+    const mlHeaders = 'MaterialLotID,MaterialID,LotQuantity,LotUoM,ReceivedDateTime,ProducedDateTime,SupplierOrProducerID,SupplierOrProducerName,ProducedByProcessSegmentID';
+    const mlRows = materialLots.map(ml => `${ml.id},${ml.materialId},${ml.lotQuantity || ''},${ml.lotUoM || ''},${ml.receivedDateTime || ''},${ml.producedDateTime || ''},${ml.supplierOrProducerId || ''},${ml.supplierOrProducerName || ''},${ml.producedByProcessSegmentId || ''}`).join('\n');
+
+    const mcpHeaders = 'MaterialClassPropertyId,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue';
+    const mcpRows = materialClassProperties.map(mcp => `${mcp.id},${mcp.propertyName},${mcp.description || ''},${mcp.valueDataType || ''},${mcp.unit || ''},${mcp.minValue || ''},${mcp.maxValue || ''}`).join('\n');
+
+    const mcpaHeaders = 'MaterialClassPropertyId,MaterialDefinitionPropertyId';
+    const mcpaRows = materialClassPropertyAssignments.map(mcpa => `${mcpa.materialClassPropertyId},${mcpa.materialDefinitionPropertyId}`).join('\n');
+
+    const mdpHeaders = 'id,Value,Description,ValueUnitOfMeasure';
+    const mdpRows = materialDefinitionProperties.map(mdp => `${mdp.id},${mdp.value},${mdp.description || ''},${mdp.valueUnitOfMeasure || ''}`).join('\n');
+
+    const mdpaHeaders = 'PK,Id,MaterialDefinitionId,Value,Description,ValueUnitOfMeasure';
+    const mdpaRows = materialDefinitionPropertyAssignments.map(mdpa => `${mdpa.pk},${mdpa.id},${mdpa.materialDefinitionId},${mdpa.value},${mdpa.description || ''},${mdpa.valueUnitOfMeasure || ''}`).join('\n');
+
+    const ecHeaders = 'EquipmentClassID,EquipmentClassName,EquipmentClassDescription';
+    const ecRows = equipmentClasses.map(ec => `${ec.id},${ec.name},${ec.description || ''}`).join('\n');
+
+    const eHeaders = 'EquipmentID,EquipmentName,EquipmentClassID,EquipmentDescription,EquipmentParentId';
+    const eRows = equipment.map(e => `${e.id},${e.name},${e.classId},${e.description || ''},${e.parentEquipmentId || ''}`).join('\n');
+
+    const epHeaders = 'EquipmentPropertyID,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue';
+    const epRows = equipmentProperties.map(ep => `${ep.id},${ep.name},${ep.description || ''},${ep.valueDataType},${ep.unit || ''},${ep.minValue || ''},${ep.maxValue || ''}`).join('\n');
+
+    const epaHeaders = 'EquipmentPropertyAssignmentID,EquipmentID,ProcessSegmentID,EquipmentPropertyID,SamplingMode,SamplingIntervalSeconds';
+    const epaRows = equipmentPropertyAssignments.map(epa => `${epa.id},${epa.equipmentId},${epa.processSegmentId},${epa.equipmentPropertyId},${epa.samplingMode},${epa.samplingIntervalSeconds || ''}`).join('\n');
+
+    const pHeaders = 'PlantID,PlantName,PlantDescription';
+    const pRows = plants.map(p => `${p.id},${p.name},${p.description || ''}`).join('\n');
+
+    const plHeaders = 'ProductionLineID,ProductionLineName,PlantID,ProductionLineDescription';
+    const plRows = productionLines.map(pl => `${pl.id},${pl.name},${pl.plantId},${pl.description || ''}`).join('\n');
+
+    const leHeaders = 'ProductionLineID,EquipmentID,Sequence';
+    const leRows = lineEquipment.map(le => `${le.lineId},${le.equipmentId},${le.sequence}`).join('\n');
+
+    const psHeaders = 'ProcessSegmentID,ProcessSegmentName,ProductMaterialID,Sequence,DurationHours,ProcessSegmentDescription';
+    const psRows = processSegments.map(ps => `${ps.id},${ps.name},${ps.productMaterialId},${ps.sequence},${ps.durationHours || ''},${ps.description || ''}`).join('\n');
+
+    const sbHeaders = 'ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
+    const sbRows = segmentBOMs.map(sb => `${sb.processSegmentId},${sb.materialId},${sb.qtyPerUnit},${sb.uom},${sb.materialUse}`).join('\n');
+
+    const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
+    const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.uom},${mb.materialUse}`).join('\n');
+
+    const euHeaders = 'ProcessSegmentID,EquipmentID,Sequence';
+    const euRows = equipmentUsages.map((eu: any) => `${eu.processSegmentId},${eu.equipmentId},${eu.sequence || ''}`).join('\n');
+
+    return [
+      { filename: 'material_classes.csv', content: `${mcHeaders}\n${mcRows}` },
+      { filename: 'materials.csv', content: `${mHeaders}\n${mRows}` },
+      { filename: 'material_lots.csv', content: `${mlHeaders}\n${mlRows}` },
+      { filename: 'material_class_properties.csv', content: `${mcpHeaders}\n${mcpRows}` },
+      { filename: 'material_class_properties_assignments.csv', content: `${mcpaHeaders}\n${mcpaRows}` },
+      { filename: 'material_definition_property_template.csv', content: `${mdpHeaders}\n${mdpRows}` },
+      { filename: 'material_definition_property_assignment_template.csv', content: `${mdpaHeaders}\n${mdpaRows}` },
+      { filename: 'equipment_classes.csv', content: `${ecHeaders}\n${ecRows}` },
+      { filename: 'equipment.csv', content: `${eHeaders}\n${eRows}` },
+      { filename: 'equipment_properties.csv', content: `${epHeaders}\n${epRows}` },
+      { filename: 'equipment_property_assignments.csv', content: `${epaHeaders}\n${epaRows}` },
+      { filename: 'plants.csv', content: `${pHeaders}\n${pRows}` },
+      { filename: 'production_lines.csv', content: `${plHeaders}\n${plRows}` },
+      { filename: 'line_equipment.csv', content: `${leHeaders}\n${leRows}` },
+      { filename: 'process_segments.csv', content: `${psHeaders}\n${psRows}` },
+      { filename: 'segment_material_bom.csv', content: `${sbHeaders}\n${sbRows}` },
+      { filename: 'maintenance_bom.csv', content: `${mbHeaders}\n${mbRows}` },
+      { filename: 'equipment_usage.csv', content: `${euHeaders}\n${euRows}` },
+    ];
+  };
+
+  // Update template CSV files from current UI data.
+  // This reuses the export pipeline and asks user to select the template folder.
+  const handleUpdateTemplateCsvFiles = async () => {
+    if (!('showDirectoryPicker' in window)) {
+      showSnackbar('Your browser does not support direct file overwrite. Use Export All and copy files manually.', 'error');
+      return;
+    }
+
+    const proceed = confirm(
+      'This will overwrite template CSV files with current UI data.\n' +
+      'Please select frontend/public/templates/masterdata in the next dialog. Continue?'
+    );
+    if (!proceed) return;
+
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      const payloads = buildTemplateCsvPayloads();
+      let changedCount = 0;
+
+      for (const file of payloads) {
+        const fileHandle = await dirHandle.getFileHandle(file.filename, { create: true });
+        const existingFile = await fileHandle.getFile();
+        const existingContent = await existingFile.text();
+
+        if (existingContent === file.content) {
+          continue;
+        }
+
+        const writable = await fileHandle.createWritable();
+        await writable.write(file.content);
+        await writable.close();
+        changedCount++;
+      }
+
+      showSnackbar(
+        changedCount === 0
+          ? 'No template CSV changes detected.'
+          : `Updated ${changedCount} template CSV file(s).`,
+        'success'
+      );
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        showSnackbar('Folder selection cancelled', 'error');
+        return;
+      }
+      console.error('Failed to update template CSV files:', error);
+      showSnackbar('Failed to update template CSV files', 'error');
     }
   };
 
@@ -1958,6 +2154,15 @@ const MasterDataManager: React.FC = () => {
               sx={{ mr: 1 }}
             >
               Import
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<DownloadIcon />}
+              onClick={handleUpdateTemplateCsvFiles}
+              sx={{ mr: 1 }}
+            >
+              Update Template CSVs
             </Button>
             <Button
               variant="contained"
@@ -2727,6 +2932,7 @@ const MasterDataManager: React.FC = () => {
             <Tab label="Process Segments" />
             <Tab label="Segment Material BOM" />
             <Tab label="Equipment Usage" />
+            <Tab label="Maintenance BOM" />
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -2778,6 +2984,24 @@ const MasterDataManager: React.FC = () => {
                   setEquipmentUsageDialog(true);
                 }}
                 onDelete={handleDeleteEquipmentUsage}
+              />
+            )}
+
+            {tabValue === 3 && (
+              <MaintenanceTab
+                equipment={equipment}
+                processSegments={processSegments}
+                materials={materials}
+                data={maintenanceBOMs}
+                onAdd={() => {
+                  setEditingMaintenanceBom(null);
+                  setMaintenanceBomDialog(true);
+                }}
+                onEdit={(item) => {
+                  setEditingMaintenanceBom(item);
+                  setMaintenanceBomDialog(true);
+                }}
+                onDelete={handleDeleteMaintenanceAssignment}
               />
             )}
           </Box>
@@ -3423,12 +3647,27 @@ const MasterDataManager: React.FC = () => {
         open={bomDialog}
         data={editingBOM}
         processSegments={processSegments}
+        equipment={equipment}
+        equipmentUsages={equipmentUsages}
         materials={materials}
         onClose={() => {
           setBomDialog(false);
           setEditingBOM(null);
         }}
         onSave={handleSaveBOM}
+      />
+
+      <MaintenanceBomDialog
+        open={maintenanceBomDialog}
+        data={editingMaintenanceBom}
+        equipment={equipment}
+        processSegments={processSegments}
+        materials={materials}
+        onClose={() => {
+          setMaintenanceBomDialog(false);
+          setEditingMaintenanceBom(null);
+        }}
+        onSave={handleSaveMaintenanceAssignment}
       />
 
       <EquipmentUsageDialog
@@ -4208,7 +4447,10 @@ const SegmentBOMTab: React.FC<SegmentBOMTabProps> = ({ data, processSegments, ma
     processSegments.forEach(ps => {
       if (!uniqueProducts.has(ps.productMaterialId)) {
         const material = materials.find(m => m.id === ps.productMaterialId);
-        uniqueProducts.set(ps.productMaterialId, material?.name || ps.productMaterialId);
+        uniqueProducts.set(
+          ps.productMaterialId,
+          material?.name || ps.productMaterialId || 'Maintenance / No Product'
+        );
       }
     });
     return Array.from(uniqueProducts.entries());
@@ -4275,7 +4517,7 @@ const SegmentBOMTab: React.FC<SegmentBOMTabProps> = ({ data, processSegments, ma
       </Box>
 
       {Array.from(groupedData.entries()).map(([productId, segmentMap]) => {
-        const productName = materials.find(m => m.id === productId)?.name || productId;
+        const productName = materials.find(m => m.id === productId)?.name || productId || 'Maintenance / No Product';
         
         return (
           <Box key={productId} sx={{ mb: 3 }}>
@@ -4481,6 +4723,277 @@ const EquipmentUsageTab: React.FC<EquipmentUsageTabProps> = ({ data, processSegm
         </Table>
       </TableContainer>
     </Box>
+  );
+};
+
+interface MaintenanceTabProps {
+  data: MaintenanceBOM[];
+  equipment: Equipment[];
+  processSegments: ProcessSegment[];
+  materials: Material[];
+  onAdd: () => void;
+  onEdit: (item: MaintenanceBOM) => void;
+  onDelete: (id: string) => void;
+}
+
+const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
+  data,
+  equipment,
+  processSegments,
+  materials,
+  onAdd,
+  onEdit,
+  onDelete,
+}) => {
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
+
+  const visibleAssignments = data.filter(item => !selectedEquipmentId || item.equipmentId === selectedEquipmentId);
+  const groupedByEquipment = visibleAssignments.reduce<Record<string, MaintenanceBOM[]>>((acc, item) => {
+    if (!acc[item.equipmentId]) {
+      acc[item.equipmentId] = [];
+    }
+    acc[item.equipmentId].push(item);
+    return acc;
+  }, {});
+
+  const groupedEntries = Object.entries(groupedByEquipment).sort((a, b) => a[0].localeCompare(b[0]));
+
+  return (
+    <Box>
+      <Typography variant="h6" sx={{ mb: 2 }}>Maintenance BOM</Typography>
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Manage maintenance BOM lines by equipment and process segment.
+      </Alert>
+
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <FormControl sx={{ minWidth: 300 }}>
+          <FormControl fullWidth>
+            <InputLabel>Equipment</InputLabel>
+            <Select
+              value={selectedEquipmentId}
+              label="Equipment"
+              onChange={(e) => setSelectedEquipmentId(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>All equipment</em>
+              </MenuItem>
+              {equipment.map(eq => (
+                <MenuItem key={eq.id} value={eq.id}>{eq.name} ({eq.id})</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </FormControl>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
+          Add Maintenance BOM
+        </Button>
+      </Box>
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Equipment</TableCell>
+              <TableCell>Segment</TableCell>
+              <TableCell>Segment Seq</TableCell>
+              <TableCell>Material</TableCell>
+              <TableCell>Qty</TableCell>
+              <TableCell>UoM</TableCell>
+              <TableCell>Use</TableCell>
+              <TableCell align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {groupedEntries.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} align="center">
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                    No maintenance BOM lines found.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              groupedEntries.flatMap(([equipmentId, items]) =>
+                items.map((row, index) => {
+                  const eq = equipment.find(e => e.id === row.equipmentId);
+                  const segment = processSegments.find(ps => ps.id === row.processSegmentId);
+                  const mat = materials.find(m => m.id === row.materialId);
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell>{index === 0 ? (eq?.name || equipmentId) : ''}</TableCell>
+                      <TableCell>{segment?.name || row.processSegmentId}</TableCell>
+                      <TableCell>{segment?.sequence ?? '-'}</TableCell>
+                      <TableCell>{mat?.name || row.materialId}</TableCell>
+                      <TableCell>{row.qtyPerUnit}</TableCell>
+                      <TableCell>{row.uom}</TableCell>
+                      <TableCell>{row.materialUse}</TableCell>
+                      <TableCell align="right">
+                        <IconButton size="small" onClick={() => onEdit(row)}>
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton size="small" color="error" onClick={() => onDelete(row.id)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+};
+
+interface MaintenanceBomDialogProps {
+  open: boolean;
+  data: MaintenanceBOM | null;
+  equipment: Equipment[];
+  processSegments: ProcessSegment[];
+  materials: Material[];
+  onClose: () => void;
+  onSave: (data: MaintenanceBOM) => void;
+}
+
+const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
+  open,
+  data,
+  equipment,
+  processSegments,
+  materials,
+  onClose,
+  onSave,
+}) => {
+  const [formData, setFormData] = useState<MaintenanceBOM>(
+    data || {
+      id: '',
+      equipmentId: '',
+      processSegmentId: '',
+      materialId: '',
+      qtyPerUnit: 1,
+      uom: 'EA',
+      materialUse: 'CONSUME',
+    }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({
+        id: '',
+        equipmentId: '',
+        processSegmentId: '',
+        materialId: '',
+        qtyPerUnit: 1,
+        uom: 'EA',
+        materialUse: 'CONSUME',
+      });
+    }
+  }, [data, open]);
+
+  const maintenanceSegments = processSegments.filter(ps => !ps.productMaterialId);
+  const maintenanceMaterials = materials.filter(m => m.classId !== 'FINISHEDPRODUCT');
+
+  const handleSubmit = () => {
+    if (!formData.equipmentId || !formData.processSegmentId || !formData.materialId) {
+      alert('Equipment, Process Segment, and Material are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Maintenance BOM</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Equipment</InputLabel>
+              <Select
+                value={formData.equipmentId}
+                label="Equipment"
+                onChange={(e) => setFormData({ ...formData, equipmentId: e.target.value })}
+              >
+                {equipment.map(eq => (
+                  <MenuItem key={eq.id} value={eq.id}>{eq.name} ({eq.id})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Maintenance Process Segment</InputLabel>
+              <Select
+                value={formData.processSegmentId}
+                label="Maintenance Process Segment"
+                onChange={(e) => setFormData({ ...formData, processSegmentId: e.target.value })}
+              >
+                {maintenanceSegments.map(ps => (
+                  <MenuItem key={ps.id} value={ps.id}>{ps.name} ({ps.id})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Material</InputLabel>
+              <Select
+                value={formData.materialId}
+                label="Material"
+                onChange={(e) => {
+                  const matId = e.target.value;
+                  const mat = materials.find(m => m.id === matId);
+                  setFormData({ ...formData, materialId: matId, uom: mat?.defaultUoM || formData.uom });
+                }}
+              >
+                {maintenanceMaterials.map(m => (
+                  <MenuItem key={m.id} value={m.id}>{m.name} ({m.id})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={12} md={3}>
+            <TextField
+              fullWidth
+              type="number"
+              label="Qty Per Unit"
+              inputProps={{ step: 0.01, min: 0 }}
+              value={formData.qtyPerUnit}
+              onChange={(e) => setFormData({ ...formData, qtyPerUnit: parseFloat(e.target.value) || 0 })}
+            />
+          </Grid>
+          <Grid xs={12} md={3}>
+            <TextField
+              fullWidth
+              label="UoM"
+              value={formData.uom}
+              onChange={(e) => setFormData({ ...formData, uom: e.target.value })}
+            />
+          </Grid>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Material Use</InputLabel>
+              <Select
+                value={formData.materialUse}
+                label="Material Use"
+                onChange={(e) => setFormData({ ...formData, materialUse: e.target.value })}
+              >
+                <MenuItem value="CONSUME">CONSUME</MenuItem>
+                <MenuItem value="PRODUCE">PRODUCE</MenuItem>
+                <MenuItem value="SCRAP">SCRAP</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
@@ -5876,8 +6389,8 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
   }, [data, open]);
 
   const handleSubmit = () => {
-    if (!formData.id || !formData.name || !formData.productMaterialId) {
-      alert('ID, Name, and Product Material are required');
+    if (!formData.id || !formData.name) {
+      alert('ID and Name are required');
       return;
     }
     onSave(formData);
@@ -5910,13 +6423,16 @@ const ProcessSegmentDialog: React.FC<ProcessSegmentDialogProps> = ({ open, data,
             />
           </Grid>
           <Grid xs={12}>
-            <FormControl fullWidth required>
+            <FormControl fullWidth>
               <InputLabel>Product Material</InputLabel>
               <Select
                 value={formData.productMaterialId}
                 label="Product Material"
                 onChange={(e) => setFormData({ ...formData, productMaterialId: e.target.value })}
               >
+                <MenuItem value="">
+                  <em>None (maintenance segment)</em>
+                </MenuItem>
                 {finishedProducts.map((m) => (
                   <MenuItem key={m.id} value={m.id}>
                     {m.name} ({m.id})
@@ -5960,15 +6476,18 @@ interface SegmentBOMDialogProps {
   open: boolean;
   data: SegmentMaterialBOM | null;
   processSegments: ProcessSegment[];
+  equipment: Equipment[];
+  equipmentUsages: EquipmentUsage[];
   materials: Material[];
   onClose: () => void;
   onSave: (data: SegmentMaterialBOM) => void;
 }
 
-const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, processSegments, materials, onClose, onSave }) => {
+const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, processSegments, equipment, equipmentUsages, materials, onClose, onSave }) => {
   const [formData, setFormData] = useState<SegmentMaterialBOM>(
     data || { id: '', processSegmentId: '', materialId: '', qtyPerUnit: 0, uom: '', materialUse: 'CONSUME' }
   );
+  const [selectedEquipment, setSelectedEquipment] = useState<string>('');
   const [selectedProduct, setSelectedProduct] = useState<string>('');
 
   React.useEffect(() => {
@@ -5979,11 +6498,16 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
       if (segment) {
         setSelectedProduct(segment.productMaterialId);
       }
+
+      // Best-effort preselect equipment linked to this segment
+      const usage = equipmentUsages.find(eu => eu.processSegmentId === data.processSegmentId);
+      setSelectedEquipment(usage?.equipmentId || '');
     } else {
       setFormData({ id: '', processSegmentId: '', materialId: '', qtyPerUnit: 0, uom: '', materialUse: 'CONSUME' });
+      setSelectedEquipment('');
       setSelectedProduct('');
     }
-  }, [data, open, processSegments]);
+  }, [data, open, processSegments, equipmentUsages]);
 
   const handleMaterialChange = (materialId: string) => {
     const selectedMaterial = materials.find(m => m.id === materialId);
@@ -5994,26 +6518,25 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
     });
   };
 
-  const handleProductChange = (productId: string) => {
-    setSelectedProduct(productId);
-    // Clear segment selection when product changes
+  const handleEquipmentChange = (equipmentId: string) => {
+    setSelectedEquipment(equipmentId);
+    // Clear segment selection when equipment changes
     setFormData({ ...formData, processSegmentId: '' });
   };
 
   const handleSubmit = () => {
-    if (!formData.id || !formData.processSegmentId || !formData.materialId) {
+    if (!formData.id || !selectedEquipment || !formData.processSegmentId || !formData.materialId) {
       alert('All fields are required');
       return;
     }
     onSave(formData);
   };
 
-  // Get finished products for product selection
-  const finishedProducts = materials.filter(m => m.classId === 'FINISHEDPRODUCT');
-
-  // Filter segments by selected product
-  const filteredSegments = selectedProduct 
-    ? processSegments.filter(ps => ps.productMaterialId === selectedProduct)
+  // Filter segments by selected equipment using equipment usage assignments.
+  const filteredSegments = selectedEquipment
+    ? processSegments.filter(ps =>
+        equipmentUsages.some(eu => eu.equipmentId === selectedEquipment && eu.processSegmentId === ps.id)
+      )
     : processSegments;
 
   // Get selected segment info for display
@@ -6027,8 +6550,8 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
       <DialogTitle>{data ? 'Edit' : 'Add'} BOM Line</DialogTitle>
       <DialogContent>
         <Alert severity="info" sx={{ mb: 2 }}>
-          BOM lines define materials required for a specific process segment of a product.
-          Select the product first, then the process segment, then the material and quantity.
+          BOM lines define materials required for a specific process segment.
+          For maintenance BOMs: select equipment first, then a segment assigned to that equipment, then the material.
         </Alert>
         
         <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -6046,18 +6569,18 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
           
           <Grid xs={12}>
             <FormControl fullWidth required>
-              <InputLabel>1. Select Product</InputLabel>
+              <InputLabel>1. Select Equipment</InputLabel>
               <Select
-                value={selectedProduct}
-                label="1. Select Product"
-                onChange={(e) => handleProductChange(e.target.value)}
+                value={selectedEquipment}
+                label="1. Select Equipment"
+                onChange={(e) => handleEquipmentChange(e.target.value)}
               >
                 <MenuItem value="">
-                  <em>-- Select a product --</em>
+                  <em>-- Select equipment --</em>
                 </MenuItem>
-                {finishedProducts.map((m) => (
-                  <MenuItem key={m.id} value={m.id}>
-                    {m.name} ({m.id})
+                {equipment.map((eq) => (
+                  <MenuItem key={eq.id} value={eq.id}>
+                    {eq.name} ({eq.id})
                   </MenuItem>
                 ))}
               </Select>
@@ -6065,7 +6588,7 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
           </Grid>
 
           <Grid xs={12}>
-            <FormControl fullWidth required disabled={!selectedProduct}>
+            <FormControl fullWidth required disabled={!selectedEquipment}>
               <InputLabel>2. Select Process Segment</InputLabel>
               <Select
                 value={formData.processSegmentId}
@@ -6086,7 +6609,9 @@ const SegmentBOMDialog: React.FC<SegmentBOMDialogProps> = ({ open, data, process
             </FormControl>
             {selectedSegment && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                Product: {selectedProductInfo?.name} | Segment: {selectedSegment.name} (Seq: {selectedSegment.sequence})
+                Equipment: {equipment.find(eq => eq.id === selectedEquipment)?.name || selectedEquipment}
+                {' | '}Product: {selectedProductInfo?.name || 'None (maintenance)'}
+                {' | '}Segment: {selectedSegment.name} (Seq: {selectedSegment.sequence})
               </Typography>
             )}
           </Grid>
@@ -7841,7 +8366,7 @@ const OperationEventDefSegmentAssignmentTab: React.FC<OperationEventDefSegmentAs
                   <TableCell>
                     <Chip label={eventDef?.eventCode || 'N/A'} size="small" />
                   </TableCell>
-                  <TableCell>{segment?.segmentName || item.processSegmentId}</TableCell>
+                  <TableCell>{segment?.name || item.processSegmentId}</TableCell>
                   <TableCell>
                     <Chip 
                       label={item.startOrEndEvent || 'Start'} 

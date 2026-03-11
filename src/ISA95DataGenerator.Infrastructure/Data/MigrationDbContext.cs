@@ -37,6 +37,7 @@ public class MigrationDbContext : DbContext
     public DbSet<EquipmentClassPropertyAssignment> EquipmentClassPropertyAssignments { get; set; }
     public DbSet<ProcessSegment> ProcessSegments { get; set; }
     public DbSet<SegmentBOM> SegmentBOMs { get; set; }
+    public DbSet<MaintenanceBOM> MaintenanceBOMs { get; set; }
     public DbSet<EquipmentUsage> EquipmentUsages { get; set; }
     public DbSet<Plant> Plants { get; set; }
     public DbSet<ProductionLine> ProductionLines { get; set; }
@@ -373,6 +374,26 @@ public class MigrationDbContext : DbContext
                 .HasForeignKey(e => e.ProcessSegmentId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
+
+            // MaintenanceBOM
+            modelBuilder.Entity<MaintenanceBOM>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasMaxLength(100);
+                entity.Property(e => e.EquipmentId).HasMaxLength(100);
+                entity.Property(e => e.ProcessSegmentId).HasMaxLength(100);
+                entity.Property(e => e.MaterialId).HasMaxLength(100);
+                entity.Property(e => e.QtyPerUnit).HasPrecision(18, 4);
+                entity.Property(e => e.Uom).HasMaxLength(50);
+                entity.Property(e => e.MaterialUse).HasMaxLength(50);
+                entity.HasIndex(e => e.EquipmentId);
+                entity.HasIndex(e => e.ProcessSegmentId);
+                entity.HasIndex(e => e.MaterialId);
+                entity.HasOne(e => e.ProcessSegment)
+                .WithMany(ps => ps.MaintenanceBOMs)
+                .HasForeignKey(e => e.ProcessSegmentId)
+                .OnDelete(DeleteBehavior.NoAction);
+            });
 
         // EquipmentUsage
         modelBuilder.Entity<EquipmentUsage>(entity =>

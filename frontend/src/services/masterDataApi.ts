@@ -138,6 +138,7 @@ const storeToEndpoint: Record<string, string> = {
   equipmentClassPropertiesAssignments: '/masterdata/equipment-class-property-assignments',
   processSegments: '/masterdata/process-segments',
   segmentBOMs: '/masterdata/segment-boms',
+  maintenanceBOMs: '/masterdata/maintenance-boms',
   equipmentUsages: '/masterdata/equipment-usages',
   plants: '/masterdata/plants',
   productionLines: '/masterdata/production-lines',
@@ -368,10 +369,13 @@ export const masterDataApi = {
   /**
    * Import parsed CSV data to the database (same interface as masterDataDB.importFromCSV)
    * @param csvData The parsed CSV data object with store names as keys
+   * @param replaceExisting When true, clears all existing master data before import.
    */
-  async importFromCSV(csvData: Record<string, any[]>): Promise<void> {
-    // Clear existing data first
-    await this.clearAll();
+  async importFromCSV(csvData: Record<string, any[]>, replaceExisting = false): Promise<void> {
+    // Destructive mode used only for explicit reset operations.
+    if (replaceExisting) {
+      await this.clearAll();
+    }
     
     // Import in the correct order to respect foreign key constraints
     const importOrder = [
@@ -391,6 +395,7 @@ export const masterDataApi = {
       'equipmentPropertyAssignments',
       'processSegments',
       'segmentBOMs',
+      'maintenanceBOMs',
       'equipmentUsages',
       'plants',
       'productionLines',
