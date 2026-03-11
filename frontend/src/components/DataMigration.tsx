@@ -863,6 +863,7 @@ const DataMigration: React.FC = () => {
             { name: 'lineId', type: 'string', sample: operationsRequests[0]?.lineId },
             { name: 'plannedStartDateTime', type: 'datetime', sample: operationsRequests[0]?.plannedStartDateTime },
             { name: 'plannedEndDateTime', type: 'datetime', sample: operationsRequests[0]?.plannedEndDateTime },
+            { name: 'operationsType', type: 'string', sample: operationsRequests[0]?.operationsType },
             { name: 'status', type: 'string', sample: operationsRequests[0]?.status },
           ],
         },
@@ -886,6 +887,7 @@ const DataMigration: React.FC = () => {
             },
             { name: 'targetQuantity', type: 'number', sample: segmentRequirements[0]?.targetQuantity?.toString() },
             { name: 'quantityUoM', type: 'string', sample: segmentRequirements[0]?.quantityUoM },
+            { name: 'operationsType', type: 'string', sample: segmentRequirements[0]?.operationsType },
           ],
         },
         {
@@ -898,6 +900,7 @@ const DataMigration: React.FC = () => {
             { name: 'requiredQty', type: 'number', sample: segmentMaterialRequirements[0]?.requiredQty?.toString() },
             { name: 'qtyUoM', type: 'string', sample: segmentMaterialRequirements[0]?.qtyUoM },
             { name: 'requirementType', type: 'string', sample: segmentMaterialRequirements[0]?.requirementType },
+            { name: 'operationsType', type: 'string', sample: segmentMaterialRequirements[0]?.operationsType },
           ],
         },
         {
@@ -907,7 +910,9 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: segmentEquipmentRequirements[0]?.id },
             { name: 'segmentRequirementId', type: 'string', sample: segmentEquipmentRequirements[0]?.segmentRequirementId },
             { name: 'equipmentId', type: 'string', sample: segmentEquipmentRequirements[0]?.equipmentId },
-            { name: 'plannedDurationHours', type: 'number', sample: segmentEquipmentRequirements[0]?.plannedDurationHours?.toString() },
+            { name: 'plannedQuantity', type: 'number', sample: segmentEquipmentRequirements[0]?.plannedQuantity?.toString() },
+            { name: 'unitOfMeasure', type: 'string', sample: segmentEquipmentRequirements[0]?.unitOfMeasure },
+            { name: 'operationsType', type: 'string', sample: segmentEquipmentRequirements[0]?.operationsType },
           ],
         },
         {
@@ -920,6 +925,7 @@ const DataMigration: React.FC = () => {
             { name: 'productionLineId', type: 'string', sample: operationsResponses[0]?.productionLineId },
             { name: 'actualStartDateTime', type: 'datetime', sample: operationsResponses[0]?.actualStartDateTime },
             { name: 'actualEndDateTime', type: 'datetime', sample: operationsResponses[0]?.actualEndDateTime },
+            { name: 'operationsType', type: 'string', sample: operationsResponses[0]?.operationsType },
             { name: 'status', type: 'string', sample: operationsResponses[0]?.status },
           ],
         },
@@ -933,6 +939,7 @@ const DataMigration: React.FC = () => {
             { name: 'equipmentId', type: 'string', sample: segmentResponses[0]?.equipmentId },
             { name: 'actualStartDateTime', type: 'datetime', sample: segmentResponses[0]?.actualStartDateTime },
             { name: 'actualEndDateTime', type: 'datetime', sample: segmentResponses[0]?.actualEndDateTime },
+            { name: 'operationsType', type: 'string', sample: segmentResponses[0]?.operationsType },
           ],
         },
         {
@@ -946,6 +953,7 @@ const DataMigration: React.FC = () => {
             { name: 'actualQty', type: 'number', sample: segmentMaterialActuals[0]?.actualQty?.toString() },
             { name: 'qtyUoM', type: 'string', sample: segmentMaterialActuals[0]?.qtyUoM },
             { name: 'direction', type: 'string', sample: segmentMaterialActuals[0]?.direction },
+            { name: 'operationsType', type: 'string', sample: segmentMaterialActuals[0]?.operationsType },
           ],
         },
         {
@@ -955,7 +963,9 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: segmentEquipmentActuals[0]?.id },
             { name: 'segmentResponseId', type: 'string', sample: segmentEquipmentActuals[0]?.segmentResponseId },
             { name: 'equipmentId', type: 'string', sample: segmentEquipmentActuals[0]?.equipmentId },
-            { name: 'actualDurationHours', type: 'number', sample: segmentEquipmentActuals[0]?.actualDurationHours?.toString() },
+            { name: 'actualQuantity', type: 'number', sample: segmentEquipmentActuals[0]?.actualQuantity?.toString() },
+            { name: 'unitOfMeasure', type: 'string', sample: segmentEquipmentActuals[0]?.unitOfMeasure },
+            { name: 'operationsType', type: 'string', sample: segmentEquipmentActuals[0]?.operationsType },
           ],
         },
         {
@@ -995,6 +1005,7 @@ const DataMigration: React.FC = () => {
             { name: 'effectiveTimestamp', type: 'datetime', sample: operationsEvents?.[0]?.effectiveTimestamp },
             { name: 'notes', type: 'string', sample: operationsEvents?.[0]?.notes },
             { name: 'eventType', type: 'string', sample: operationsEvents?.[0]?.eventType },
+            { name: 'operationsType', type: 'string', sample: operationsEvents?.[0]?.operationsType },
             { name: 'equipmentId', type: 'string', sample: operationsEvents?.[0]?.equipmentId },
             { name: 'hierarchyScope', type: 'string', sample: operationsEvents?.[0]?.hierarchyScope },
           ],

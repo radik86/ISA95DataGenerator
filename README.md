@@ -242,6 +242,11 @@ POST /api/datageneration/generate-data
 
 ## 🛠 Development
 
+### Repository Rules
+- Never modify `.json` files inside `InbuiltEntitiesDTDL/` directly (also referred to as `InbuildEntitiesDTDL`).
+- Treat `InbuiltEntitiesDTDL/` as protected baseline metadata.
+- If metadata updates are needed for UI/mapping behavior, make them in `frontend/public/InbuiltEntitiesDTDL/` unless a maintainer explicitly requests a baseline update.
+
 ### Add New Entity
 1. Place JSON file in `InbuiltEntitiesDTDL` folder
 2. Ensure it follows ISA-95 format with `dtdlSchema`

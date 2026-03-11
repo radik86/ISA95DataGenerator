@@ -100,6 +100,7 @@ export interface OperationsRequestRecord extends BaseRecord {
   plannedEndDateTime: string;
   priority: number;
   status: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface SegmentRequirementRecord extends BaseRecord {
@@ -111,6 +112,7 @@ export interface SegmentRequirementRecord extends BaseRecord {
   latestEndDateTime: string;
   targetQuantity: number;
   quantityUoM: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface SegmentMaterialRequirementRecord extends BaseRecord {
@@ -120,6 +122,7 @@ export interface SegmentMaterialRequirementRecord extends BaseRecord {
   requiredQty: number;
   qtyUoM: string;
   requirementType: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface SegmentEquipmentRequirementRecord extends BaseRecord {
@@ -129,7 +132,9 @@ export interface SegmentEquipmentRequirementRecord extends BaseRecord {
   equipmentClassId: string;
   equipmentId: string;
   requirementType: string;
-  plannedDurationHours: number;
+  plannedQuantity: number;
+  unitOfMeasure?: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface OperationsResponseRecord extends BaseRecord {
@@ -141,6 +146,7 @@ export interface OperationsResponseRecord extends BaseRecord {
   actualQuantity: number;
   quantityUoM: string;
   status: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface SegmentResponseRecord extends BaseRecord {
@@ -153,6 +159,7 @@ export interface SegmentResponseRecord extends BaseRecord {
   actualQuantity: number;
   quantityUoM: string;
   status: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface SegmentMaterialActualRecord extends BaseRecord {
@@ -163,15 +170,18 @@ export interface SegmentMaterialActualRecord extends BaseRecord {
   actualQty: number;
   qtyUoM: string;
   direction: 'CONSUME' | 'PRODUCE';
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface SegmentEquipmentActualRecord extends BaseRecord {
   id: string;
   segmentResponseId: string;
   equipmentId: string;
-  actualDurationHours: number;
+  actualQuantity: number;
   actualStartDateTime: string;
   actualEndDateTime: string;
+  unitOfMeasure?: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface TestResultRecord extends BaseRecord {
@@ -203,6 +213,7 @@ export interface OperationsEventRecord extends BaseRecord {
   endDateTime: string;
   durationMinutes: number;
   comment?: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 export interface OperationsEventRecordRecord extends BaseRecord {

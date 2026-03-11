@@ -57,6 +57,7 @@ interface OperationsRequest {
   plannedEndDateTime: string;
   priority: number;
   status: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface SegmentRequirement {
@@ -69,6 +70,7 @@ interface SegmentRequirement {
   latestEndDateTime: string;
   targetQuantity: number;
   quantityUoM: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface SegmentMaterialRequirement {
@@ -78,6 +80,7 @@ interface SegmentMaterialRequirement {
   requiredQty: number;
   qtyUoM: string;
   requirementType: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface SegmentEquipmentRequirement {
@@ -87,7 +90,9 @@ interface SegmentEquipmentRequirement {
   equipmentClassId: string;
   equipmentId: string;
   requirementType: string;
-  plannedDurationHours: number;
+  plannedQuantity: number;
+  unitOfMeasure?: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 // Actual Data Interfaces
@@ -102,6 +107,7 @@ interface OperationsResponse {
   actualQuantity: number;
   quantityUoM: string;
   status: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface SegmentResponse {
@@ -115,6 +121,7 @@ interface SegmentResponse {
   actualQuantity: number;
   quantityUoM: string;
   status: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface SegmentMaterialActual {
@@ -125,15 +132,18 @@ interface SegmentMaterialActual {
   actualQty: number;
   qtyUoM: string;
   direction: 'CONSUME' | 'PRODUCE' | 'Scrap';
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface SegmentEquipmentActual {
   id: string;
   segmentResponseId: string;
   equipmentId: string;
-  actualDurationHours: number;
+  actualQuantity: number;
   actualStartDateTime: string;
   actualEndDateTime: string;
+  unitOfMeasure?: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface EquipmentPropertyTracking {
@@ -158,6 +168,7 @@ interface OperationsEvent {
   eventType: string;
   equipmentId: string;
   hierarchyScope: string;
+  operationsType?: 'Production' | 'Maintenance';
 }
 
 interface OperationsEventRecord {
@@ -334,12 +345,62 @@ const ProcessDataGenerator: React.FC = () => {
   const [batchMaxDailyOrders, setBatchMaxDailyOrders] = useState(3);
   const [batchTargetUtilizationPercent, setBatchTargetUtilizationPercent] = useState(100);
 
+    // Main tab navigation
+    const [mainTab, setMainTab] = useState(0); // 0=Production, 1=Maintenance
+    const [maintenanceActiveTab, setMaintenanceActiveTab] = useState(0); // 0=Plan, 1=Actual
+
+    // Maintenance master data
+    const [maintenanceBOMs, setMaintenanceBOMs] = useState<any[]>([]);
+
+    // Maintenance plan form
+    const [maintenancePlanFormData, setMaintenancePlanFormData] = useState({
+      description: '',
+      plantId: '',
+      lineId: '',
+      equipmentId: '',
+      plannedStartDateTime: '',
+      plannedEndDateTime: '',
+      priority: 1,
+    });
+
+    // Maintenance plan generated data
+    const [generatedMaintenanceRequest, setGeneratedMaintenanceRequest] = useState<OperationsRequest | null>(null);
+    const [maintenanceSegmentRequirements, setMaintenanceSegmentRequirements] = useState<SegmentRequirement[]>([]);
+    const [maintenanceMaterialRequirements, setMaintenanceMaterialRequirements] = useState<SegmentMaterialRequirement[]>([]);
+    const [maintenanceEquipmentRequirements, setMaintenanceEquipmentRequirements] = useState<SegmentEquipmentRequirement[]>([]);
+
+    // Maintenance actual state
+    const [savedMaintenanceRequests, setSavedMaintenanceRequests] = useState<any[]>([]);
+    const [selectedMaintenanceRequestId, setSelectedMaintenanceRequestId] = useState('');
+    const [generatedMaintenanceResponse, setGeneratedMaintenanceResponse] = useState<OperationsResponse | null>(null);
+    const [maintenanceSegmentResponses, setMaintenanceSegmentResponses] = useState<SegmentResponse[]>([]);
+    const [maintenanceMaterialActuals, setMaintenanceMaterialActuals] = useState<SegmentMaterialActual[]>([]);
+    const [maintenanceEquipmentActuals, setMaintenanceEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
+    const [maintenanceActualTimestamp, setMaintenanceActualTimestamp] = useState<Date | null>(null);
+    const [maintenancePlanReference, setMaintenancePlanReference] = useState<OperationsRequest | null>(null);
+    const [maintenanceSegReqReference, setMaintenanceSegReqReference] = useState<SegmentRequirement[]>([]);
+
+    const showSnackbar = (message: string, severity: 'success' | 'error') => {
+      setSnackbar({ open: true, message, severity });
+    };
+
   const loadSavedOperationsRequests = async () => {
     try {
       const requests = await processDataApi.getAll('operationsRequests');
       setSavedOperationsRequests(requests);
     } catch (error) {
       console.error('Failed to load operations requests:', error);
+    }
+  };
+
+  const loadSavedMaintenanceRequests = async () => {
+    try {
+      const requests = await processDataApi.getAll('operationsRequests');
+      const maintenanceIds = new Set((maintenanceBOMs || []).map((m) => m.materialId));
+      const filtered = requests.filter((req: any) => maintenanceIds.has(req.productMaterialId));
+      setSavedMaintenanceRequests(filtered);
+    } catch (error) {
+      console.error('Failed to load maintenance operations requests:', error);
     }
   };
 
@@ -375,7 +436,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs] = await Promise.all([
+      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs, mBoms] = await Promise.all([
         masterDataApi.getAll('materials'),
         masterDataApi.getAll('equipment'),
         masterDataApi.getAll('processSegments'),
@@ -397,6 +458,7 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataApi.getAll('crews'),
         masterDataApi.getAll('shiftCrewAssignments'),
         masterDataApi.getAll('hierarchyScopes'),
+        masterDataApi.getAll('maintenanceBOMs'),
       ]);
 
       setMaterials(mat);
@@ -420,11 +482,14 @@ const ProcessDataGenerator: React.FC = () => {
       setCrews(crw);
       setShiftCrewAssignments(sca);
       setHierarchyScopes(hs);
-      
+      setMaintenanceBOMs(mBoms);
+
       console.log('[Master Data] Loaded:', {
         materials: mat.length,
         equipment: eq.length,
         processSegments: ps.length,
+        segmentBOMs: bom.length,
+        maintenanceBOMs: mBoms.length,
         equipmentProperties: eprop.length,
         equipmentPropertyAssignments: epa.length,
         equipmentClassPropertyAssignments: ecpa.length,
@@ -437,17 +502,16 @@ const ProcessDataGenerator: React.FC = () => {
         operationsEventEntriesTemplates: oeet.length,
         shifts: shft.length,
         crews: crw.length,
-        shiftCrewAssignments: sca.length
+        shiftCrewAssignments: sca.length,
       });
-      
-      // Debug: Log sample event definitions
-      const sampleDowntimeEvents = oed.filter(e => e.causesDowntime).slice(0, 3);
-      const sampleScrapEvents = oed.filter(e => e.causesScrap).slice(0, 3);
-      console.log('[Master Data] Sample events with causesDowntime=true:', sampleDowntimeEvents.map(e => `${e.eventCode} (${e.causesDowntime})`));
-      console.log('[Master Data] Sample events with causesScrap=true:', sampleScrapEvents.map(e => `${e.eventCode} (${e.causesScrap})`));
-      console.log('[Master Data] Total events with causesDowntime=true:', oed.filter(e => e.causesDowntime).length);
-      console.log('[Master Data] Total events with causesScrap=true:', oed.filter(e => e.causesScrap).length);
-      
+
+      const sampleDowntimeEvents = oed.filter((e) => e.causesDowntime).slice(0, 3);
+      const sampleScrapEvents = oed.filter((e) => e.causesScrap).slice(0, 3);
+      console.log('[Master Data] Sample events with causesDowntime=true:', sampleDowntimeEvents.map((e) => `${e.eventCode} (${e.causesDowntime})`));
+      console.log('[Master Data] Sample events with causesScrap=true:', sampleScrapEvents.map((e) => `${e.eventCode} (${e.causesScrap})`));
+      console.log('[Master Data] Total events with causesDowntime=true:', oed.filter((e) => e.causesDowntime).length);
+      console.log('[Master Data] Total events with causesScrap=true:', oed.filter((e) => e.causesScrap).length);
+
       setLoading(false);
     } catch (error) {
       console.error('Failed to load master data:', error);
@@ -456,15 +520,16 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
   useEffect(() => {
     loadMasterData();
     loadSavedOperationsRequests();
+    loadSavedMaintenanceRequests();
     loadStoredActualData();
   }, []);
+
+  useEffect(() => {
+    loadSavedMaintenanceRequests();
+  }, [maintenanceBOMs]);
 
   const generateActualData = async () => {
     if (!selectedOperationsRequestId || !actualProductQuantity) {
@@ -474,11 +539,10 @@ const ProcessDataGenerator: React.FC = () => {
 
     try {
       setLoading(true);
-      
+
       // Load the operations request and its requirements
       const orData = await processDataApi.getOperationsRequestWithRequirements(selectedOperationsRequestId);
       if (!orData) {
-        showSnackbar('Operations request not found', 'error');
         setLoading(false);
         return;
       }
@@ -491,7 +555,7 @@ const ProcessDataGenerator: React.FC = () => {
       setReferenceSegmentRequirements(orData.segmentRequirements);
       
       // Load segment equipment requirements
-      const segmentEquipmentRequirements = orData.segmentEquipmentRequirements || [];
+      const segmentEquipmentRequirements = orData.equipmentRequirements || [];
 
       // Generate Operations Response ID with plant, line, date and time
       const plantId = orData.operationsRequest.plantId;
@@ -668,6 +732,7 @@ const ProcessDataGenerator: React.FC = () => {
             actualQuantity: runQuantity,
             quantityUoM: segReq.quantityUoM,
             status: 'Completed',
+            operationsType: 'Production',
           };
           generatedSegResponses.push(segResp);
 
@@ -683,19 +748,19 @@ const ProcessDataGenerator: React.FC = () => {
             const materialLotId = `LOT-${plantId}-${lineId}-${matActualDateTime}-${bom.materialId}-R${run + 1}`;
             
             // Determine direction from BOM MaterialUse field
-            let direction = 'Material consumed'; // default
+            let direction: 'CONSUME' | 'PRODUCE' | 'Scrap' = 'CONSUME'; // default
             if (bom.materialUse) {
               const materialUse = bom.materialUse.toUpperCase();
               if (materialUse === 'PRODUCE' || materialUse === 'PRODUCED') {
-                direction = 'Material produced';
+                direction = 'PRODUCE';
               } else if (materialUse === 'SCRAP') {
                 direction = 'Scrap';
               } else {
-                direction = 'Material consumed';
+                direction = 'CONSUME';
               }
             }
             
-            const isOutput = direction === 'Material produced' || direction === 'Scrap';
+            const isOutput = direction === 'PRODUCE' || direction === 'Scrap';
             
             const matActual: SegmentMaterialActual = {
               id: matActualId,
@@ -705,6 +770,7 @@ const ProcessDataGenerator: React.FC = () => {
               actualQty: bom.qtyPerUnit * runQuantity,
               qtyUoM: bom.uom,
               direction: direction,
+              operationsType: 'Production',
             };
             generatedMatActuals.push(matActual);
             
@@ -742,7 +808,8 @@ const ProcessDataGenerator: React.FC = () => {
               materialLotId: finishedProductLotId,
               actualQty: finishedGoodQuantity,
               qtyUoM: orData.operationsRequest.quantityUoM,
-              direction: 'Material produced',
+              direction: 'PRODUCE',
+              operationsType: 'Production',
             };
             generatedMatActuals.push(finishedProductActual);
             
@@ -795,6 +862,7 @@ const ProcessDataGenerator: React.FC = () => {
                 actualQty: scrapQuantity,
                 qtyUoM: orData.operationsRequest.quantityUoM,
                 direction: 'Scrap',
+                operationsType: 'Production',
               };
               generatedMatActuals.push(scrapProductActual);
               
@@ -822,9 +890,11 @@ const ProcessDataGenerator: React.FC = () => {
               id: eqActualId,
               segmentResponseId: segRespId,
               equipmentId: eqUsage.equipmentId,
-              actualDurationHours: runDuration,
+              actualQuantity: runDuration,
               actualStartDateTime: runStartTime.toISOString().slice(0, 19).replace('T', ' '),
               actualEndDateTime: endTime.toISOString().slice(0, 19).replace('T', ' '),
+              unitOfMeasure: 'Hours',
+              operationsType: 'Production',
             };
             generatedEqActuals.push(eqActual);
           }
@@ -952,6 +1022,7 @@ const ProcessDataGenerator: React.FC = () => {
                 eventType: eventDef?.eventType || 'Alarm',
                 equipmentId: equipmentIdValue,
                 hierarchyScope: hierarchyScopeValue,
+                operationsType: 'Production',
               };
               generatedOperationsEvents.push(operationsEvent);
               console.log(`[Operations Events] Created ${assignment.isMandatory ? 'MANDATORY' : 'conditional'} event: ${operationsEvent.id} (${eventDef?.eventCode}) at ${startOrEnd}`);
@@ -1520,6 +1591,7 @@ const ProcessDataGenerator: React.FC = () => {
         actualQuantity: actualProductQuantity,
         quantityUoM: orData.operationsRequest.quantityUoM,
         status: 'Completed',
+        operationsType: 'Production',
       };
 
       console.log(`Operations Response: Start=${opsResponse.actualStartDateTime}, End=${opsResponse.actualEndDateTime}`);
@@ -1597,6 +1669,252 @@ const ProcessDataGenerator: React.FC = () => {
     setActualGenerationTimestamp(null);
   };
 
+  const generateMaintenancePlanData = async () => {
+    if (!maintenancePlanFormData.equipmentId || !maintenancePlanFormData.plantId || !maintenancePlanFormData.lineId) {
+      showSnackbar('Please select plant, line and equipment for maintenance plan', 'error');
+      return;
+    }
+
+    const equipmentBoms = maintenanceBOMs.filter((b) => b.equipmentId === maintenancePlanFormData.equipmentId);
+    if (equipmentBoms.length === 0) {
+      showSnackbar('No maintenance BOM entries found for selected equipment', 'error');
+      return;
+    }
+
+    const now = new Date();
+    const start = maintenancePlanFormData.plannedStartDateTime || now.toISOString();
+    const end = maintenancePlanFormData.plannedEndDateTime || new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+    const stamp = `${now.toISOString().slice(0, 10).replace(/-/g, '')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const sortedBoms = [...equipmentBoms].sort((a, b) => {
+      const seqA = processSegments.find((ps) => ps.id === a.processSegmentId)?.sequence ?? Number.MAX_SAFE_INTEGER;
+      const seqB = processSegments.find((ps) => ps.id === b.processSegmentId)?.sequence ?? Number.MAX_SAFE_INTEGER;
+      return seqA - seqB;
+    });
+
+    const requestId = `MNT-REQ-${maintenancePlanFormData.plantId}-${maintenancePlanFormData.lineId}-${stamp}`;
+    const request: OperationsRequest = {
+      id: requestId,
+      description: maintenancePlanFormData.description || `Maintenance order for ${maintenancePlanFormData.equipmentId}`,
+      plantId: maintenancePlanFormData.plantId,
+      lineId: maintenancePlanFormData.lineId,
+      productMaterialId: sortedBoms[0].materialId || maintenancePlanFormData.equipmentId,
+      plannedQuantity: 1,
+      quantityUoM: 'EA',
+      plannedStartDateTime: start,
+      plannedEndDateTime: end,
+      priority: maintenancePlanFormData.priority,
+      status: 'Planned',
+      operationsType: 'Maintenance',
+    };
+
+    const segReqs: SegmentRequirement[] = sortedBoms.map((mb, index) => {
+      const segment = processSegments.find((ps) => ps.id === mb.processSegmentId);
+      return {
+        id: `MNT-SR-${requestId}-${index + 1}`,
+        operationsRequestId: requestId,
+        processSegmentId: mb.processSegmentId,
+        equipmentId: maintenancePlanFormData.equipmentId,
+        sequence: segment?.sequence ?? (index + 1) * 10,
+        earliestStartDateTime: start,
+        latestEndDateTime: end,
+        targetQuantity: 1,
+        quantityUoM: 'EA',
+        operationsType: 'Maintenance',
+      };
+    });
+
+    const matReqs: SegmentMaterialRequirement[] = sortedBoms.map((mb, index) => ({
+      id: `MNT-MR-${requestId}-${index + 1}`,
+      segmentRequirementId: segReqs[index].id,
+      materialId: mb.materialId,
+      requiredQty: Number(mb.qtyPerUnit) || 1,
+      qtyUoM: mb.uom || 'EA',
+      requirementType: mb.materialUse || 'CONSUME',
+      operationsType: 'Maintenance',
+    }));
+
+    const eqReqs: SegmentEquipmentRequirement[] = sortedBoms.map((mb, index) => {
+      const eqData = equipment.find((e) => e.id === maintenancePlanFormData.equipmentId);
+      return {
+        id: `MNT-ER-${requestId}-${index + 1}`,
+        segmentRequirementId: segReqs[index].id,
+        lineId: maintenancePlanFormData.lineId,
+        equipmentClassId: eqData?.equipmentClassId || '',
+        equipmentId: maintenancePlanFormData.equipmentId,
+        requirementType: 'MUST_USE',
+        plannedQuantity: 1,
+        unitOfMeasure: 'Machine',
+        operationsType: 'Maintenance',
+      };
+    });
+
+    setGeneratedMaintenanceRequest(request);
+    setMaintenanceSegmentRequirements(segReqs);
+    setMaintenanceMaterialRequirements(matReqs);
+    setMaintenanceEquipmentRequirements(eqReqs);
+    showSnackbar(`Maintenance plan generated: ${segReqs.length} segments`, 'success');
+  };
+
+  const saveMaintenancePlanToDatabase = async () => {
+    if (!generatedMaintenanceRequest || maintenanceSegmentRequirements.length === 0) {
+      showSnackbar('No maintenance plan data to save', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await processDataApi.saveGeneratedData(
+        generatedMaintenanceRequest,
+        maintenanceSegmentRequirements,
+        maintenanceMaterialRequirements,
+        maintenanceEquipmentRequirements,
+      );
+      await loadSavedMaintenanceRequests();
+      await loadSavedOperationsRequests();
+      setLoading(false);
+      showSnackbar('Maintenance plan data saved to database successfully', 'success');
+    } catch (error: any) {
+      console.error('Failed to save maintenance plan data:', error);
+      showSnackbar(`Failed to save maintenance plan data: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
+  };
+
+  const generateMaintenanceActualData = async () => {
+    if (!selectedMaintenanceRequestId) {
+      showSnackbar('Please select a maintenance order first', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const orData = await processDataApi.getOperationsRequestWithRequirements(selectedMaintenanceRequestId);
+      if (!orData) {
+        showSnackbar('Maintenance order not found', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date();
+      const respId = `MNT-RESP-${timestamp.toISOString().slice(0, 19).replace(/[-:T]/g, '')}`;
+      const baseReq = orData.operationsRequest;
+
+      const response: OperationsResponse = {
+        id: respId,
+        operationsRequestId: baseReq.id,
+        description: `Maintenance execution for ${baseReq.description}`,
+        plantId: baseReq.plantId,
+        productionLineId: baseReq.lineId,
+        actualStartDateTime: baseReq.plannedStartDateTime,
+        actualEndDateTime: baseReq.plannedEndDateTime,
+        actualQuantity: 1,
+        quantityUoM: baseReq.quantityUoM || 'EA',
+        status: 'Completed',
+        operationsType: 'Maintenance',
+      };
+
+      const segResponses: SegmentResponse[] = (orData.segmentRequirements || []).map((sr: any, index: number) => ({
+        id: `MNT-SRESP-${respId}-${index + 1}`,
+        segmentRequirementId: sr.id,
+        operationsResponseId: respId,
+        processSegmentId: sr.processSegmentId,
+        equipmentId: sr.equipmentId,
+        actualStartDateTime: sr.earliestStartDateTime,
+        actualEndDateTime: sr.latestEndDateTime,
+        actualQuantity: 1,
+        quantityUoM: sr.quantityUoM || 'EA',
+        status: 'Completed',
+        operationsType: 'Maintenance',
+      }));
+
+      const segRespBySegReq = new Map(segResponses.map((sr) => [sr.segmentRequirementId, sr]));
+
+      const matActuals: SegmentMaterialActual[] = (orData.materialRequirements || []).map((mr: any, index: number) => ({
+        id: `MNT-MACT-${respId}-${index + 1}`,
+        segmentResponseId: segRespBySegReq.get(mr.segmentRequirementId)?.id || '',
+        materialId: mr.materialId,
+        materialLotId: `MNT-LOT-${timestamp.getTime()}-${index + 1}`,
+        actualQty: mr.requiredQty || 1,
+        qtyUoM: mr.qtyUoM || 'EA',
+        direction: 'CONSUME',
+        operationsType: 'Maintenance',
+      })).filter((m) => !!m.segmentResponseId);
+
+      const eqActuals: SegmentEquipmentActual[] = (orData.equipmentRequirements || []).map((er: any, index: number) => ({
+        id: `MNT-EACT-${respId}-${index + 1}`,
+        segmentResponseId: segRespBySegReq.get(er.segmentRequirementId)?.id || '',
+        equipmentId: er.equipmentId,
+        actualQuantity: 1,
+        actualStartDateTime: baseReq.plannedStartDateTime,
+        actualEndDateTime: baseReq.plannedEndDateTime,
+        unitOfMeasure: 'Machine',
+        operationsType: 'Maintenance',
+      })).filter((e) => !!e.segmentResponseId);
+
+      setGeneratedMaintenanceResponse(response);
+      setMaintenanceSegmentResponses(segResponses);
+      setMaintenanceMaterialActuals(matActuals);
+      setMaintenanceEquipmentActuals(eqActuals);
+      setMaintenanceActualTimestamp(timestamp);
+      setMaintenancePlanReference(orData.operationsRequest);
+      setMaintenanceSegReqReference(orData.segmentRequirements || []);
+
+      setLoading(false);
+      showSnackbar(`Maintenance actual generated: ${segResponses.length} segment responses`, 'success');
+    } catch (error) {
+      console.error('Failed to generate maintenance actual data:', error);
+      showSnackbar('Failed to generate maintenance actual data', 'error');
+      setLoading(false);
+    }
+  };
+
+  const saveMaintenanceActualToDatabase = async () => {
+    if (!generatedMaintenanceResponse || maintenanceSegmentResponses.length === 0) {
+      showSnackbar('No maintenance actual data to save', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await processDataApi.upsertStoreRecords('operationsResponses', [generatedMaintenanceResponse]);
+      if (maintenanceSegmentResponses.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentResponses', maintenanceSegmentResponses);
+      }
+      if (maintenanceMaterialActuals.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentMaterialActuals', maintenanceMaterialActuals);
+      }
+      if (maintenanceEquipmentActuals.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentEquipmentActuals', maintenanceEquipmentActuals);
+      }
+      await loadStoredActualData();
+      setLoading(false);
+      showSnackbar('Maintenance actual data saved to database successfully', 'success');
+    } catch (error) {
+      console.error('Failed to save maintenance actual data:', error);
+      showSnackbar('Failed to save maintenance actual data', 'error');
+      setLoading(false);
+    }
+  };
+
+  const resetMaintenancePlan = () => {
+    setGeneratedMaintenanceRequest(null);
+    setMaintenanceSegmentRequirements([]);
+    setMaintenanceMaterialRequirements([]);
+    setMaintenanceEquipmentRequirements([]);
+  };
+
+  const resetMaintenanceActual = () => {
+    setSelectedMaintenanceRequestId('');
+    setGeneratedMaintenanceResponse(null);
+    setMaintenanceSegmentResponses([]);
+    setMaintenanceMaterialActuals([]);
+    setMaintenanceEquipmentActuals([]);
+    setMaintenanceActualTimestamp(null);
+    setMaintenancePlanReference(null);
+    setMaintenanceSegReqReference([]);
+  };
+
   const checkOperationsRequestData = async () => {
     if (!selectedOperationsRequestId) {
       showSnackbar('Please select an operations request first', 'error');
@@ -1612,8 +1930,8 @@ const ProcessDataGenerator: React.FC = () => {
 
       // Handle potentially undefined arrays
       const segmentReqs = orData.segmentRequirements || [];
-      const materialReqs = orData.segmentMaterialRequirements || [];
-      const equipmentReqs = orData.segmentEquipmentRequirements || [];
+      const materialReqs = orData.materialRequirements || [];
+      const equipmentReqs = orData.equipmentRequirements || [];
 
       console.log('[Check OR Data]', {
         operationsRequest: orData.operationsRequest,
@@ -1973,8 +2291,8 @@ const ProcessDataGenerator: React.FC = () => {
       }
 
       const segmentReqs = orData.segmentRequirements || [];
-      const materialReqs = orData.segmentMaterialRequirements || [];
-      const equipmentReqs = orData.segmentEquipmentRequirements || [];
+      const materialReqs = orData.materialRequirements || [];
+      const equipmentReqs = orData.equipmentRequirements || [];
 
       console.log(`[Delete Plan] Found ${segmentReqs.length} segment requirements, ${materialReqs.length} material requirements, ${equipmentReqs.length} equipment requirements`);
       
@@ -2103,26 +2421,26 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     // Export Operations Response
-    const orCsv = `OperationsResponseID,OperationsRequestID,PlantID,ProductionLineID,Description,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,Status\n${generatedOperationsResponse.id},${generatedOperationsResponse.operationsRequestId},${generatedOperationsResponse.plantId},${generatedOperationsResponse.productionLineId},${generatedOperationsResponse.description},${generatedOperationsResponse.actualStartDateTime},${generatedOperationsResponse.actualEndDateTime},${generatedOperationsResponse.actualQuantity},${generatedOperationsResponse.quantityUoM},${generatedOperationsResponse.status}`;
+    const orCsv = `OperationsResponseID,OperationsRequestID,PlantID,ProductionLineID,Description,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,OperationsType,Status\n${generatedOperationsResponse.id},${generatedOperationsResponse.operationsRequestId},${generatedOperationsResponse.plantId},${generatedOperationsResponse.productionLineId},${generatedOperationsResponse.description},${generatedOperationsResponse.actualStartDateTime},${generatedOperationsResponse.actualEndDateTime},${generatedOperationsResponse.actualQuantity},${generatedOperationsResponse.quantityUoM},${generatedOperationsResponse.operationsType || ''},${generatedOperationsResponse.status}`;
 
     // Export Segment Responses
-    const srHeaders = 'SegmentResponseID,SegmentRequirementID,OperationsResponseID,ProcessSegmentID,EquipmentID,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,Status';
+    const srHeaders = 'SegmentResponseID,SegmentRequirementID,OperationsResponseID,ProcessSegmentID,EquipmentID,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,OperationsType,Status';
     const srRows = segmentResponses.map(sr => 
-      `${sr.id},${sr.segmentRequirementId},${sr.operationsResponseId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.actualStartDateTime},${sr.actualEndDateTime},${sr.actualQuantity},${sr.quantityUoM},${sr.status}`
+      `${sr.id},${sr.segmentRequirementId},${sr.operationsResponseId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.actualStartDateTime},${sr.actualEndDateTime},${sr.actualQuantity},${sr.quantityUoM},${sr.operationsType || ''},${sr.status}`
     ).join('\n');
     const srCsv = `${srHeaders}\n${srRows}`;
 
     // Export Material Actuals
-    const maHeaders = 'SegmentMaterialActualID,SegmentResponseID,MaterialID,MaterialLotID,ActualQty,QtyUoM,Direction';
+    const maHeaders = 'SegmentMaterialActualID,SegmentResponseID,MaterialID,MaterialLotID,ActualQty,QtyUoM,Direction,OperationsType';
     const maRows = materialActuals.map(ma => 
-      `${ma.id},${ma.segmentResponseId},${ma.materialId},${ma.materialLotId},${ma.actualQty},${ma.qtyUoM},${ma.direction}`
+      `${ma.id},${ma.segmentResponseId},${ma.materialId},${ma.materialLotId},${ma.actualQty},${ma.qtyUoM},${ma.direction},${ma.operationsType || ''}`
     ).join('\n');
     const maCsv = `${maHeaders}\n${maRows}`;
 
     // Export Equipment Actuals
-    const eaHeaders = 'SegmentEquipmentActualID,SegmentResponseID,EquipmentID,ActualDurationHours,ActualStartDateTime,ActualEndDateTime';
+    const eaHeaders = 'SegmentEquipmentActualID,SegmentResponseID,EquipmentID,ActualQuantity,UnitOfMeasure,ActualStartDateTime,ActualEndDateTime,OperationsType';
     const eaRows = equipmentActuals.map(ea => 
-      `${ea.id},${ea.segmentResponseId},${ea.equipmentId},${ea.actualDurationHours},${ea.actualStartDateTime},${ea.actualEndDateTime}`
+      `${ea.id},${ea.segmentResponseId},${ea.equipmentId},${ea.actualQuantity},${ea.unitOfMeasure || ''},${ea.actualStartDateTime},${ea.actualEndDateTime},${ea.operationsType || ''}`
     ).join('\n');
     const eaCsv = `${eaHeaders}\n${eaRows}`;
 
@@ -2134,9 +2452,9 @@ const ProcessDataGenerator: React.FC = () => {
     const eptCsv = `${eptHeaders}\n${eptRows}`;
 
     // Export Operations Events
-    const oeHeaders = 'OperationsEventID,SegmentResponseID,OperationsEventDefinitionID,EffectiveTimestamp,EventType,EquipmentId,HierarchyScope,Notes';
+    const oeHeaders = 'OperationsEventID,SegmentResponseID,OperationsEventDefinitionID,EffectiveTimestamp,EventType,EquipmentId,HierarchyScope,OperationsType,Notes';
     const oeRows = operationsEvents.map(oe => 
-      `${oe.id},${oe.segmentResponseId},${oe.operationsEventDefinitionId},${oe.effectiveTimestamp},${oe.eventType},${oe.equipmentId},${oe.hierarchyScope},"${(oe.notes || '').replace(/"/g, '""')}"`
+      `${oe.id},${oe.segmentResponseId},${oe.operationsEventDefinitionId},${oe.effectiveTimestamp},${oe.eventType},${oe.equipmentId},${oe.hierarchyScope},${oe.operationsType || ''},"${(oe.notes || '').replace(/"/g, '""')}"`
     ).join('\n');
     const oeCsv = `${oeHeaders}\n${oeRows}`;
 
@@ -2356,6 +2674,7 @@ const ProcessDataGenerator: React.FC = () => {
         latestEndDateTime: toDbDateTime(allRunsEnd),
         targetQuantity: quantity,
         quantityUoM: 'EA',
+        operationsType: 'Production',
       };
       generatedSegReqs.push(segReq);
 
@@ -2375,6 +2694,7 @@ const ProcessDataGenerator: React.FC = () => {
             material?.classId === 'FINISHEDPRODUCT' ? 'Output' :
             material?.classId === 'INPROCESSMATERIAL' ? 'Input' :
             'Consumable',
+          operationsType: 'Production',
         });
       });
 
@@ -2386,6 +2706,7 @@ const ProcessDataGenerator: React.FC = () => {
           requiredQty: quantity,
           qtyUoM: 'EA',
           requirementType: 'Output',
+          operationsType: 'Production',
         });
       }
 
@@ -2399,7 +2720,9 @@ const ProcessDataGenerator: React.FC = () => {
           equipmentClassId: equipmentItem?.classId || '',
           equipmentId: usage.equipmentId,
           requirementType: 'SpecificAsset',
-          plannedDurationHours: (Number(segment.durationHours) || 2) * requiredRunsForEquipment,
+          plannedQuantity: (Number(segment.durationHours) || 2) * requiredRunsForEquipment,
+          unitOfMeasure: 'Hours',
+          operationsType: 'Production',
         });
         if (eqIndex === 0 && !generatedSegReqs[index].equipmentId) {
           generatedSegReqs[index].equipmentId = usage.equipmentId;
@@ -2419,6 +2742,7 @@ const ProcessDataGenerator: React.FC = () => {
       plannedEndDateTime: toDbDateTime(currentTime),
       priority: randomInt(1, 3),
       status: 'Planned',
+      operationsType: 'Production',
     };
 
     return {
@@ -2499,6 +2823,7 @@ const ProcessDataGenerator: React.FC = () => {
           actualQuantity: runQty,
           quantityUoM: operationsRequest.quantityUoM || 'EA',
           status: 'Completed',
+          operationsType: 'Production',
         });
 
         const bomLines = segmentBOMs.filter(b => b.processSegmentId === segReq.processSegmentId);
@@ -2520,6 +2845,7 @@ const ProcessDataGenerator: React.FC = () => {
             actualQty: (Number(bom.qtyPerUnit) || 0) * runQty,
             qtyUoM: bom.uom || 'EA',
             direction,
+            operationsType: 'Production',
           });
         }
 
@@ -2538,6 +2864,7 @@ const ProcessDataGenerator: React.FC = () => {
             actualQty: producedQty,
             qtyUoM: operationsRequest.quantityUoM || 'EA',
             direction: 'PRODUCE',
+            operationsType: 'Production',
           });
 
           if (scrapQty > 0) {
@@ -2549,6 +2876,7 @@ const ProcessDataGenerator: React.FC = () => {
               actualQty: scrapQty,
               qtyUoM: operationsRequest.quantityUoM || 'EA',
               direction: 'Scrap',
+              operationsType: 'Production',
             });
           }
         }
@@ -2560,9 +2888,11 @@ const ProcessDataGenerator: React.FC = () => {
             id: `EQ-ACT-${operationsRequest.plantId}-${operationsRequest.lineId}-${toIdDateTime(runStart)}-${usage.equipmentId}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
             segmentResponseId: segRespId,
             equipmentId: usage.equipmentId,
-            actualDurationHours: runDuration,
+            actualQuantity: runDuration,
             actualStartDateTime: toDbDateTime(runStart),
             actualEndDateTime: toDbDateTime(runEnd),
+            unitOfMeasure: 'Hours',
+            operationsType: 'Production',
           });
         }
 
@@ -2670,6 +3000,7 @@ const ProcessDataGenerator: React.FC = () => {
           eventType: eventDef?.eventType || 'Alarm',
           equipmentId: eqId,
           hierarchyScope: hierarchyScopeRecord?.id || '',
+          operationsType: 'Production',
         });
 
         const recordId = `OER-${eventId.replace('OPS-EVENT-', '')}`;
@@ -2767,6 +3098,7 @@ const ProcessDataGenerator: React.FC = () => {
       actualQuantity: operationsRequest.plannedQuantity,
       quantityUoM: operationsRequest.quantityUoM,
       status: 'Completed',
+      operationsType: 'Production',
     };
 
     await processDataApi.saveActualData(
@@ -2999,6 +3331,7 @@ const ProcessDataGenerator: React.FC = () => {
           latestEndDateTime: allRunsEnd.toISOString().slice(0, 19).replace('T', ' '),
           targetQuantity: formData.plannedQuantity,
           quantityUoM: formData.quantityUoM,
+          operationsType: 'Production',
         };
         generatedSegReqs.push(segReq);
         
@@ -3022,6 +3355,7 @@ const ProcessDataGenerator: React.FC = () => {
             qtyUoM: bom.uom,
             requirementType: material?.classId === 'FINISHEDPRODUCT' ? 'Output' : 
                            material?.classId === 'INPROCESSMATERIAL' ? 'Input' : 'Consumable',
+            operationsType: 'Production',
           };
           generatedMatReqs.push(matReq);
         });
@@ -3039,6 +3373,7 @@ const ProcessDataGenerator: React.FC = () => {
             requiredQty: formData.plannedQuantity,
             qtyUoM: formData.quantityUoM,
             requirementType: 'Output',
+            operationsType: 'Production',
           };
           generatedMatReqs.push(outputMatReq);
         }
@@ -3067,7 +3402,9 @@ const ProcessDataGenerator: React.FC = () => {
             equipmentClassId: equipmentItem?.classId || '',
             equipmentId: usage.equipmentId,
             requirementType: 'SpecificAsset',
-            plannedDurationHours: totalDuration,
+            plannedQuantity: totalDuration,
+            unitOfMeasure: 'Hours',
+            operationsType: 'Production',
           };
           generatedEqReqs.push(eqReq);
 
@@ -3093,6 +3430,7 @@ const ProcessDataGenerator: React.FC = () => {
         plannedEndDateTime: operationsEndTime.toISOString().slice(0, 19).replace('T', ' '),
         priority: formData.priority,
         status: formData.status,
+        operationsType: 'Production',
       };
 
       setGeneratedOperationsRequest(completeOR);
@@ -3150,27 +3488,27 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     // Export Operations Request
-    const orCsv = `OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,Status
-${generatedOperationsRequest.id},${generatedOperationsRequest.description},${generatedOperationsRequest.plantId},${generatedOperationsRequest.lineId},${generatedOperationsRequest.productMaterialId},${generatedOperationsRequest.plannedQuantity},${generatedOperationsRequest.quantityUoM},${generatedOperationsRequest.plannedStartDateTime},${generatedOperationsRequest.plannedEndDateTime},${generatedOperationsRequest.priority},${generatedOperationsRequest.status}`;
+    const orCsv = `OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,OperationsType,Status
+  ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${generatedOperationsRequest.plantId},${generatedOperationsRequest.lineId},${generatedOperationsRequest.productMaterialId},${generatedOperationsRequest.plannedQuantity},${generatedOperationsRequest.quantityUoM},${generatedOperationsRequest.plannedStartDateTime},${generatedOperationsRequest.plannedEndDateTime},${generatedOperationsRequest.priority},${generatedOperationsRequest.operationsType || ''},${generatedOperationsRequest.status}`;
 
     // Export Segment Requirements
-    const srHeaders = 'SegmentRequirementID,OperationsRequestID,ProcessSegmentID,EquipmentID,Sequence,EarliestStartDateTime,LatestEndDateTime,TargetQuantity,QuantityUoM';
+    const srHeaders = 'SegmentRequirementID,OperationsRequestID,ProcessSegmentID,EquipmentID,Sequence,EarliestStartDateTime,LatestEndDateTime,TargetQuantity,QuantityUoM,OperationsType';
     const srRows = segmentRequirements.map(sr => 
-      `${sr.id},${sr.operationsRequestId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.sequence},${sr.earliestStartDateTime},${sr.latestEndDateTime},${sr.targetQuantity},${sr.quantityUoM}`
+      `${sr.id},${sr.operationsRequestId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.sequence},${sr.earliestStartDateTime},${sr.latestEndDateTime},${sr.targetQuantity},${sr.quantityUoM},${sr.operationsType || ''}`
     ).join('\n');
     const srCsv = `${srHeaders}\n${srRows}`;
 
     // Export Material Requirements
-    const mrHeaders = 'SegmentMaterialReqID,SegmentRequirementID,MaterialID,RequiredQty,QtyUoM,RequirementType';
+    const mrHeaders = 'SegmentMaterialReqID,SegmentRequirementID,MaterialID,RequiredQty,QtyUoM,RequirementType,OperationsType';
     const mrRows = materialRequirements.map(mr => 
-      `${mr.id},${mr.segmentRequirementId},${mr.materialId},${mr.requiredQty},${mr.qtyUoM},${mr.requirementType}`
+      `${mr.id},${mr.segmentRequirementId},${mr.materialId},${mr.requiredQty},${mr.qtyUoM},${mr.requirementType},${mr.operationsType || ''}`
     ).join('\n');
     const mrCsv = `${mrHeaders}\n${mrRows}`;
 
     // Export Equipment Requirements
-    const erHeaders = 'SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedDurationHours';
+    const erHeaders = 'SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedQuantity,UnitOfMeasure,OperationsType';
     const erRows = equipmentRequirements.map(er => 
-      `${er.id},${er.segmentRequirementId},${er.lineId},${er.equipmentClassId},${er.equipmentId},${er.requirementType},${er.plannedDurationHours}`
+      `${er.id},${er.segmentRequirementId},${er.lineId},${er.equipmentClassId},${er.equipmentId},${er.requirementType},${er.plannedQuantity},${er.unitOfMeasure || ''},${er.operationsType || ''}`
     ).join('\n');
     const erCsv = `${erHeaders}\n${erRows}`;
 
@@ -3193,6 +3531,101 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
     } else if (type === 'equipment') {
       downloadCSV(erCsv, 'segment_equipment_requirements.csv');
       showSnackbar('Equipment requirements exported successfully', 'success');
+    }
+  };
+
+  const exportMaintenancePlanToCSV = (type: 'all' | 'operations' | 'segments' | 'materials' | 'equipment') => {
+    if (!generatedMaintenanceRequest || maintenanceSegmentRequirements.length === 0) {
+      showSnackbar('No maintenance plan data to export', 'error');
+      return;
+    }
+
+    const orCsv = `OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,OperationsType,Status
+  ${generatedMaintenanceRequest.id},${generatedMaintenanceRequest.description},${generatedMaintenanceRequest.plantId},${generatedMaintenanceRequest.lineId},${generatedMaintenanceRequest.productMaterialId},${generatedMaintenanceRequest.plannedQuantity},${generatedMaintenanceRequest.quantityUoM},${generatedMaintenanceRequest.plannedStartDateTime},${generatedMaintenanceRequest.plannedEndDateTime},${generatedMaintenanceRequest.priority},${generatedMaintenanceRequest.operationsType || ''},${generatedMaintenanceRequest.status}`;
+
+    const srHeaders = 'SegmentRequirementID,OperationsRequestID,ProcessSegmentID,EquipmentID,Sequence,EarliestStartDateTime,LatestEndDateTime,TargetQuantity,QuantityUoM,OperationsType';
+    const srRows = maintenanceSegmentRequirements
+      .map((sr) => `${sr.id},${sr.operationsRequestId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.sequence},${sr.earliestStartDateTime},${sr.latestEndDateTime},${sr.targetQuantity},${sr.quantityUoM},${sr.operationsType || ''}`)
+      .join('\n');
+    const srCsv = `${srHeaders}\n${srRows}`;
+
+    const mrHeaders = 'SegmentMaterialReqID,SegmentRequirementID,MaterialID,RequiredQty,QtyUoM,RequirementType,OperationsType';
+    const mrRows = maintenanceMaterialRequirements
+      .map((mr) => `${mr.id},${mr.segmentRequirementId},${mr.materialId},${mr.requiredQty},${mr.qtyUoM},${mr.requirementType},${mr.operationsType || ''}`)
+      .join('\n');
+    const mrCsv = `${mrHeaders}\n${mrRows}`;
+
+    const erHeaders = 'SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedQuantity,UnitOfMeasure,OperationsType';
+    const erRows = maintenanceEquipmentRequirements
+      .map((er) => `${er.id},${er.segmentRequirementId},${er.lineId},${er.equipmentClassId},${er.equipmentId},${er.requirementType},${er.plannedQuantity},${er.unitOfMeasure || ''},${er.operationsType || ''}`)
+      .join('\n');
+    const erCsv = `${erHeaders}\n${erRows}`;
+
+    if (type === 'all') {
+      downloadCSV(orCsv, 'maintenance_operations_request.csv');
+      downloadCSV(srCsv, 'maintenance_segment_requirements.csv');
+      downloadCSV(mrCsv, 'maintenance_material_requirements.csv');
+      downloadCSV(erCsv, 'maintenance_equipment_requirements.csv');
+      showSnackbar('All maintenance plan data exported successfully', 'success');
+    } else if (type === 'operations') {
+      downloadCSV(orCsv, 'maintenance_operations_request.csv');
+      showSnackbar('Maintenance operations request exported successfully', 'success');
+    } else if (type === 'segments') {
+      downloadCSV(srCsv, 'maintenance_segment_requirements.csv');
+      showSnackbar('Maintenance segment requirements exported successfully', 'success');
+    } else if (type === 'materials') {
+      downloadCSV(mrCsv, 'maintenance_material_requirements.csv');
+      showSnackbar('Maintenance material requirements exported successfully', 'success');
+    } else if (type === 'equipment') {
+      downloadCSV(erCsv, 'maintenance_equipment_requirements.csv');
+      showSnackbar('Maintenance equipment requirements exported successfully', 'success');
+    }
+  };
+
+  const exportMaintenanceActualToCSV = (type: 'all' | 'response' | 'segments' | 'materials' | 'equipment') => {
+    if (!generatedMaintenanceResponse || maintenanceSegmentResponses.length === 0) {
+      showSnackbar('No maintenance actual data to export', 'error');
+      return;
+    }
+
+    const orCsv = `OperationsResponseID,OperationsRequestID,PlantID,ProductionLineID,Description,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,OperationsType,Status\n${generatedMaintenanceResponse.id},${generatedMaintenanceResponse.operationsRequestId},${generatedMaintenanceResponse.plantId},${generatedMaintenanceResponse.productionLineId},${generatedMaintenanceResponse.description},${generatedMaintenanceResponse.actualStartDateTime},${generatedMaintenanceResponse.actualEndDateTime},${generatedMaintenanceResponse.actualQuantity},${generatedMaintenanceResponse.quantityUoM},${generatedMaintenanceResponse.operationsType || ''},${generatedMaintenanceResponse.status}`;
+
+    const srHeaders = 'SegmentResponseID,SegmentRequirementID,OperationsResponseID,ProcessSegmentID,EquipmentID,ActualStartDateTime,ActualEndDateTime,ActualQuantity,QuantityUoM,OperationsType,Status';
+    const srRows = maintenanceSegmentResponses
+      .map((sr) => `${sr.id},${sr.segmentRequirementId},${sr.operationsResponseId},${sr.processSegmentId},${sr.equipmentId || ''},${sr.actualStartDateTime},${sr.actualEndDateTime},${sr.actualQuantity},${sr.quantityUoM},${sr.operationsType || ''},${sr.status}`)
+      .join('\n');
+    const srCsv = `${srHeaders}\n${srRows}`;
+
+    const maHeaders = 'SegmentMaterialActualID,SegmentResponseID,MaterialID,MaterialLotID,ActualQty,QtyUoM,Direction,OperationsType';
+    const maRows = maintenanceMaterialActuals
+      .map((ma) => `${ma.id},${ma.segmentResponseId},${ma.materialId},${ma.materialLotId},${ma.actualQty},${ma.qtyUoM},${ma.direction},${ma.operationsType || ''}`)
+      .join('\n');
+    const maCsv = `${maHeaders}\n${maRows}`;
+
+    const eaHeaders = 'SegmentEquipmentActualID,SegmentResponseID,EquipmentID,ActualQuantity,UnitOfMeasure,ActualStartDateTime,ActualEndDateTime,OperationsType';
+    const eaRows = maintenanceEquipmentActuals
+      .map((ea) => `${ea.id},${ea.segmentResponseId},${ea.equipmentId},${ea.actualQuantity},${ea.unitOfMeasure || ''},${ea.actualStartDateTime},${ea.actualEndDateTime},${ea.operationsType || ''}`)
+      .join('\n');
+    const eaCsv = `${eaHeaders}\n${eaRows}`;
+
+    if (type === 'all') {
+      downloadCSV(orCsv, 'maintenance_operations_response.csv');
+      downloadCSV(srCsv, 'maintenance_segment_responses.csv');
+      downloadCSV(maCsv, 'maintenance_material_actuals.csv');
+      downloadCSV(eaCsv, 'maintenance_equipment_actuals.csv');
+      showSnackbar('All maintenance actual data exported successfully', 'success');
+    } else if (type === 'response') {
+      downloadCSV(orCsv, 'maintenance_operations_response.csv');
+      showSnackbar('Maintenance operations response exported successfully', 'success');
+    } else if (type === 'segments') {
+      downloadCSV(srCsv, 'maintenance_segment_responses.csv');
+      showSnackbar('Maintenance segment responses exported successfully', 'success');
+    } else if (type === 'materials') {
+      downloadCSV(maCsv, 'maintenance_material_actuals.csv');
+      showSnackbar('Maintenance material actuals exported successfully', 'success');
+    } else if (type === 'equipment') {
+      downloadCSV(eaCsv, 'maintenance_equipment_actuals.csv');
+      showSnackbar('Maintenance equipment actuals exported successfully', 'success');
     }
   };
 
@@ -3240,9 +3673,9 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
       const mrCsv = `${mrHeaders}\n${mrRows}`;
 
       // Export Equipment Requirements
-      const erHeaders = 'SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedDurationHours';
+      const erHeaders = 'SegmentEquipmentReqID,SegmentRequirementID,LineID,EquipmentClassID,EquipmentID,RequirementType,PlannedQuantity,UnitOfMeasure';
       const erRows = allEquipmentRequirements.map(er => 
-        `${er.id},${er.segmentRequirementId},${er.lineId},${er.equipmentClassId},${er.equipmentId},${er.requirementType},${er.plannedDurationHours}`
+        `${er.id},${er.segmentRequirementId},${er.lineId},${er.equipmentClassId},${er.equipmentId},${er.requirementType},${er.plannedQuantity},${er.unitOfMeasure || ''}`
       ).join('\n');
       const erCsv = `${erHeaders}\n${erRows}`;
 
@@ -3419,7 +3852,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
           'Equipment ID': er.equipmentId,
           'Equipment Name': equipmentItem?.name || '',
           'Requirement Type': er.requirementType,
-          'Planned Duration Hours': er.plannedDurationHours
+          'Planned Quantity': er.plannedQuantity
         };
       });
       const erSheet = XLSX.utils.json_to_sheet(erData);
@@ -3542,7 +3975,11 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
           <Button
             variant="outlined"
             startIcon={<RefreshIcon />}
-            onClick={activeTab === 0 ? resetForm : resetActualData}
+            onClick={
+              mainTab === 0
+                ? (activeTab === 0 ? resetForm : resetActualData)
+                : (maintenanceActiveTab === 0 ? resetMaintenancePlan : resetMaintenanceActual)
+            }
             sx={{ mr: 1 }}
           >
             Reset
@@ -3551,22 +3988,32 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
             variant="outlined"
             color="primary"
             startIcon={<SaveIcon />}
-            onClick={activeTab === 0 ? saveToDatabase : saveActualToDatabase}
-            disabled={activeTab === 0 ? segmentRequirements.length === 0 : segmentResponses.length === 0}
+            onClick={
+              mainTab === 0
+                ? (activeTab === 0 ? saveToDatabase : saveActualToDatabase)
+                : (maintenanceActiveTab === 0 ? saveMaintenancePlanToDatabase : saveMaintenanceActualToDatabase)
+            }
+            disabled={
+              mainTab === 0
+                ? (activeTab === 0 ? segmentRequirements.length === 0 : segmentResponses.length === 0)
+                : (maintenanceActiveTab === 0 ? maintenanceSegmentRequirements.length === 0 : maintenanceSegmentResponses.length === 0)
+            }
             sx={{ mr: 1 }}
           >
             Save to DB
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<DownloadIcon />}
-            onClick={() => activeTab === 0 ? exportToCSV('all') : exportActualToCSV('all')}
-            disabled={activeTab === 0 ? segmentRequirements.length === 0 : segmentResponses.length === 0}
-            sx={{ mr: 1 }}
-          >
-            Export All CSV
-          </Button>
-          {activeTab === 0 && (
+          {mainTab === 0 && (
+            <Button
+              variant="contained"
+              startIcon={<DownloadIcon />}
+              onClick={() => activeTab === 0 ? exportToCSV('all') : exportActualToCSV('all')}
+              disabled={activeTab === 0 ? segmentRequirements.length === 0 : segmentResponses.length === 0}
+              sx={{ mr: 1 }}
+            >
+              Export All CSV
+            </Button>
+          )}
+          {mainTab === 0 && activeTab === 0 && (
             <Button
               variant="contained"
               color="success"
@@ -3580,13 +4027,20 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
         </Box>
       </Box>
 
-      <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tab label="📋 Plan Data" />
-        <Tab label="✅ Actual Data" />
+      <Tabs value={mainTab} onChange={(e, newValue) => setMainTab(newValue)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tab label="Production" />
+        <Tab label="Maintenance" />
       </Tabs>
 
+      {mainTab === 0 && (
+        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tab label="📋 Plan Data" />
+          <Tab label="✅ Actual Data" />
+        </Tabs>
+      )}
+
       {/* Plan Data Tab */}
-      {activeTab === 0 && (
+      {mainTab === 0 && activeTab === 0 && (
         <Box>
           <Alert severity="info" sx={{ mb: 3 }}>
             Generate process data based on operations requests. Select a product and production line to automatically create 
@@ -4091,6 +4545,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       <TableCell>Start</TableCell>
                       <TableCell>End</TableCell>
                       <TableCell>Priority</TableCell>
+                      <TableCell>Operations Type</TableCell>
                       <TableCell>Status</TableCell>
                     </TableRow>
                   </TableHead>
@@ -4105,6 +4560,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                       <TableCell>{generatedOperationsRequest.plannedStartDateTime}</TableCell>
                       <TableCell>{generatedOperationsRequest.plannedEndDateTime}</TableCell>
                       <TableCell>{generatedOperationsRequest.priority}</TableCell>
+                      <TableCell>{generatedOperationsRequest.operationsType || 'N/A'}</TableCell>
                       <TableCell>
                         <Chip label={generatedOperationsRequest.status} size="small" color="primary" />
                       </TableCell>
@@ -4140,6 +4596,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     <TableCell>Start</TableCell>
                     <TableCell>End</TableCell>
                     <TableCell>Quantity</TableCell>
+                    <TableCell>Operations Type</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -4154,6 +4611,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableCell>{sr.earliestStartDateTime}</TableCell>
                         <TableCell>{sr.latestEndDateTime}</TableCell>
                         <TableCell>{sr.targetQuantity} {sr.quantityUoM}</TableCell>
+                        <TableCell>{sr.operationsType || 'N/A'}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -4185,6 +4643,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     <TableCell>Material</TableCell>
                     <TableCell>Required Qty</TableCell>
                     <TableCell>Type</TableCell>
+                    <TableCell>Operations Type</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -4203,6 +4662,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             color={mr.requirementType === 'Output' ? 'success' : 'default'}
                           />
                         </TableCell>
+                        <TableCell>{mr.operationsType || 'N/A'}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -4233,8 +4693,10 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     <TableCell>Segment Requirement</TableCell>
                     <TableCell>Equipment</TableCell>
                     <TableCell>Class</TableCell>
-                    <TableCell>Duration (hrs)</TableCell>
+                    <TableCell>Planned Quantity</TableCell>
+                    <TableCell>UoM</TableCell>
                     <TableCell>Type</TableCell>
+                    <TableCell>Operations Type</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -4246,10 +4708,12 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableCell>{er.segmentRequirementId}</TableCell>
                         <TableCell>{equipmentItem?.id || er.equipmentId}</TableCell>
                         <TableCell>{er.equipmentClassId}</TableCell>
-                        <TableCell>{er.plannedDurationHours.toFixed(2)}</TableCell>
+                        <TableCell>{er.plannedQuantity.toFixed(2)}</TableCell>
+                        <TableCell>{er.unitOfMeasure || 'N/A'}</TableCell>
                         <TableCell>
                           <Chip label={er.requirementType} size="small" color="info" />
                         </TableCell>
+                        <TableCell>{er.operationsType || 'N/A'}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -4263,7 +4727,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
       )}
 
       {/* Actual Data Tab */}
-      {activeTab === 1 && (
+      {mainTab === 0 && activeTab === 1 && (
         <Box>
           <Alert severity="info" sx={{ mb: 3 }}>
             Generate actual production data based on saved operations requests. Select an operations request and enter the actual quantity produced.
@@ -4576,7 +5040,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                     {selectedOperationsRequestId && (
                       <>
                         <Grid size={12}>
-                          <Alert severity="info" size="small">
+                          <Alert severity="info">
                             Selected: {savedOperationsRequests.find(or => or.id === selectedOperationsRequestId)?.description}
                           </Alert>
                         </Grid>
@@ -4785,6 +5249,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>Planned Start</TableCell>
                           <TableCell>Planned End</TableCell>
                           <TableCell>Planned Quantity</TableCell>
+                          <TableCell>Operations Type</TableCell>
                           <TableCell>Status</TableCell>
                         </TableRow>
                       </TableHead>
@@ -4795,6 +5260,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>{referenceOperationsRequest.plannedStartDateTime}</TableCell>
                           <TableCell>{referenceOperationsRequest.plannedEndDateTime}</TableCell>
                           <TableCell>{referenceOperationsRequest.plannedQuantity} {referenceOperationsRequest.quantityUoM}</TableCell>
+                          <TableCell>{referenceOperationsRequest.operationsType || 'N/A'}</TableCell>
                           <TableCell>
                             <Chip label={referenceOperationsRequest.status} size="small" color="primary" />
                           </TableCell>
@@ -4832,6 +5298,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>Actual Start</TableCell>
                           <TableCell>Actual End</TableCell>
                           <TableCell>Actual Quantity</TableCell>
+                          <TableCell>Operations Type</TableCell>
                           <TableCell>Status</TableCell>
                         </TableRow>
                       </TableHead>
@@ -4845,6 +5312,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>{generatedOperationsResponse.actualStartDateTime}</TableCell>
                           <TableCell>{generatedOperationsResponse.actualEndDateTime}</TableCell>
                           <TableCell>{generatedOperationsResponse.actualQuantity} {generatedOperationsResponse.quantityUoM}</TableCell>
+                          <TableCell>{generatedOperationsResponse.operationsType || 'N/A'}</TableCell>
                           <TableCell>
                             <Chip label={generatedOperationsResponse.status} size="small" color="success" />
                           </TableCell>
@@ -4872,6 +5340,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>Earliest Start</TableCell>
                           <TableCell>Latest End</TableCell>
                           <TableCell>Target Quantity</TableCell>
+                          <TableCell>Operations Type</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -4886,6 +5355,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                               <TableCell>{sr.earliestStartDateTime}</TableCell>
                               <TableCell>{sr.latestEndDateTime}</TableCell>
                               <TableCell>{sr.targetQuantity} {sr.quantityUoM}</TableCell>
+                              <TableCell>{sr.operationsType || 'N/A'}</TableCell>
                             </TableRow>
                           );
                         })}
@@ -4924,6 +5394,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableCell>Actual Start</TableCell>
                         <TableCell>Actual End</TableCell>
                         <TableCell>Actual Quantity</TableCell>
+                        <TableCell>Operations Type</TableCell>
                         <TableCell>Status</TableCell>
                       </TableRow>
                     </TableHead>
@@ -4946,6 +5417,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                               <TableCell>{sr.actualStartDateTime}</TableCell>
                               <TableCell>{sr.actualEndDateTime}</TableCell>
                               <TableCell>{sr.actualQuantity} {sr.quantityUoM}</TableCell>
+                              <TableCell>{sr.operationsType || 'N/A'}</TableCell>
                               <TableCell>
                                 <Chip label={sr.status} size="small" color="success" />
                               </TableCell>
@@ -4993,6 +5465,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableCell>Material Lot</TableCell>
                         <TableCell>Actual Qty</TableCell>
                         <TableCell>Direction</TableCell>
+                        <TableCell>Operations Type</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -5015,6 +5488,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                                   color={ma.direction === 'PRODUCE' ? 'success' : ma.direction === 'Scrap' ? 'error' : 'default'}
                                 />
                               </TableCell>
+                              <TableCell>{ma.operationsType || 'N/A'}</TableCell>
                             </TableRow>
                           );
                         })}
@@ -5051,9 +5525,11 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                         <TableCell>ID</TableCell>
                         <TableCell>Segment Response</TableCell>
                         <TableCell>Equipment</TableCell>
-                        <TableCell>Duration (hrs)</TableCell>
+                        <TableCell>Actual Quantity</TableCell>
+                        <TableCell>UoM</TableCell>
                         <TableCell>Start</TableCell>
                         <TableCell>End</TableCell>
+                        <TableCell>Operations Type</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -5064,9 +5540,11 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                             <TableCell>{ea.id}</TableCell>
                             <TableCell>{ea.segmentResponseId}</TableCell>
                             <TableCell>{equipmentItem?.id || ea.equipmentId}</TableCell>
-                            <TableCell>{ea.actualDurationHours.toFixed(2)}</TableCell>
+                            <TableCell>{ea.actualQuantity.toFixed(2)}</TableCell>
+                            <TableCell>{ea.unitOfMeasure || 'N/A'}</TableCell>
                             <TableCell>{ea.actualStartDateTime}</TableCell>
                             <TableCell>{ea.actualEndDateTime}</TableCell>
+                            <TableCell>{ea.operationsType || 'N/A'}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -5159,6 +5637,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                           <TableCell>Event Code</TableCell>
                           <TableCell>Event Category</TableCell>
                           <TableCell>Event Type</TableCell>
+                          <TableCell>Operations Type</TableCell>
                           <TableCell>Effective Timestamp</TableCell>
                           <TableCell>Notes</TableCell>
                         </TableRow>
@@ -5186,6 +5665,7 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                               <TableCell>
                                 <Chip label={event.eventType || 'N/A'} size="small" color="info" />
                               </TableCell>
+                              <TableCell>{event.operationsType || 'N/A'}</TableCell>
                               <TableCell>{event.effectiveTimestamp}</TableCell>
                               <TableCell>{event.notes}</TableCell>
                             </TableRow>
@@ -5596,6 +6076,550 @@ ${generatedOperationsRequest.id},${generatedOperationsRequest.description},${gen
                   </Box>
                 )}
               </Paper>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {mainTab === 1 && (
+        <Box>
+          <Tabs value={maintenanceActiveTab} onChange={(e, newValue) => setMaintenanceActiveTab(newValue)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+            <Tab label="Maintenance Plan" />
+            <Tab label="Maintenance Actual" />
+          </Tabs>
+
+          {maintenanceActiveTab === 0 && (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Create maintenance plan orders from Maintenance BOM by equipment. This generates operations requests, segment requirements, material requirements, and equipment requirements.
+              </Alert>
+
+              <Grid container spacing={3}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>Maintenance Plan Input</Typography>
+                      <Divider sx={{ mb: 2 }} />
+                      <Grid container spacing={2}>
+                        <Grid size={12}>
+                          <TextField
+                            fullWidth
+                            label="Description"
+                            value={maintenancePlanFormData.description}
+                            onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, description: e.target.value })}
+                            placeholder="e.g., PM order for line equipment"
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Plant</InputLabel>
+                            <Select
+                              value={maintenancePlanFormData.plantId}
+                              label="Plant"
+                              onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, plantId: e.target.value, lineId: '' })}
+                            >
+                              {plants.map((plant) => (
+                                <MenuItem key={plant.id} value={plant.id}>{plant.name || plant.id}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Line</InputLabel>
+                            <Select
+                              value={maintenancePlanFormData.lineId}
+                              label="Line"
+                              onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, lineId: e.target.value })}
+                              disabled={!maintenancePlanFormData.plantId}
+                            >
+                              {productionLines
+                                .filter((line) => line.plantId === maintenancePlanFormData.plantId)
+                                .map((line) => (
+                                  <MenuItem key={line.id} value={line.id}>{line.name || line.lineName || line.id}</MenuItem>
+                                ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <FormControl fullWidth>
+                            <InputLabel>Equipment</InputLabel>
+                            <Select
+                              value={maintenancePlanFormData.equipmentId}
+                              label="Equipment"
+                              onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, equipmentId: e.target.value })}
+                            >
+                              {equipment.map((eq) => (
+                                <MenuItem key={eq.id} value={eq.id}>{eq.name || eq.id}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <TextField
+                            fullWidth
+                            label="Priority"
+                            type="number"
+                            value={maintenancePlanFormData.priority}
+                            onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, priority: Number(e.target.value) || 1 })}
+                            inputProps={{ min: 1, max: 10 }}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <TextField
+                            fullWidth
+                            label="Planned Start"
+                            type="datetime-local"
+                            value={maintenancePlanFormData.plannedStartDateTime ? maintenancePlanFormData.plannedStartDateTime.slice(0, 16) : ''}
+                            onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, plannedStartDateTime: e.target.value })}
+                            InputLabelProps={{ shrink: true }}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                          <TextField
+                            fullWidth
+                            label="Planned End"
+                            type="datetime-local"
+                            value={maintenancePlanFormData.plannedEndDateTime ? maintenancePlanFormData.plannedEndDateTime.slice(0, 16) : ''}
+                            onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, plannedEndDateTime: e.target.value })}
+                            InputLabelProps={{ shrink: true }}
+                          />
+                        </Grid>
+                        <Grid size={12}>
+                          <Button fullWidth variant="contained" startIcon={<GenerateIcon />} onClick={generateMaintenancePlanData}>
+                            Generate Maintenance Plan
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>Generated Maintenance Plan</Typography>
+                      <Divider sx={{ mb: 2 }} />
+                      {!generatedMaintenanceRequest ? (
+                        <Alert severity="info">Generate maintenance plan to preview created order and requirements.</Alert>
+                      ) : (
+                        <Box>
+                          <Typography variant="body2" gutterBottom><strong>Order:</strong> {generatedMaintenanceRequest.id}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Description:</strong> {generatedMaintenanceRequest.description}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Segments:</strong> {maintenanceSegmentRequirements.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Material Requirements:</strong> {maintenanceMaterialRequirements.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Equipment Requirements:</strong> {maintenanceEquipmentRequirements.length}</Typography>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {generatedMaintenanceRequest && (
+                <Box sx={{ mt: 3 }}>
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Operations Request</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenancePlanToCSV('operations')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Description</TableCell>
+                            <TableCell>Plant</TableCell>
+                            <TableCell>Line</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Priority</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>{generatedMaintenanceRequest.id}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.description}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.plantId}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.lineId}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.plannedStartDateTime}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.plannedEndDateTime}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.priority}</TableCell>
+                            <TableCell>{generatedMaintenanceRequest.operationsType || 'N/A'}</TableCell>
+                            <TableCell>
+                              <Chip label={generatedMaintenanceRequest.status} size="small" color="primary" />
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'primary.dark', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Segment Requirements</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenancePlanToCSV('segments')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Process Segment</TableCell>
+                            <TableCell>Equipment</TableCell>
+                            <TableCell>Sequence</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenanceSegmentRequirements.map((sr) => {
+                            const segment = processSegments.find((ps) => ps.id === sr.processSegmentId);
+                            return (
+                              <TableRow key={sr.id}>
+                                <TableCell>{sr.id}</TableCell>
+                                <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
+                                <TableCell>{sr.equipmentId || 'N/A'}</TableCell>
+                                <TableCell>{sr.sequence}</TableCell>
+                                <TableCell>{sr.earliestStartDateTime}</TableCell>
+                                <TableCell>{sr.latestEndDateTime}</TableCell>
+                                <TableCell>{sr.operationsType || 'N/A'}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'secondary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Material Requirements</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenancePlanToCSV('materials')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Segment Requirement</TableCell>
+                            <TableCell>Material</TableCell>
+                            <TableCell>Required Qty</TableCell>
+                            <TableCell>Type</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenanceMaterialRequirements.map((mr) => {
+                            const material = materials.find((m) => m.id === mr.materialId);
+                            return (
+                              <TableRow key={mr.id}>
+                                <TableCell>{mr.id}</TableCell>
+                                <TableCell>{mr.segmentRequirementId}</TableCell>
+                                <TableCell>{material?.name || mr.materialId}</TableCell>
+                                <TableCell>{mr.requiredQty} {mr.qtyUoM}</TableCell>
+                                <TableCell>{mr.requirementType}</TableCell>
+                                <TableCell>{mr.operationsType || 'N/A'}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'info.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Equipment Requirements</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenancePlanToCSV('equipment')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Segment Requirement</TableCell>
+                            <TableCell>Equipment Class</TableCell>
+                            <TableCell>Equipment</TableCell>
+                            <TableCell>Requirement Type</TableCell>
+                            <TableCell>Planned Quantity</TableCell>
+                            <TableCell>UoM</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenanceEquipmentRequirements.map((er) => (
+                            <TableRow key={er.id}>
+                              <TableCell>{er.id}</TableCell>
+                              <TableCell>{er.segmentRequirementId}</TableCell>
+                              <TableCell>{er.equipmentClassId || 'N/A'}</TableCell>
+                              <TableCell>{er.equipmentId}</TableCell>
+                              <TableCell>{er.requirementType}</TableCell>
+                              <TableCell>{er.plannedQuantity}</TableCell>
+                              <TableCell>{er.unitOfMeasure || 'N/A'}</TableCell>
+                              <TableCell>{er.operationsType || 'N/A'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                    <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => exportMaintenancePlanToCSV('all')}>
+                      Export All Maintenance Plan CSV
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {maintenanceActiveTab === 1 && (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Generate maintenance actual data from a saved maintenance order. It creates operations request execution data with segment, material, and equipment actuals.
+              </Alert>
+
+              <Grid container spacing={3}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>Maintenance Actual Input</Typography>
+                      <Divider sx={{ mb: 2 }} />
+                      <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel>Maintenance Order</InputLabel>
+                        <Select
+                          value={selectedMaintenanceRequestId}
+                          label="Maintenance Order"
+                          onChange={(e) => setSelectedMaintenanceRequestId(e.target.value)}
+                        >
+                          {savedMaintenanceRequests.map((req) => (
+                            <MenuItem key={req.id} value={req.id}>{req.id} - {req.description}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Button fullWidth variant="contained" startIcon={<GenerateIcon />} onClick={generateMaintenanceActualData}>
+                        Generate Maintenance Actual
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>Maintenance Actual Summary</Typography>
+                      <Divider sx={{ mb: 2 }} />
+                      {!generatedMaintenanceResponse ? (
+                        <Alert severity="info">Generate maintenance actual to preview records.</Alert>
+                      ) : (
+                        <Box>
+                          {maintenanceActualTimestamp && (
+                            <Typography variant="body2" gutterBottom>
+                              <strong>Generated:</strong> {maintenanceActualTimestamp.toLocaleString()}
+                            </Typography>
+                          )}
+                          <Typography variant="body2" gutterBottom><strong>Operations Response:</strong> {generatedMaintenanceResponse.id}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Segment Responses:</strong> {maintenanceSegmentResponses.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Material Actuals:</strong> {maintenanceMaterialActuals.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Equipment Actuals:</strong> {maintenanceEquipmentActuals.length}</Typography>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {maintenancePlanReference && (
+                <Paper sx={{ mt: 3, mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'white' }}>
+                    <Typography variant="subtitle1">Maintenance Order Reference</Typography>
+                  </Box>
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="body2"><strong>ID:</strong> {maintenancePlanReference.id}</Typography>
+                    <Typography variant="body2"><strong>Description:</strong> {maintenancePlanReference.description}</Typography>
+                    <Typography variant="body2"><strong>Segments:</strong> {maintenanceSegReqReference.length}</Typography>
+                  </Box>
+                </Paper>
+              )}
+
+              {generatedMaintenanceResponse && (
+                <Box sx={{ mt: 2 }}>
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'success.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Operations Response</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenanceActualToCSV('response')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Request ID</TableCell>
+                            <TableCell>Plant</TableCell>
+                            <TableCell>Line</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>{generatedMaintenanceResponse.id}</TableCell>
+                            <TableCell>{generatedMaintenanceResponse.operationsRequestId}</TableCell>
+                            <TableCell>{generatedMaintenanceResponse.plantId}</TableCell>
+                            <TableCell>{generatedMaintenanceResponse.productionLineId}</TableCell>
+                            <TableCell>{generatedMaintenanceResponse.actualStartDateTime}</TableCell>
+                            <TableCell>{generatedMaintenanceResponse.actualEndDateTime}</TableCell>
+                            <TableCell>{generatedMaintenanceResponse.operationsType || 'N/A'}</TableCell>
+                            <TableCell><Chip label={generatedMaintenanceResponse.status} size="small" color="success" /></TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'success.dark', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Segment Responses</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenanceActualToCSV('segments')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Process Segment</TableCell>
+                            <TableCell>Equipment</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenanceSegmentResponses.map((sr) => {
+                            const segment = processSegments.find((ps) => ps.id === sr.processSegmentId);
+                            return (
+                              <TableRow key={sr.id}>
+                                <TableCell>{sr.id}</TableCell>
+                                <TableCell>{segment?.name || sr.processSegmentId}</TableCell>
+                                <TableCell>{sr.equipmentId || 'N/A'}</TableCell>
+                                <TableCell>{sr.actualStartDateTime}</TableCell>
+                                <TableCell>{sr.actualEndDateTime}</TableCell>
+                                <TableCell>{sr.operationsType || 'N/A'}</TableCell>
+                                <TableCell><Chip label={sr.status} size="small" color="success" /></TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Material Actuals</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenanceActualToCSV('materials')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Segment Response</TableCell>
+                            <TableCell>Material</TableCell>
+                            <TableCell>Lot</TableCell>
+                            <TableCell>Qty</TableCell>
+                            <TableCell>Direction</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenanceMaterialActuals.map((ma) => {
+                            const material = materials.find((m) => m.id === ma.materialId);
+                            return (
+                              <TableRow key={ma.id}>
+                                <TableCell>{ma.id}</TableCell>
+                                <TableCell>{ma.segmentResponseId}</TableCell>
+                                <TableCell>{material?.name || ma.materialId}</TableCell>
+                                <TableCell>{ma.materialLotId}</TableCell>
+                                <TableCell>{ma.actualQty} {ma.qtyUoM}</TableCell>
+                                <TableCell>{ma.direction}</TableCell>
+                                <TableCell>{ma.operationsType || 'N/A'}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'info.dark', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Equipment Actuals</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenanceActualToCSV('equipment')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Segment Response</TableCell>
+                            <TableCell>Equipment</TableCell>
+                            <TableCell>Actual Quantity</TableCell>
+                            <TableCell>UoM</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenanceEquipmentActuals.map((ea) => (
+                            <TableRow key={ea.id}>
+                              <TableCell>{ea.id}</TableCell>
+                              <TableCell>{ea.segmentResponseId}</TableCell>
+                              <TableCell>{ea.equipmentId}</TableCell>
+                              <TableCell>{ea.actualQuantity}</TableCell>
+                              <TableCell>{ea.unitOfMeasure || 'N/A'}</TableCell>
+                              <TableCell>{ea.actualStartDateTime}</TableCell>
+                              <TableCell>{ea.actualEndDateTime}</TableCell>
+                              <TableCell>{ea.operationsType || 'N/A'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                    <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => exportMaintenanceActualToCSV('all')}>
+                      Export All Maintenance Actual CSV
+                    </Button>
+                  </Box>
+                </Box>
+              )}
             </Box>
           )}
         </Box>

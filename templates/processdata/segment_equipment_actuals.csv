@@ -1,4 +1,4 @@
-SegmentEquipmentActualID,SegmentResponseID,SegmentEquipmentReqID,EquipmentID,ActualStartDateTime,ActualEndDateTime,ActualDurationHours,UsageState,Comments
+SegmentEquipmentActualID,SegmentResponseID,SegmentEquipmentReqID,EquipmentID,ActualStartDateTime,ActualEndDateTime,ActualQuantity,UsageState,Comments
 SEA-001,SRESP-20260112-001-MIX-R1,SER-001,EQ-MIX-01,2026-01-12 06:00:00,2026-01-12 08:00:00,2.0,Running,As planned
 SEA-002,SRESP-20260112-001-MIX-R2,SER-001,EQ-MIX-01,2026-01-12 08:00:00,2026-01-12 10:00:00,2.0,Running,As planned
 SEA-003,SRESP-20260112-001-BAKE-R1,SER-002,EQ-OVEN-01,2026-01-12 08:00:00,2026-01-12 10:00:00,2.0,Running,As planned

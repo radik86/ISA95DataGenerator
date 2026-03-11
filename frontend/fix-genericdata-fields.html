@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Fix GenericDataStores Fields</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #1976d2; }
+    h2 { color: #333; margin-top: 32px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
+    .card { background: #f5f5f5; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin: 16px 0; }
+    .card p { margin: 0 0 12px; color: #555; font-size: 14px; }
+    button {
+      background: #1976d2; color: #fff; border: none; border-radius: 4px;
+      padding: 8px 18px; cursor: pointer; font-size: 14px; margin-right: 8px;
+    }
+    button:hover { background: #1565c0; }
+    button.danger { background: #d32f2f; }
+    button.danger:hover { background: #b71c1c; }
+    button:disabled { background: #999; cursor: default; }
+    #log {
+      margin-top: 24px; background: #1e1e1e; color: #d4d4d4;
+      padding: 16px; border-radius: 6px; font-family: monospace;
+      font-size: 13px; white-space: pre-wrap; min-height: 120px; max-height: 480px;
+      overflow-y: auto;
+    }
+    .ok  { color: #4caf50; }
+    .err { color: #f44336; }
+    .info { color: #64b5f6; }
+    .warn { color: #ffb74d; }
+    input, select {
+      padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font-size: 14px;
+      margin-right: 8px; margin-bottom: 8px; min-width: 200px;
+    }
+    label { font-size: 14px; color: #333; display: inline-block; margin-right: 4px; }
+  </style>
+</head>
+<body>
+
+<h1>Fix GenericDataStores Fields</h1>
+<p style="color:#666">
+  Use this utility to patch field names or backfill missing fields in the
+  <strong>GenericDataStores</strong> SQL Server table via the REST API.
+  Make sure the API is running at <code id="apiBase">http://localhost:5237</code>.
+</p>
+
+<label>API Base URL:</label>
+<input id="inputApiBase" value="http://localhost:5237" style="min-width:260px" />
+<br>
+
+<!-- ── Section 1: Fix field renames ── -->
+<h2>1 — Fix field renames (plannedDurationHours / actualDurationHours)</h2>
+<div class="card">
+  <p>
+    Renames <code>plannedDurationHours</code> → <code>plannedQuantity</code> in
+    <code>segmentEquipmentRequirements</code> and
+    <code>actualDurationHours</code> → <code>actualQuantity</code> in
+    <code>segmentEquipmentActuals</code>.
+    Only records that still have the old name are touched.
+  </p>
+  <button onclick="fixFieldRenames()">Run field-rename fixes</button>
+</div>
+
+<!-- ── Section 2: Backfill operationsType ── -->
+<h2>2 — Backfill operationsType</h2>
+<div class="card">
+  <p>
+    Adds <code>operationsType</code> to all process-data store records that are missing it.
+    Records whose <code>id</code> starts with <code>MNT-</code> are tagged
+    <code>"Maintenance"</code>; everything else gets <code>"Production"</code>.
+  </p>
+  <button onclick="fixOperationsType()">Backfill operationsType</button>
+</div>
+
+<!-- ── Section 3: Custom field rename ── -->
+<h2>3 — Custom field rename</h2>
+<div class="card">
+  <p>Rename any field across all records in a chosen store.</p>
+  <label>Store:</label>
+  <select id="customStore">
+    <option value="operationsRequests">operationsRequests</option>
+    <option value="segmentRequirements">segmentRequirements</option>
+    <option value="segmentMaterialRequirements">segmentMaterialRequirements</option>
+    <option value="segmentEquipmentRequirements" selected>segmentEquipmentRequirements</option>
+    <option value="operationsResponses">operationsResponses</option>
+    <option value="segmentResponses">segmentResponses</option>
+    <option value="segmentMaterialActuals">segmentMaterialActuals</option>
+    <option value="segmentEquipmentActuals">segmentEquipmentActuals</option>
+    <option value="testResults">testResults</option>
+    <option value="equipmentPropertyTracking">equipmentPropertyTracking</option>
+    <option value="operationsEvents">operationsEvents</option>
+    <option value="operationsEventRecords">operationsEventRecords</option>
+    <option value="operationsEventEntries">operationsEventEntries</option>
+    <option value="operationsEventProperties">operationsEventProperties</option>
+    <option value="segmentData">segmentData</option>
+  </select>
+  <br>
+  <label>Old field name:</label>
+  <input id="customOldName" placeholder="e.g. plannedDurationHours" />
+  <label>New field name:</label>
+  <input id="customNewName" placeholder="e.g. plannedQuantity" />
+  <br>
+  <button onclick="runCustomRename()">Rename field</button>
+</div>
+
+<!-- ── Section 4: Run all ── -->
+<h2>4 — Run all fixes</h2>
+<div class="card">
+  <p>Runs sections 1 and 2 in sequence (field renames + operationsType backfill).</p>
+  <button onclick="runAll()">Run all fixes</button>
+</div>
+
+<!-- ── Log ── -->
+<div id="log">Ready. Click a button above to begin.\n</div>
+
+<script>
+  const logEl = document.getElementById('log');
+  const apiBaseInput = document.getElementById('inputApiBase');
+
+  function apiBase() { return (apiBaseInput.value || 'http://localhost:5237').replace(/\/$/, ''); }
+
+  function log(msg, cls) {
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = msg + '\n';
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function clearLog() { logEl.textContent = ''; }
+
+  // ── API helpers ──────────────────────────────────────────────────────
+
+  async function patchFields(storeName, ops) {
+    const url = `${apiBase()}/api/GenericData/${storeName}/patch-fields`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ops),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async function getAllRecords(storeName) {
+    // Use keyset pagination to safely handle large stores
+    let records = [];
+    let lastId = null;
+    const take = 1000;
+    while (true) {
+      const qs = lastId !== null ? `?lastId=${lastId}&take=${take}` : `?take=${take}`;
+      const url = `${apiBase()}/api/GenericData/${storeName}/page-keyset${qs}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      const page = await res.json();
+      records = records.concat(page.items);
+      if (!page.hasMore) break;
+      lastId = page.nextLastId;
+    }
+    return records;
+  }
+
+  async function bulkUpsert(storeName, records) {
+    if (!records.length) return { added: 0, updated: 0 };
+    const BATCH = 1000;
+    let added = 0, updated = 0;
+    for (let i = 0; i < records.length; i += BATCH) {
+      const batch = records.slice(i, i + BATCH);
+      const url = `${apiBase()}/api/GenericData/${storeName}/bulk`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch),
+      });
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      const r = await res.json();
+      added += r.added ?? 0;
+      updated += r.updated ?? 0;
+    }
+    return { added, updated };
+  }
+
+  // ── Section 1: Field renames ──────────────────────────────────────────
+
+  async function fixFieldRenames() {
+    clearLog();
+    log('=== Fix field renames ===', 'info');
+
+    const jobs = [
+      {
+        store: 'segmentEquipmentRequirements',
+        ops: [{ operation: 'rename', oldName: 'plannedDurationHours', newName: 'plannedQuantity' }],
+      },
+      {
+        store: 'segmentEquipmentActuals',
+        ops: [{ operation: 'rename', oldName: 'actualDurationHours', newName: 'actualQuantity' }],
+      },
+    ];
+
+    for (const job of jobs) {
+      log(`  Patching store: ${job.store} ...`, 'info');
+      try {
+        const result = await patchFields(job.store, job.ops);
+        log(`  ✓ ${job.store}: ${result.patched}/${result.total} records patched`, 'ok');
+      } catch (err) {
+        log(`  ✗ ${job.store}: ${err.message}`, 'err');
+      }
+    }
+
+    log('Done.', 'ok');
+  }
+
+  // ── Section 2: operationsType backfill ───────────────────────────────
+
+  const PROCESS_STORES = [
+    'operationsRequests',
+    'segmentRequirements',
+    'segmentMaterialRequirements',
+    'segmentEquipmentRequirements',
+    'operationsResponses',
+    'segmentResponses',
+    'segmentMaterialActuals',
+    'segmentEquipmentActuals',
+    'operationsEvents',
+  ];
+
+  async function fixOperationsType() {
+    clearLog();
+    log('=== Backfill operationsType ===', 'info');
+
+    for (const store of PROCESS_STORES) {
+      log(`  Loading ${store} ...`, 'info');
+      try {
+        const records = await getAllRecords(store);
+        const missing = records.filter(r => r.operationsType == null);
+
+        if (missing.length === 0) {
+          log(`  ✓ ${store}: all ${records.length} records already have operationsType`, 'ok');
+          continue;
+        }
+
+        log(`  Found ${missing.length} records without operationsType in ${store}`, 'warn');
+
+        for (const r of missing) {
+          r.operationsType = typeof r.id === 'string' && r.id.startsWith('MNT-')
+            ? 'Maintenance'
+            : 'Production';
+        }
+
+        const { added, updated } = await bulkUpsert(store, missing);
+        log(`  ✓ ${store}: backfilled ${missing.length} records (added=${added}, updated=${updated})`, 'ok');
+      } catch (err) {
+        log(`  ✗ ${store}: ${err.message}`, 'err');
+      }
+    }
+
+    log('Done.', 'ok');
+  }
+
+  // ── Section 3: Custom rename ──────────────────────────────────────────
+
+  async function runCustomRename() {
+    const store = document.getElementById('customStore').value;
+    const oldName = document.getElementById('customOldName').value.trim();
+    const newName = document.getElementById('customNewName').value.trim();
+
+    if (!oldName || !newName) {
+      alert('Please enter both the old and new field names.');
+      return;
+    }
+    if (oldName === newName) {
+      alert('Old and new field names are the same.');
+      return;
+    }
+
+    clearLog();
+    log(`=== Custom rename: "${oldName}" → "${newName}" in ${store} ===`, 'info');
+
+    try {
+      const result = await patchFields(store, [{ operation: 'rename', oldName, newName }]);
+      log(`✓ ${result.patched}/${result.total} records patched`, 'ok');
+    } catch (err) {
+      log(`✗ ${err.message}`, 'err');
+    }
+  }
+
+  // ── Section 4: Run all ────────────────────────────────────────────────
+
+  async function runAll() {
+    clearLog();
+    log('=== Run all fixes ===', 'info');
+    await fixFieldRenames();
+    log('', '');
+    await fixOperationsType();
+    log('=== All done ===', 'ok');
+  }
+</script>
+
+</body>
+</html>

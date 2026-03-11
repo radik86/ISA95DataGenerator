@@ -3,6 +3,7 @@ using ISA95DataGenerator.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ISA95DataGenerator.API.Controllers;
 
@@ -14,6 +15,19 @@ namespace ISA95DataGenerator.API.Controllers;
 [Route("api/[controller]")]
 public class GenericDataController : ControllerBase
 {
+    private static readonly HashSet<string> ProcessDataStores = new(StringComparer.Ordinal)
+    {
+        "operationsRequests",
+        "segmentRequirements",
+        "segmentMaterialRequirements",
+        "segmentEquipmentRequirements",
+        "operationsResponses",
+        "segmentResponses",
+        "segmentMaterialActuals",
+        "segmentEquipmentActuals",
+        "operationsEvents",
+    };
+
     private readonly MigrationDbContext _dbContext;
     private readonly ILogger<GenericDataController> _logger;
 
@@ -175,7 +189,7 @@ public class GenericDataController : ControllerBase
         {
             StoreName = storeName,
             RecordId = recordId,
-            DataJson = body.GetRawText(),
+            DataJson = NormalizeRecordJson(storeName, body),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         });
@@ -195,7 +209,7 @@ public class GenericDataController : ControllerBase
 
         if (existing != null)
         {
-            existing.DataJson = body.GetRawText();
+            existing.DataJson = NormalizeRecordJson(storeName, body);
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -204,7 +218,7 @@ public class GenericDataController : ControllerBase
             {
                 StoreName = storeName,
                 RecordId = recordId,
-                DataJson = body.GetRawText(),
+                DataJson = NormalizeRecordJson(storeName, body),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             });
@@ -270,7 +284,7 @@ public class GenericDataController : ControllerBase
             var recordId = ExtractId(item);
             if (string.IsNullOrWhiteSpace(recordId)) continue;
 
-            incoming.Add((recordId, item.GetRawText()));
+            incoming.Add((recordId, NormalizeRecordJson(storeName, item)));
             incomingIds.Add(recordId);
         }
 
@@ -348,7 +362,7 @@ public class GenericDataController : ControllerBase
             {
                 StoreName = storeName,
                 RecordId = recordId,
-                DataJson = item.GetRawText(),
+                DataJson = NormalizeRecordJson(storeName, item),
                 CreatedAt = now,
                 UpdatedAt = now,
             });
@@ -390,7 +404,7 @@ public class GenericDataController : ControllerBase
                     var recordId = ExtractId(item);
                     if (string.IsNullOrWhiteSpace(recordId)) continue;
 
-                    incoming.Add((recordId, item.GetRawText()));
+                    incoming.Add((recordId, NormalizeRecordJson(storeName, item)));
                     incomingIds.Add(recordId);
                 }
 
@@ -481,6 +495,143 @@ public class GenericDataController : ControllerBase
         return Ok(result);
     }
 
+    // ─────────────────────── One-time data fixes ───────────────────────
+
+    /// <summary>
+    /// Applies all known one-time data fixes across all process-data stores:
+    ///   1. segmentEquipmentRequirements: rename plannedDurationHours → plannedQuantity
+    ///   2. segmentEquipmentActuals:      rename actualDurationHours  → actualQuantity
+    ///   3. all process-data stores:      backfill operationsType (MNT- = Maintenance, else Production)
+    /// Safe to run multiple times — skips records that already have the correct fields.
+    /// </summary>
+    [HttpPost("apply-data-fixes")]
+    public async Task<ActionResult> ApplyDataFixes()
+    {
+        var db = _dbContext.Database;
+        var now = DateTime.UtcNow;
+        var report = new Dictionary<string, object>();
+
+        // ── Fix 1: plannedDurationHours → plannedQuantity (server-side SQL) ──
+        var fix1 = await db.ExecuteSqlRawAsync(@"
+            UPDATE dbo.GenericDataStores
+            SET DataJson = JSON_MODIFY(
+                               JSON_MODIFY(DataJson, '$.plannedQuantity',
+                                   ISNULL(
+                                       CAST(JSON_VALUE(DataJson, '$.plannedQuantity') AS FLOAT),
+                                       CAST(JSON_VALUE(DataJson, '$.plannedDurationHours') AS FLOAT)
+                                   )),
+                           '$.plannedDurationHours', NULL),
+                UpdatedAt = {0}
+            WHERE StoreName = 'segmentEquipmentRequirements'
+              AND JSON_VALUE(DataJson, '$.plannedDurationHours') IS NOT NULL", now);
+        report["segmentEquipmentRequirements.renameField"] = fix1;
+
+        // ── Fix 2: actualDurationHours → actualQuantity (server-side SQL) ──
+        var fix2 = await db.ExecuteSqlRawAsync(@"
+            UPDATE dbo.GenericDataStores
+            SET DataJson = JSON_MODIFY(
+                               JSON_MODIFY(DataJson, '$.actualQuantity',
+                                   ISNULL(
+                                       CAST(JSON_VALUE(DataJson, '$.actualQuantity') AS FLOAT),
+                                       CAST(JSON_VALUE(DataJson, '$.actualDurationHours') AS FLOAT)
+                                   )),
+                           '$.actualDurationHours', NULL),
+                UpdatedAt = {0}
+            WHERE StoreName = 'segmentEquipmentActuals'
+              AND JSON_VALUE(DataJson, '$.actualDurationHours') IS NOT NULL", now);
+        report["segmentEquipmentActuals.renameField"] = fix2;
+
+        // ── Fix 3: backfill operationsType (server-side SQL) ──
+        var fix3 = await db.ExecuteSqlRawAsync(@"
+            UPDATE dbo.GenericDataStores
+            SET DataJson = JSON_MODIFY(DataJson, '$.operationsType',
+                               CASE WHEN RecordId LIKE 'MNT-%' THEN 'Maintenance' ELSE 'Production' END),
+                UpdatedAt = {0}
+            WHERE StoreName IN (
+                      'operationsRequests','segmentRequirements','segmentMaterialRequirements',
+                      'segmentEquipmentRequirements','operationsResponses','segmentResponses',
+                      'segmentMaterialActuals','segmentEquipmentActuals','operationsEvents')
+              AND JSON_VALUE(DataJson, '$.operationsType') IS NULL", now);
+        report["allProcessStores.backfillOperationsType"] = fix3;
+
+        _logger.LogInformation("ApplyDataFixes completed: {Report}",
+            string.Join(", ", report.Select(kv => $"{kv.Key}={kv.Value}")));
+
+        return Ok(report);
+    }
+
+    // ─────────────────────── Field patching ───────────────────────
+
+    /// <summary>
+    /// Apply field-level patch operations to every record in a store.
+    /// Supported operations:
+    ///   "rename"        – renames OldName → NewName (only when OldName exists and NewName does not)
+    ///   "add-if-missing" – writes FieldName = Value where the field is absent
+    /// </summary>
+    [HttpPost("{storeName}/patch-fields")]
+    public async Task<ActionResult> PatchFields(string storeName, [FromBody] List<FieldPatchOperation> operations)
+    {
+        if (operations == null || operations.Count == 0)
+            return BadRequest("No operations provided");
+
+        var rows = await _dbContext.GenericDataStores
+            .Where(r => r.StoreName == storeName)
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        int patched = 0;
+
+        foreach (var row in rows)
+        {
+            try
+            {
+                var node = JsonNode.Parse(row.DataJson)?.AsObject();
+                if (node == null) continue;
+
+                bool changed = false;
+
+                foreach (var op in operations)
+                {
+                    if (op.Operation == "rename"
+                        && !string.IsNullOrWhiteSpace(op.OldName)
+                        && !string.IsNullOrWhiteSpace(op.NewName))
+                    {
+                        if (node.ContainsKey(op.OldName) && !node.ContainsKey(op.NewName))
+                        {
+                            var value = node[op.OldName]?.DeepClone();
+                            node.Remove(op.OldName);
+                            if (value != null) node[op.NewName] = value;
+                            changed = true;
+                        }
+                    }
+                    else if (op.Operation == "add-if-missing"
+                        && !string.IsNullOrWhiteSpace(op.FieldName)
+                        && !node.ContainsKey(op.FieldName))
+                    {
+                        node[op.FieldName] = op.Value.HasValue
+                            ? JsonNode.Parse(op.Value.Value.GetRawText())
+                            : null;
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    row.DataJson = node.ToJsonString();
+                    row.UpdatedAt = now;
+                    patched++;
+                }
+            }
+            catch { /* skip malformed JSON */ }
+        }
+
+        if (patched > 0)
+            await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("PatchFields '{StoreName}': {Patched}/{Total} records patched", storeName, patched, rows.Count);
+        return Ok(new { store = storeName, patched, total = rows.Count });
+    }
+
     // ─────────────────────── Helpers ───────────────────────
 
     private static string? ExtractId(JsonElement element)
@@ -496,9 +647,80 @@ public class GenericDataController : ControllerBase
         }
         return null;
     }
+
+    /// <summary>
+    /// Normalizes incoming JSON so GenericDataStores only persists canonical field names.
+    /// Also backfills operationsType for process-data records when missing.
+    /// </summary>
+    private static string NormalizeRecordJson(string storeName, JsonElement element)
+    {
+        var node = JsonNode.Parse(element.GetRawText())?.AsObject();
+        if (node == null)
+            return element.GetRawText();
+
+        if (storeName == "segmentEquipmentRequirements")
+        {
+            if (node.ContainsKey("plannedDurationHours") && !node.ContainsKey("plannedQuantity"))
+            {
+                node["plannedQuantity"] = node["plannedDurationHours"]?.DeepClone();
+            }
+            node.Remove("plannedDurationHours");
+        }
+
+        if (storeName == "segmentEquipmentActuals")
+        {
+            if (node.ContainsKey("actualDurationHours") && !node.ContainsKey("actualQuantity"))
+            {
+                node["actualQuantity"] = node["actualDurationHours"]?.DeepClone();
+            }
+            node.Remove("actualDurationHours");
+        }
+
+        if (ProcessDataStores.Contains(storeName) && !node.ContainsKey("operationsType"))
+        {
+            var id = TryGetIdString(node);
+            var operationsType = id != null && id.StartsWith("MNT-", StringComparison.OrdinalIgnoreCase)
+                ? "Maintenance"
+                : "Production";
+
+            node["operationsType"] = operationsType;
+        }
+
+        return node.ToJsonString();
+    }
+
+    private static string? TryGetIdString(JsonObject node)
+    {
+        if (!node.TryGetPropertyValue("id", out var idNode) || idNode is null)
+            return null;
+
+        if (idNode is JsonValue idValue)
+        {
+            if (idValue.TryGetValue<string>(out var idAsString))
+                return idAsString;
+
+            return idValue.ToJsonString().Trim('"');
+        }
+
+        return idNode.ToJsonString().Trim('"');
+    }
 }
 
 public class BulkMultiRequest
 {
     public Dictionary<string, JsonElement> Stores { get; set; } = new();
+}
+
+public class FieldPatchOperation
+{
+    /// <summary>"rename" or "add-if-missing"</summary>
+    public string Operation { get; set; } = string.Empty;
+
+    // For "rename"
+    public string? OldName { get; set; }
+    public string? NewName { get; set; }
+
+    // For "add-if-missing"
+    public string? FieldName { get; set; }
+    public JsonElement? Value { get; set; }
 }

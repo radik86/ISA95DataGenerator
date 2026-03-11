@@ -1,0 +1,101 @@
+[
+  {
+    "EntityName": "Equipment Property",
+    "FieldName": "id",
+    "RuleType": 5,
+    "Parameters": {
+      "prefix": "breadmachine",
+      "suffix": "",
+      "start": 1,
+      "end": 3
+    }
+  },
+  {
+    "EntityName": "Equipment Property",
+    "FieldName": "description",
+    "RuleType": 3,
+    "Parameters": {
+      "value": "bread machine of bla bla"
+    }
+  },
+  {
+    "EntityName": "Equipment Property",
+    "FieldName": "value",
+    "RuleType": 0,
+    "Parameters": {
+      "min": 1,
+      "max": 100
+    }
+  },
+  {
+    "EntityName": "Equipment",
+    "FieldName": "id",
+    "RuleType": 5,
+    "Parameters": {
+      "prefix": "machine",
+      "suffix": "",
+      "start": 1,
+      "end": 8
+    }
+  },
+  {
+    "EntityName": "Equipment",
+    "FieldName": "description",
+    "RuleType": 3,
+    "Parameters": {
+      "value": "test"
+    }
+  },
+  {
+    "EntityName": "Equipment",
+    "FieldName": "equipmentLevel",
+    "RuleType": 5,
+    "Parameters": {
+      "prefix": "efsf",
+      "suffix": "ghgh",
+      "start": 1,
+      "end": 98
+    }
+  },
+  {
+    "EntityName": "Segment Requirement",
+    "FieldName": "id",
+    "RuleType": 5,
+    "Parameters": {
+      "prefix": "SR",
+      "suffix": "",
+      "start": 1,
+      "end": 100
+    }
+  },
+  {
+    "EntityName": "Segment Requirement",
+    "FieldName": "operationsType",
+    "RuleType": 6,
+    "Parameters": {
+      "values": [
+        "Mixed"
+      ]
+    }
+  },
+  {
+    "EntityName": "Operations Request",
+    "FieldName": "operationsType",
+    "RuleType": 6,
+    "Parameters": {
+      "values": [
+        "Maintenance"
+      ]
+    }
+  },
+  {
+    "EntityName": "Operations Request",
+    "FieldName": "requestState",
+    "RuleType": 6,
+    "Parameters": {
+      "values": [
+        "running"
+      ]
+    }
+  }
+]
