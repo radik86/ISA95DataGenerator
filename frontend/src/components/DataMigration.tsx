@@ -2792,7 +2792,7 @@ const DataMigration: React.FC = () => {
           sourceField: caseSourceField,
           cases: validCases,
           defaultValue: caseDefaultValueType === 'static' ? (caseDefaultValue || undefined) : undefined,
-          defaultFieldName: caseDefaultValueType === 'field' ? (caseDefaultFieldName || undefined) : undefined,
+          defaultFieldName: caseDefaultValueType === 'field' ? (caseDefaultFieldName || caseSourceField || undefined) : undefined,
         };
         break;
       case RuleType.Coalesce:
@@ -3751,13 +3751,13 @@ const DataMigration: React.FC = () => {
         
         return result;
       
-      case RuleType.Case:
-        const caseSourceField = params?.sourceField;
+      case RuleType.Case: {
+        const _caseSrcField = params?.sourceField;
         
         // Try to find the source field value (case-insensitive field name matching)
         let caseSourceValue = '';
-        if (caseSourceField && sourceRow) {
-          const sourceFieldLower = caseSourceField.toLowerCase();
+        if (_caseSrcField && sourceRow) {
+          const sourceFieldLower = _caseSrcField.toLowerCase();
           for (const key in sourceRow) {
             if (key.toLowerCase() === sourceFieldLower) {
               caseSourceValue = String(sourceRow[key] || '').trim(); // Trim whitespace
@@ -3776,11 +3776,18 @@ const DataMigration: React.FC = () => {
           }
         }
         // No match — resolve default: field reference takes priority over static value
-        if (params?.defaultFieldName && sourceRow) {
-          const fieldVal = sourceRow[params.defaultFieldName];
-          return fieldVal !== undefined && fieldVal !== null ? String(fieldVal) : '';
+        const defaultField = params?.defaultFieldName || params?.sourceField;
+        if (defaultField && sourceRow) {
+          const dfLower = String(defaultField).toLowerCase();
+          for (const k in sourceRow) {
+            if (k.toLowerCase() === dfLower) {
+              const v = sourceRow[k];
+              return v !== undefined && v !== null ? String(v) : '';
+            }
+          }
         }
         return params?.defaultValue || '';
+      }
       
       case RuleType.Coalesce:
         // Return first non-null, non-empty value from source fields
@@ -3959,7 +3966,7 @@ const DataMigration: React.FC = () => {
             sourceField: caseSourceField,
             cases: caseCases,
             defaultValue: caseDefaultValueType === 'static' ? (caseDefaultValue || undefined) : undefined,
-            defaultFieldName: caseDefaultValueType === 'field' ? (caseDefaultFieldName || undefined) : undefined,
+            defaultFieldName: caseDefaultValueType === 'field' ? (caseDefaultFieldName || caseSourceField || undefined) : undefined,
           };
           break;
         case RuleType.Coalesce:
@@ -5893,11 +5900,26 @@ const DataMigration: React.FC = () => {
         console.log('[IfThen] Final value after placeholder replacement:', finalValue);
         return finalValue;
         
-      case RuleType.Case:
-        // Match source field value against cases
+      case RuleType.Case: {
+        // Helper: resolve default — field reference takes priority over static value
+        const _caseResolveDefault = (src: any) => {
+          const defaultField = params?.defaultFieldName || params?.sourceField;
+          if (defaultField && src) {
+            // Case-insensitive lookup for the default field name
+            const dfLower = String(defaultField).toLowerCase();
+            for (const k in src) {
+              if (k.toLowerCase() === dfLower) {
+                const v = src[k];
+                return v !== undefined && v !== null ? String(v) : '';
+              }
+            }
+          }
+          return params?.defaultValue || '';
+        };
+
         if (!sourceRecord || !params?.sourceField) {
           console.warn('❌ Case rule: missing sourceRecord or sourceField', { sourceRecord, sourceField: params?.sourceField });
-          return params?.defaultValue || '';
+          return _caseResolveDefault(sourceRecord);
         }
         
         // Try to find the source field value (case-insensitive field name matching)
@@ -5906,7 +5928,7 @@ const DataMigration: React.FC = () => {
         const sourceFieldLower = params.sourceField.toLowerCase();
         for (const key in sourceRecord) {
           if (key.toLowerCase() === sourceFieldLower) {
-            caseSourceValue = String(sourceRecord[key] || '').trim(); // Trim whitespace
+            caseSourceValue = String(sourceRecord[key] || '').trim();
             foundFieldName = key;
             break;
           }
@@ -5922,12 +5944,13 @@ const DataMigration: React.FC = () => {
           casesCount: cases.length,
           cases: cases.map((c: any) => ({ case: c.case, value: c.value })),
           availableFields: Object.keys(sourceRecord),
-          defaultValue: params?.defaultValue
+          defaultValue: params?.defaultValue,
+          defaultFieldName: params?.defaultFieldName,
         });
         
         if (!caseSourceValue) {
-          console.warn('⚠️ Case rule: source field value is empty after lookup');
-          return params?.defaultValue || '';
+          console.warn('⚠️ Case rule: source field value is empty, resolving default');
+          return _caseResolveDefault(sourceRecord);
         }
         
         // Find matching case (case-insensitive, trimmed comparison)
@@ -5946,13 +5969,10 @@ const DataMigration: React.FC = () => {
           }
         }
         
-        // No match found — resolve default: field reference takes priority over static value
+        // No case matched — resolve default
         console.log('❌ No case matched, defaultFieldName:', params?.defaultFieldName, 'defaultValue:', params?.defaultValue);
-        if (params?.defaultFieldName && sourceRecord) {
-          const fieldVal = sourceRecord[params.defaultFieldName];
-          return fieldVal !== undefined && fieldVal !== null ? String(fieldVal) : '';
-        }
-        return params?.defaultValue || '';
+        return _caseResolveDefault(sourceRecord);
+      }
         
       case RuleType.Coalesce:
         // Return first non-null, non-empty value from source fields
@@ -8278,7 +8298,13 @@ const DataMigration: React.FC = () => {
                       <InputLabel>Source Field</InputLabel>
                       <Select
                         value={caseSourceField}
-                        onChange={(e) => setCaseSourceField(e.target.value)}
+                        onChange={(e) => {
+                          const selected = e.target.value;
+                          setCaseSourceField(selected);
+                          if (caseDefaultValueType === 'field' && !caseDefaultFieldName) {
+                            setCaseDefaultFieldName(selected);
+                          }
+                        }}
                         label="Source Field"
                       >
                         <MenuItem value="">
@@ -8377,7 +8403,7 @@ const DataMigration: React.FC = () => {
                           onChange={(e) => {
                             setCaseDefaultValueType(e.target.checked ? 'field' : 'static');
                             setCaseDefaultValue('');
-                            setCaseDefaultFieldName('');
+                            setCaseDefaultFieldName(e.target.checked ? (caseSourceField || '') : '');
                           }}
                         />
                       }

@@ -2062,7 +2062,24 @@ public class MigrationProcessorV2Service
             case "Case":
             {
                 var srcField = GetJsonString(p, "sourceField") ?? "";
+                var defaultField = GetJsonString(p, "defaultFieldName") ?? srcField;
                 var caseSourceValue = "";
+
+                string ResolveCaseDefault()
+                {
+                    if (!string.IsNullOrWhiteSpace(defaultField))
+                    {
+                        // Case-insensitive field lookup for default field value
+                        foreach (var kv in sourceRecord)
+                        {
+                            if (string.Equals(kv.Key, defaultField, StringComparison.OrdinalIgnoreCase))
+                                return kv.Value?.ToString() ?? "";
+                        }
+                    }
+
+                    return GetJsonString(p, "defaultValue") ?? "";
+                }
+
                 // Case-insensitive field lookup
                 foreach (var kv in sourceRecord)
                 {
@@ -2074,7 +2091,7 @@ public class MigrationProcessorV2Service
                 }
 
                 if (string.IsNullOrEmpty(caseSourceValue))
-                    return GetJsonString(p, "defaultValue") ?? "";
+                    return ResolveCaseDefault();
 
                 if (p.HasValue && p.Value.TryGetProperty("cases", out var casesEl) && casesEl.ValueKind == JsonValueKind.Array)
                 {
@@ -2086,7 +2103,7 @@ public class MigrationProcessorV2Service
                     }
                 }
 
-                return GetJsonString(p, "defaultValue") ?? "";
+                return ResolveCaseDefault();
             }
 
             case "Coalesce":
