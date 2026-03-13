@@ -6127,6 +6127,15 @@ const DataMigration: React.FC = () => {
   const saveToISA95CSVSingleFile = async (entityName: string, data: any[], directoryHandle: any, isBridge: boolean = false): Promise<void> => {
     // Use smaller chunks for very large datasets to avoid memory pressure
     const CHUNK_SIZE = data.length > 50000 ? 500 : 1000;
+
+    // Format any date/datetime value as yyyy-MM-ddTHH:mm:ss.fffZ (ISO 8601 UTC with milliseconds)
+    const toDateTimeFormat = (v: Date | string): string => {
+      try {
+        const d = v instanceof Date ? v : new Date(v as string);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      } catch { /* fall through */ }
+      return String(v);
+    };
     
     let writable: any = null;
     const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+/, '');
@@ -6180,28 +6189,19 @@ const DataMigration: React.FC = () => {
               if (value === null || value === undefined) {
                 return '';
               }
-              
-              // Special handling for Date objects - convert to full ISO 8601 string with seconds
+
+              // Apply yyyy-MM-ddTHH:mm:ss.fffZ format for Date objects
               if (value instanceof Date) {
-                return value.toISOString();
+                return toDateTimeFormat(value);
               }
-              
-              // Check if it's a datetime string and ensure it has full timestamp with seconds
+
               const stringValue = String(value);
-              
-              // If it looks like a datetime string (contains T or has datetime pattern), ensure it has seconds
+
+              // Apply yyyy-MM-ddTHH:mm:ss.fffZ format for datetime strings
               if (stringValue.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/)) {
-                try {
-                  const date = new Date(stringValue);
-                  if (!isNaN(date.getTime())) {
-                    // Convert to ISO string to ensure full format with seconds
-                    return date.toISOString();
-                  }
-                } catch (e) {
-                  // If parsing fails, just use the original string
-                }
+                return toDateTimeFormat(stringValue);
               }
-              
+
               if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
                 return `"${stringValue.replace(/"/g, '""')}"`;
               }
