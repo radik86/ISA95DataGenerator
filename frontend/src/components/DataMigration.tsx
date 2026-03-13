@@ -224,7 +224,7 @@ const DataMigration: React.FC = () => {
   const [loadedMappingsCount, setLoadedMappingsCount] = useState<number | null>(null);
   const [migrationProgress, setMigrationProgress] = useState(0);
   const [maxSplitFileSizeMB, setMaxSplitFileSizeMB] = useState(10);
-  const [uploadChunkSize, setUploadChunkSize] = useState(2000);
+  const [uploadChunkSize, setUploadChunkSize] = useState(5000);
   const [separateMasterProcessFiles, setSeparateMasterProcessFiles] = useState(false);
   const [migrationLoadMode, setMigrationLoadMode] = useState<'full' | 'delta'>('delta');
   const [sourceIncludeTimestampSuffix, setSourceIncludeTimestampSuffix] = useState(false);

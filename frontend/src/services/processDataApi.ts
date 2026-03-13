@@ -176,7 +176,7 @@ class ProcessDataApiService {
   async getPageKeyset<K extends ProcessDataStoreName>(
     storeName: K,
     lastId: number | null,
-    take = 1000,
+    take = 5000,
   ): Promise<{ items: any[]; hasMore: boolean; nextLastId: number | null; take: number }> {
     try {
       const query = new URLSearchParams();

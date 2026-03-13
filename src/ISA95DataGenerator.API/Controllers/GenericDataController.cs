@@ -69,7 +69,7 @@ public class GenericDataController : ControllerBase
     public async Task<ActionResult> GetPage(string storeName, [FromQuery] int skip = 0, [FromQuery] int take = 100)
     {
         skip = Math.Max(0, skip);
-        take = Math.Clamp(take, 1, 5000);
+        take = Math.Clamp(take, 1, 20000);
 
         var baseQuery = _dbContext.GenericDataStores
             .AsNoTracking()
@@ -105,9 +105,9 @@ public class GenericDataController : ControllerBase
     /// Uses Id &gt; lastId instead of Skip/Take, which scales better for very large stores.
     /// </summary>
     [HttpGet("{storeName}/page-keyset")]
-    public async Task<ActionResult> GetPageKeyset(string storeName, [FromQuery] long? lastId = null, [FromQuery] int take = 1000)
+    public async Task<ActionResult> GetPageKeyset(string storeName, [FromQuery] long? lastId = null, [FromQuery] int take = 5000)
     {
-        take = Math.Clamp(take, 1, 5000);
+        take = Math.Clamp(take, 1, 20000);
 
         var query = _dbContext.GenericDataStores
             .AsNoTracking()
