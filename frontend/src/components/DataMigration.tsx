@@ -312,6 +312,8 @@ const DataMigration: React.FC = () => {
   const [caseSourceField, setCaseSourceField] = useState('');
   const [caseCases, setCaseCases] = useState<Array<{ case: string; value: string }>>([{ case: '', value: '' }]);
   const [caseDefaultValue, setCaseDefaultValue] = useState('');
+  const [caseDefaultValueType, setCaseDefaultValueType] = useState<'static' | 'field'>('static');
+  const [caseDefaultFieldName, setCaseDefaultFieldName] = useState('');
   
   // Coalesce rule parameters
   const [coalesceSourceFields, setCoalesceSourceFields] = useState<string[]>(['']);
@@ -2529,6 +2531,8 @@ const DataMigration: React.FC = () => {
             ? params.cases.filter((c: any) => c !== undefined && c !== null && typeof c === 'object') 
             : [{ case: '', value: '' }]);
           setCaseDefaultValue(params?.defaultValue || '');
+          setCaseDefaultValueType(params?.defaultFieldName ? 'field' : 'static');
+          setCaseDefaultFieldName(params?.defaultFieldName || '');
           break;
         case RuleType.Coalesce:
           // Ensure arrays have valid values (no undefined elements)
@@ -2675,6 +2679,8 @@ const DataMigration: React.FC = () => {
     setCaseSourceField('');
     setCaseCases([{ case: '', value: '' }]);
     setCaseDefaultValue('');
+    setCaseDefaultValueType('static');
+    setCaseDefaultFieldName('');
     setCoalesceSourceFields(['']);
     setCoalesceDefaultValue('');
     setConcatSourceFields(['']);
@@ -2785,7 +2791,8 @@ const DataMigration: React.FC = () => {
         parameters = { 
           sourceField: caseSourceField,
           cases: validCases,
-          defaultValue: caseDefaultValue || undefined
+          defaultValue: caseDefaultValueType === 'static' ? (caseDefaultValue || undefined) : undefined,
+          defaultFieldName: caseDefaultValueType === 'field' ? (caseDefaultFieldName || undefined) : undefined,
         };
         break;
       case RuleType.Coalesce:
@@ -3768,6 +3775,11 @@ const DataMigration: React.FC = () => {
             return caseItem.value;
           }
         }
+        // No match — resolve default: field reference takes priority over static value
+        if (params?.defaultFieldName && sourceRow) {
+          const fieldVal = sourceRow[params.defaultFieldName];
+          return fieldVal !== undefined && fieldVal !== null ? String(fieldVal) : '';
+        }
         return params?.defaultValue || '';
       
       case RuleType.Coalesce:
@@ -3946,7 +3958,8 @@ const DataMigration: React.FC = () => {
           tempRule.parameters = {
             sourceField: caseSourceField,
             cases: caseCases,
-            defaultValue: caseDefaultValue
+            defaultValue: caseDefaultValueType === 'static' ? (caseDefaultValue || undefined) : undefined,
+            defaultFieldName: caseDefaultValueType === 'field' ? (caseDefaultFieldName || undefined) : undefined,
           };
           break;
         case RuleType.Coalesce:
@@ -5933,8 +5946,12 @@ const DataMigration: React.FC = () => {
           }
         }
         
-        // No match found, return default
-        console.log('❌ No case matched, using default:', params?.defaultValue);
+        // No match found — resolve default: field reference takes priority over static value
+        console.log('❌ No case matched, defaultFieldName:', params?.defaultFieldName, 'defaultValue:', params?.defaultValue);
+        if (params?.defaultFieldName && sourceRecord) {
+          const fieldVal = sourceRecord[params.defaultFieldName];
+          return fieldVal !== undefined && fieldVal !== null ? String(fieldVal) : '';
+        }
         return params?.defaultValue || '';
         
       case RuleType.Coalesce:
@@ -8241,6 +8258,7 @@ const DataMigration: React.FC = () => {
               const targetField = targetEntity?.fields.find(f => f.name === selectedFieldForRule.fieldName);
               const hasEnumValues = targetField?.enumValues && targetField.enumValues.length > 0;
               const targetEnumValues = targetField?.enumValues || [];
+              const sourceTable = dataSource?.tables.find(t => t.name === tableMappings[mappingIndex]?.sourceTable);
               
               return (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -8265,16 +8283,14 @@ const DataMigration: React.FC = () => {
                       >
                         <MenuItem value="">
                           <em>Select a source field</em>
-                      </MenuItem>
-                      {(importedTables
-                        .find((t: SourceTable) => t.name === tableMappings[mappingIndex]?.sourceTable)
-                        ?.columns || []).map((col: any) => (
+                        </MenuItem>
+                        {(sourceTable?.columns || []).map((col: any) => (
                           <MenuItem key={col.name} value={col.name}>
                             {col.name} ({col.type})
                           </MenuItem>
                         ))}
-                    </Select>
-                  </FormControl>
+                      </Select>
+                    </FormControl>
                   )}
                   <Typography variant="subtitle2" gutterBottom>
                     Case Conditions
@@ -8349,38 +8365,75 @@ const DataMigration: React.FC = () => {
                 >
                   Add Case
                 </Button>
-                {hasEnumValues ? (
-                  <FormControl fullWidth>
-                    <InputLabel>Default Value (Optional)</InputLabel>
-                    <Select
+                {/* Default value: static string OR a source field reference */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="subtitle2">Default (if no case matches)</Typography>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={caseDefaultValueType === 'field'}
+                          onChange={(e) => {
+                            setCaseDefaultValueType(e.target.checked ? 'field' : 'static');
+                            setCaseDefaultValue('');
+                            setCaseDefaultFieldName('');
+                          }}
+                        />
+                      }
+                      label={<Typography variant="caption">Use source field</Typography>}
+                      sx={{ ml: 0 }}
+                    />
+                  </Box>
+                  {caseDefaultValueType === 'field' ? (
+                    <FormControl fullWidth>
+                      <InputLabel>Default Source Field</InputLabel>
+                      <Select
+                        value={caseDefaultFieldName}
+                        onChange={(e) => setCaseDefaultFieldName(e.target.value)}
+                        label="Default Source Field"
+                      >
+                        <MenuItem value=""><em>None</em></MenuItem>
+                        {(sourceTable?.columns || []).map((col: any) => (
+                          <MenuItem key={col.name} value={col.name}>
+                            {col.name} ({col.type})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : hasEnumValues ? (
+                    <FormControl fullWidth>
+                      <InputLabel>Default Value (Optional)</InputLabel>
+                      <Select
+                        value={caseDefaultValue}
+                        onChange={(e) => setCaseDefaultValue(e.target.value)}
+                        label="Default Value (Optional)"
+                      >
+                        <MenuItem value="">
+                          <em>None</em>
+                        </MenuItem>
+                        {targetEnumValues.map((value, idx) => {
+                          const displayValue = typeof value === 'object' ? ((value as any).displayName || (value as any).enumValue || (value as any).name) : value;
+                          const actualValue = typeof value === 'object' ? (value as any).enumValue : value;
+                          return (
+                            <MenuItem key={idx} value={actualValue}>
+                              {displayValue}
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      label="Default Value (Optional)"
                       value={caseDefaultValue}
                       onChange={(e) => setCaseDefaultValue(e.target.value)}
-                      label="Default Value (Optional)"
-                    >
-                      <MenuItem value="">
-                        <em>None</em>
-                      </MenuItem>
-                      {targetEnumValues.map((value, idx) => {
-                        const displayValue = typeof value === 'object' ? ((value as any).displayName || (value as any).enumValue || (value as any).name) : value;
-                        const actualValue = typeof value === 'object' ? (value as any).enumValue : value;
-                        return (
-                          <MenuItem key={idx} value={actualValue}>
-                            {displayValue}
-                          </MenuItem>
-                        );
-                      })}
-                    </Select>
-                  </FormControl>
-                ) : (
-                  <TextField
-                    fullWidth
-                    label="Default Value (Optional)"
-                    value={caseDefaultValue}
-                    onChange={(e) => setCaseDefaultValue(e.target.value)}
-                    placeholder="Value if no cases match"
-                    helperText="Optional: Value to use if none of the cases match"
-                  />
-                )}
+                      placeholder="Value if no cases match"
+                      helperText="Optional: static value to use if none of the cases match"
+                    />
+                  )}
+                </Box>
               </Box>
               );
             })()}

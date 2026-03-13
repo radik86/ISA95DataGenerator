@@ -379,6 +379,11 @@ def _apply_field_rule(rule: Dict[str, Any], source_record: Dict[str, Any], index
         for case in params.get("cases") or []:
             if source_value.lower() == _to_str(case.get("case")).strip().lower():
                 return case.get("value", "")
+        # No match — resolve default: field reference takes priority over static value
+        default_field = params.get("defaultFieldName", "")
+        if default_field:
+            field_val = _ci_get(source_record, default_field)
+            return _to_str(field_val) if field_val is not None else ""
         return params.get("defaultValue", "")
 
     if rule_type == "Coalesce":
