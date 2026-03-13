@@ -1,0 +1,4 @@
+PersonnelCapabilityID,CapabilityName,Description
+PCAP_LINE_OP,Line Operation,Can operate packaging and processing lines
+PCAP_MAINT_MECH,Mechanical Maintenance,Can diagnose and repair mechanical equipment
+PCAP_MAINT_ELEC,Electrical Maintenance,Can diagnose and repair electrical systems

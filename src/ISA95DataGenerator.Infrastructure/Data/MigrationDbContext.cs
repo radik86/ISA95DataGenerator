@@ -45,6 +45,9 @@ public class MigrationDbContext : DbContext
     public DbSet<Shift> Shifts { get; set; }
     public DbSet<Crew> Crews { get; set; }
     public DbSet<ShiftCrewAssignment> ShiftCrewAssignments { get; set; }
+    public DbSet<PersonClass> PersonClasses { get; set; }
+    public DbSet<PersonnelCapability> PersonnelCapabilities { get; set; }
+    public DbSet<Employee> Employees { get; set; }
     public DbSet<OperationEventDefinition> OperationEventDefinitions { get; set; }
     public DbSet<OperationEventDefinitionProperty> OperationEventDefinitionProperties { get; set; }
     public DbSet<OperationEventDefinitionPropertyAssignment> OperationEventDefinitionPropertyAssignments { get; set; }
@@ -496,6 +499,49 @@ public class MigrationDbContext : DbContext
             entity.HasOne(e => e.Crew)
                 .WithMany(c => c.ShiftCrewAssignments)
                 .HasForeignKey(e => e.CrewId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // PersonClass
+        modelBuilder.Entity<PersonClass>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.HasIndex(e => e.Name);
+        });
+
+        // PersonnelCapability
+        modelBuilder.Entity<PersonnelCapability>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.CapabilityName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.HasIndex(e => e.CapabilityName);
+        });
+
+        // Employee
+        modelBuilder.Entity<Employee>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            entity.Property(e => e.EmployeeName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.PersonClassId).HasMaxLength(100);
+            entity.Property(e => e.PersonnelCapabilityId).HasMaxLength(100);
+            entity.Property(e => e.Email).HasMaxLength(200);
+            entity.Property(e => e.PhoneNumber).HasMaxLength(50);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.HasIndex(e => e.PersonClassId);
+            entity.HasIndex(e => e.PersonnelCapabilityId);
+            entity.HasOne(e => e.PersonClass)
+                .WithMany(pc => pc.Employees)
+                .HasForeignKey(e => e.PersonClassId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.PersonnelCapability)
+                .WithMany(pc => pc.Employees)
+                .HasForeignKey(e => e.PersonnelCapabilityId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
 

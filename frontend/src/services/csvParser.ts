@@ -31,6 +31,9 @@ export interface ParsedCSVData {
   shifts?: any[];
   crews?: any[];
   shiftCrewAssignments?: any[];
+  personClasses?: any[];
+  personnelCapabilities?: any[];
+  employees?: any[];
   equipmentClassProperties?: any[];
   equipmentClassPropertiesAssignments?: any[];
 }
@@ -677,6 +680,37 @@ class CSVParser {
       crewId: r.CrewID || '',
       effectiveDate: r.EffectiveDate || '',
       expiryDate: r.ExpiryDate || '',
+    }));
+  }
+
+  parsePersonClasses(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.PersonClassID || '',
+      name: r.PersonClassName || '',
+      description: r.Description || '',
+    }));
+  }
+
+  parsePersonnelCapabilities(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.PersonnelCapabilityID || '',
+      capabilityName: r.CapabilityName || '',
+      description: r.Description || '',
+    }));
+  }
+
+  parseEmployees(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => ({
+      id: r.EmployeeID || '',
+      employeeName: r.EmployeeName || '',
+      personClassId: r.PersonClassID || '',
+      personnelCapabilityId: r.PersonnelCapabilityID || '',
+      email: r.Email || '',
+      phoneNumber: r.PhoneNumber || '',
+      description: r.Description || '',
     }));
   }
 }

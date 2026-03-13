@@ -51,6 +51,9 @@ export class TemplateDataLoader {
       { name: 'shifts.csv', parser: 'shifts' },
       { name: 'crews.csv', parser: 'crews' },
       { name: 'shift_crew_assignments.csv', parser: 'shiftCrewAssignments' },
+      { name: 'person_classes.csv', parser: 'personClasses' },
+      { name: 'personnel_capabilities.csv', parser: 'personnelCapabilities' },
+      { name: 'employees.csv', parser: 'employees' },
       { name: 'equipment_class_properties.csv', parser: 'equipmentClassProperties' },
       { name: 'equipment_class_properties_assignment.csv', parser: 'equipmentClassPropertyAssignments' },
     ];
@@ -184,6 +187,18 @@ export class TemplateDataLoader {
           case 'shiftCrewAssignments':
             parsed = csvParser.parseShiftCrewAssignments(csvText);
             result.shiftCrewAssignments = parsed;
+            break;
+          case 'personClasses':
+            parsed = csvParser.parsePersonClasses(csvText);
+            result.personClasses = parsed;
+            break;
+          case 'personnelCapabilities':
+            parsed = csvParser.parsePersonnelCapabilities(csvText);
+            result.personnelCapabilities = parsed;
+            break;
+          case 'employees':
+            parsed = csvParser.parseEmployees(csvText);
+            result.employees = parsed;
             break;
           case 'equipmentClassProperties':
             parsed = csvParser.parseEquipmentClassProperties(csvText);

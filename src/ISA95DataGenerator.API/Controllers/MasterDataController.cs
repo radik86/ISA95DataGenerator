@@ -950,6 +950,212 @@ public class MasterDataController : ControllerBase
 
     #endregion
 
+    #region Person Classes
+
+    [HttpGet("person-classes")]
+    public async Task<IActionResult> GetPersonClasses()
+    {
+        var data = await _context.PersonClasses.OrderBy(x => x.Name).ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("person-classes/{id}")]
+    public async Task<IActionResult> GetPersonClass(string id)
+    {
+        var entity = await _context.PersonClasses.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("person-classes")]
+    public async Task<IActionResult> CreatePersonClass([FromBody] PersonClass entity)
+    {
+        var existing = await _context.PersonClasses.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.Name = entity.Name;
+            existing.Description = entity.Description;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.PersonClasses.Add(entity);
+        }
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("person-classes/{id}")]
+    public async Task<IActionResult> UpdatePersonClass(string id, [FromBody] PersonClass entity)
+    {
+        var existing = await _context.PersonClasses.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.Name = entity.Name;
+        existing.Description = entity.Description;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("person-classes/{id}")]
+    public async Task<IActionResult> DeletePersonClass(string id)
+    {
+        var entity = await _context.PersonClasses.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.PersonClasses.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
+    #region Personnel Capabilities
+
+    [HttpGet("personnel-capabilities")]
+    public async Task<IActionResult> GetPersonnelCapabilities()
+    {
+        var data = await _context.PersonnelCapabilities.OrderBy(x => x.CapabilityName).ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("personnel-capabilities/{id}")]
+    public async Task<IActionResult> GetPersonnelCapability(string id)
+    {
+        var entity = await _context.PersonnelCapabilities.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("personnel-capabilities")]
+    public async Task<IActionResult> CreatePersonnelCapability([FromBody] PersonnelCapability entity)
+    {
+        var existing = await _context.PersonnelCapabilities.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.CapabilityName = entity.CapabilityName;
+            existing.Description = entity.Description;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.PersonnelCapabilities.Add(entity);
+        }
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("personnel-capabilities/{id}")]
+    public async Task<IActionResult> UpdatePersonnelCapability(string id, [FromBody] PersonnelCapability entity)
+    {
+        var existing = await _context.PersonnelCapabilities.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.CapabilityName = entity.CapabilityName;
+        existing.Description = entity.Description;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("personnel-capabilities/{id}")]
+    public async Task<IActionResult> DeletePersonnelCapability(string id)
+    {
+        var entity = await _context.PersonnelCapabilities.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.PersonnelCapabilities.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
+    #region Employees
+
+    [HttpGet("employees")]
+    public async Task<IActionResult> GetEmployees()
+    {
+        var data = await _context.Employees.OrderBy(x => x.EmployeeName).ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("employees/{id}")]
+    public async Task<IActionResult> GetEmployee(string id)
+    {
+        var entity = await _context.Employees.FindAsync(id);
+        if (entity == null) return NotFound();
+        return Ok(entity);
+    }
+
+    [HttpPost("employees")]
+    public async Task<IActionResult> CreateEmployee([FromBody] Employee entity)
+    {
+        var existing = await _context.Employees.FindAsync(entity.Id);
+        if (existing != null)
+        {
+            existing.EmployeeName = entity.EmployeeName;
+            existing.PersonClassId = entity.PersonClassId;
+            existing.PersonnelCapabilityId = entity.PersonnelCapabilityId;
+            existing.Email = entity.Email;
+            existing.PhoneNumber = entity.PhoneNumber;
+            existing.Description = entity.Description;
+            existing.UpdatedAt = DateTime.UtcNow;
+            existing.Version++;
+        }
+        else
+        {
+            entity.CreatedAt = DateTime.UtcNow;
+            entity.UpdatedAt = DateTime.UtcNow;
+            entity.Version = 1;
+            _context.Employees.Add(entity);
+        }
+        await _context.SaveChangesAsync();
+        return Ok(existing ?? entity);
+    }
+
+    [HttpPut("employees/{id}")]
+    public async Task<IActionResult> UpdateEmployee(string id, [FromBody] Employee entity)
+    {
+        var existing = await _context.Employees.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        existing.EmployeeName = entity.EmployeeName;
+        existing.PersonClassId = entity.PersonClassId;
+        existing.PersonnelCapabilityId = entity.PersonnelCapabilityId;
+        existing.Email = entity.Email;
+        existing.PhoneNumber = entity.PhoneNumber;
+        existing.Description = entity.Description;
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.Version++;
+
+        await _context.SaveChangesAsync();
+        return Ok(existing);
+    }
+
+    [HttpDelete("employees/{id}")]
+    public async Task<IActionResult> DeleteEmployee(string id)
+    {
+        var entity = await _context.Employees.FindAsync(id);
+        if (entity == null) return NotFound();
+        _context.Employees.Remove(entity);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
     #region Operation Event Definitions
 
     [HttpGet("operation-event-definitions")]
@@ -2497,6 +2703,9 @@ public class MasterDataController : ControllerBase
         if (Include("shifts")) result["shifts"] = await _context.Shifts.CountAsync();
         if (Include("crews")) result["crews"] = await _context.Crews.CountAsync();
         if (Include("shiftCrewAssignments")) result["shiftCrewAssignments"] = await _context.ShiftCrewAssignments.CountAsync();
+        if (Include("personClasses")) result["personClasses"] = await _context.PersonClasses.CountAsync();
+        if (Include("personnelCapabilities")) result["personnelCapabilities"] = await _context.PersonnelCapabilities.CountAsync();
+        if (Include("employees")) result["employees"] = await _context.Employees.CountAsync();
         if (Include("hierarchyScopes")) result["hierarchyScopes"] = await _context.HierarchyScopes.CountAsync();
         if (Include("hierarchyScopeParentChild")) result["hierarchyScopeParentChild"] = await _context.HierarchyScopeParentChilds.CountAsync();
 
@@ -2525,6 +2734,9 @@ public class MasterDataController : ControllerBase
             _context.OperationsEventClasses.RemoveRange(_context.OperationsEventClasses);
             
             _context.ShiftCrewAssignments.RemoveRange(_context.ShiftCrewAssignments);
+            _context.Employees.RemoveRange(_context.Employees);
+            _context.PersonnelCapabilities.RemoveRange(_context.PersonnelCapabilities);
+            _context.PersonClasses.RemoveRange(_context.PersonClasses);
             _context.Crews.RemoveRange(_context.Crews);
             _context.Shifts.RemoveRange(_context.Shifts);
             

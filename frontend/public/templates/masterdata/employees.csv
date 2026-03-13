@@ -1,0 +1,4 @@
+EmployeeID,EmployeeName,PersonClassID,PersonnelCapabilityID,Email,PhoneNumber,Description
+EMP001,Alice Novak,PCLASS_PROD,PCAP_LINE_OP,alice.novak@example.com,+420111222333,Primary line operator for Line 1
+EMP002,Martin Svoboda,PCLASS_MAINT,PCAP_MAINT_MECH,martin.svoboda@example.com,+420222333444,Mechanical maintenance specialist
+EMP003,Eva Krizova,PCLASS_MAINT,PCAP_MAINT_ELEC,eva.krizova@example.com,+420333444555,Electrical maintenance specialist

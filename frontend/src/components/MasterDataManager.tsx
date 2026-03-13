@@ -313,6 +313,28 @@ interface ShiftCrewAssignment {
   expiryDate: string;
 }
 
+interface PersonClass {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface PersonnelCapability {
+  id: string;
+  capabilityName: string;
+  description: string;
+}
+
+interface Employee {
+  id: string;
+  employeeName: string;
+  personClassId: string;
+  personnelCapabilityId: string;
+  email: string;
+  phoneNumber: string;
+  description: string;
+}
+
 interface MaterialDefinitionProperty {
   id: string;
   value: string;
@@ -519,6 +541,18 @@ const MasterDataManager: React.FC = () => {
   const [shiftCrewAssignmentDialog, setShiftCrewAssignmentDialog] = useState(false);
   const [editingShiftCrewAssignment, setEditingShiftCrewAssignment] = useState<ShiftCrewAssignment | null>(null);
 
+  const [personClasses, setPersonClasses] = useState<PersonClass[]>([]);
+  const [personClassDialog, setPersonClassDialog] = useState(false);
+  const [editingPersonClass, setEditingPersonClass] = useState<PersonClass | null>(null);
+
+  const [personnelCapabilities, setPersonnelCapabilities] = useState<PersonnelCapability[]>([]);
+  const [personnelCapabilityDialog, setPersonnelCapabilityDialog] = useState(false);
+  const [editingPersonnelCapability, setEditingPersonnelCapability] = useState<PersonnelCapability | null>(null);
+
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeeDialog, setEmployeeDialog] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+
   // Load data from IndexedDB on mount
   useEffect(() => {
     loadAllData();
@@ -538,7 +572,7 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, mcp, mcpa, mdp, mdpa, ec, e, ep, epa, ps, bom, mbom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
+      const [mc, m, ml, ms, mcp, mcpa, mdp, mdpa, ec, e, ep, epa, ps, bom, mbom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, pc, pcap, emp, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
         masterDataApi.getAll('materialClasses'),
         masterDataApi.getAll('materials'),
         masterDataApi.getAll('materialLots'),
@@ -568,6 +602,9 @@ const MasterDataManager: React.FC = () => {
         masterDataApi.getAll('shifts'),
         masterDataApi.getAll('crews'),
         masterDataApi.getAll('shiftCrewAssignments'),
+        masterDataApi.getAll('personClasses'),
+        masterDataApi.getAll('personnelCapabilities'),
+        masterDataApi.getAll('employees'),
         masterDataApi.getAll('operationsEventClasses'),
         masterDataApi.getAll('operationsEventRecords'),
         masterDataApi.getAll('operationsEventEntries'),
@@ -604,6 +641,9 @@ const MasterDataManager: React.FC = () => {
       setShifts(sh);
       setCrews(cr);
       setShiftCrewAssignments(sca);
+      setPersonClasses(pc);
+      setPersonnelCapabilities(pcap);
+      setEmployees(emp);
       setOperationsEventClasses(oec);
       setOperationsEventRecords(oer);
       setOperationsEventEntries(oee);
@@ -622,7 +662,10 @@ const MasterDataManager: React.FC = () => {
         operationEventDefinitionPropertyAssignments: oedpa.length,
         shifts: sh.length,
         crews: cr.length,
-        shiftCrewAssignments: sca.length
+        shiftCrewAssignments: sca.length,
+        personClasses: pc.length,
+        personnelCapabilities: pcap.length,
+        employees: emp.length
       });
       
       setEquipmentClassProperties(ecprop);
@@ -1512,6 +1555,99 @@ const MasterDataManager: React.FC = () => {
     }
   };
 
+  const handleSavePersonClass = async (data: PersonClass) => {
+    try {
+      if (editingPersonClass) {
+        await masterDataApi.update('personClasses', data);
+        setPersonClasses(prev => prev.map(pc => pc.id === data.id ? data : pc));
+        showSnackbar('Person class updated', 'success');
+      } else {
+        await masterDataApi.add('personClasses', data);
+        setPersonClasses(prev => [...prev, data]);
+        showSnackbar('Person class added', 'success');
+      }
+      setPersonClassDialog(false);
+      setEditingPersonClass(null);
+    } catch (error) {
+      console.error('Failed to save person class:', error);
+      showSnackbar('Failed to save person class', 'error');
+    }
+  };
+
+  const handleDeletePersonClass = async (id: string) => {
+    if (!confirm('Delete this person class?')) return;
+    try {
+      await masterDataApi.delete('personClasses', id);
+      setPersonClasses(prev => prev.filter(pc => pc.id !== id));
+      showSnackbar('Person class deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete person class:', error);
+      showSnackbar('Failed to delete person class', 'error');
+    }
+  };
+
+  const handleSavePersonnelCapability = async (data: PersonnelCapability) => {
+    try {
+      if (editingPersonnelCapability) {
+        await masterDataApi.update('personnelCapabilities', data);
+        setPersonnelCapabilities(prev => prev.map(pc => pc.id === data.id ? data : pc));
+        showSnackbar('Personnel capability updated', 'success');
+      } else {
+        await masterDataApi.add('personnelCapabilities', data);
+        setPersonnelCapabilities(prev => [...prev, data]);
+        showSnackbar('Personnel capability added', 'success');
+      }
+      setPersonnelCapabilityDialog(false);
+      setEditingPersonnelCapability(null);
+    } catch (error) {
+      console.error('Failed to save personnel capability:', error);
+      showSnackbar('Failed to save personnel capability', 'error');
+    }
+  };
+
+  const handleDeletePersonnelCapability = async (id: string) => {
+    if (!confirm('Delete this personnel capability?')) return;
+    try {
+      await masterDataApi.delete('personnelCapabilities', id);
+      setPersonnelCapabilities(prev => prev.filter(pc => pc.id !== id));
+      showSnackbar('Personnel capability deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete personnel capability:', error);
+      showSnackbar('Failed to delete personnel capability', 'error');
+    }
+  };
+
+  const handleSaveEmployee = async (data: Employee) => {
+    try {
+      if (editingEmployee) {
+        await masterDataApi.update('employees', data);
+        setEmployees(prev => prev.map(emp => emp.id === data.id ? data : emp));
+        showSnackbar('Employee updated', 'success');
+      } else {
+        await masterDataApi.add('employees', data);
+        setEmployees(prev => [...prev, data]);
+        showSnackbar('Employee added', 'success');
+      }
+      setEmployeeDialog(false);
+      setEditingEmployee(null);
+    } catch (error) {
+      console.error('Failed to save employee:', error);
+      showSnackbar('Failed to save employee', 'error');
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    if (!confirm('Delete this employee?')) return;
+    try {
+      await masterDataApi.delete('employees', id);
+      setEmployees(prev => prev.filter(emp => emp.id !== id));
+      showSnackbar('Employee deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete employee:', error);
+      showSnackbar('Failed to delete employee', 'error');
+    }
+  };
+
   // Operation Event Definition Handlers
   const handleSaveOperationEventDefinition = async (data: OperationEventDefinition) => {
     try {
@@ -2042,6 +2178,15 @@ const MasterDataManager: React.FC = () => {
     const euHeaders = 'ProcessSegmentID,EquipmentID,Sequence';
     const euRows = equipmentUsages.map((eu: any) => `${eu.processSegmentId},${eu.equipmentId},${eu.sequence || ''}`).join('\n');
 
+    const personClassHeaders = 'PersonClassID,PersonClassName,Description';
+    const personClassRows = personClasses.map(pc => `${pc.id},${pc.name},${pc.description || ''}`).join('\n');
+
+    const capabilityHeaders = 'PersonnelCapabilityID,CapabilityName,Description';
+    const capabilityRows = personnelCapabilities.map(pc => `${pc.id},${pc.capabilityName},${pc.description || ''}`).join('\n');
+
+    const employeeHeaders = 'EmployeeID,EmployeeName,PersonClassID,PersonnelCapabilityID,Email,PhoneNumber,Description';
+    const employeeRows = employees.map(emp => `${emp.id},${emp.employeeName},${emp.personClassId},${emp.personnelCapabilityId},${emp.email || ''},${emp.phoneNumber || ''},${emp.description || ''}`).join('\n');
+
     return [
       { filename: 'material_classes.csv', content: `${mcHeaders}\n${mcRows}` },
       { filename: 'materials.csv', content: `${mHeaders}\n${mRows}` },
@@ -2061,6 +2206,9 @@ const MasterDataManager: React.FC = () => {
       { filename: 'segment_material_bom.csv', content: `${sbHeaders}\n${sbRows}` },
       { filename: 'maintenance_bom.csv', content: `${mbHeaders}\n${mbRows}` },
       { filename: 'equipment_usage.csv', content: `${euHeaders}\n${euRows}` },
+      { filename: 'person_classes.csv', content: `${personClassHeaders}\n${personClassRows}` },
+      { filename: 'personnel_capabilities.csv', content: `${capabilityHeaders}\n${capabilityRows}` },
+      { filename: 'employees.csv', content: `${employeeHeaders}\n${employeeRows}` },
     ];
   };
 
@@ -3317,6 +3465,9 @@ const MasterDataManager: React.FC = () => {
       {categoryTab === 4 && (
         <Box>
           <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
+            <Tab label="Person Classes" />
+            <Tab label="Personnel Capabilities" />
+            <Tab label="Employees" />
             <Tab label="Shifts" />
             <Tab label="Crews" />
             <Tab label="Shift-Crew Assignments" />
@@ -3324,6 +3475,154 @@ const MasterDataManager: React.FC = () => {
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
             {tabValue === 0 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Person Classes</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingPersonClass(null);
+                    setPersonClassDialog(true);
+                  }}>
+                    Add Person Class
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {personClasses.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell><Chip label={row.id} size="small" /></TableCell>
+                          <TableCell>{row.name}</TableCell>
+                          <TableCell>{row.description}</TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingPersonClass(row);
+                              setPersonClassDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeletePersonClass(row.id)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 1 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Personnel Capabilities</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingPersonnelCapability(null);
+                    setPersonnelCapabilityDialog(true);
+                  }}>
+                    Add Capability
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Capability Name</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {personnelCapabilities.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell><Chip label={row.id} size="small" /></TableCell>
+                          <TableCell>{row.capabilityName}</TableCell>
+                          <TableCell>{row.description}</TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => {
+                              setEditingPersonnelCapability(row);
+                              setPersonnelCapabilityDialog(true);
+                            }}>
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeletePersonnelCapability(row.id)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 2 && (
+              <Box>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">Employees</Typography>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                    setEditingEmployee(null);
+                    setEmployeeDialog(true);
+                  }}>
+                    Add Employee
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Person Class</TableCell>
+                        <TableCell>Capability</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Phone</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {employees.map((row) => {
+                        const pc = personClasses.find(x => x.id === row.personClassId);
+                        const cap = personnelCapabilities.find(x => x.id === row.personnelCapabilityId);
+                        return (
+                          <TableRow key={row.id}>
+                            <TableCell><Chip label={row.id} size="small" /></TableCell>
+                            <TableCell>{row.employeeName}</TableCell>
+                            <TableCell>{pc ? pc.name : row.personClassId}</TableCell>
+                            <TableCell>{cap ? cap.capabilityName : row.personnelCapabilityId}</TableCell>
+                            <TableCell>{row.email || '-'}</TableCell>
+                            <TableCell>{row.phoneNumber || '-'}</TableCell>
+                            <TableCell align="right">
+                              <IconButton size="small" onClick={() => {
+                                setEditingEmployee(row);
+                                setEmployeeDialog(true);
+                              }}>
+                                <EditIcon />
+                              </IconButton>
+                              <IconButton size="small" color="error" onClick={() => handleDeleteEmployee(row.id)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 3 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="h6">Shifts</Typography>
@@ -3375,7 +3674,7 @@ const MasterDataManager: React.FC = () => {
               </Box>
             )}
 
-            {tabValue === 1 && (
+            {tabValue === 4 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="h6">Crews</Typography>
@@ -3425,7 +3724,7 @@ const MasterDataManager: React.FC = () => {
               </Box>
             )}
 
-            {tabValue === 2 && (
+            {tabValue === 5 && (
               <Box>
                 <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="h6">Shift-Crew Assignments</Typography>
@@ -3747,6 +4046,38 @@ const MasterDataManager: React.FC = () => {
           setEditingShift(null);
         }}
         onSave={handleSaveShift}
+      />
+
+      <PersonClassDialog
+        open={personClassDialog}
+        data={editingPersonClass}
+        onClose={() => {
+          setPersonClassDialog(false);
+          setEditingPersonClass(null);
+        }}
+        onSave={handleSavePersonClass}
+      />
+
+      <PersonnelCapabilityDialog
+        open={personnelCapabilityDialog}
+        data={editingPersonnelCapability}
+        onClose={() => {
+          setPersonnelCapabilityDialog(false);
+          setEditingPersonnelCapability(null);
+        }}
+        onSave={handleSavePersonnelCapability}
+      />
+
+      <EmployeeDialog
+        open={employeeDialog}
+        data={editingEmployee}
+        personClasses={personClasses}
+        personnelCapabilities={personnelCapabilities}
+        onClose={() => {
+          setEmployeeDialog(false);
+          setEditingEmployee(null);
+        }}
+        onSave={handleSaveEmployee}
       />
 
       <CrewDialog
@@ -7542,6 +7873,293 @@ const CrewDialog: React.FC<CrewDialogProps> = ({ open, data, onClose, onSave }) 
               value={formData.skills}
               onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
               helperText="Comma-separated list of skills"
+            />
+          </Grid>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              multiline
+              rows={2}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+interface PersonClassDialogProps {
+  open: boolean;
+  data: PersonClass | null;
+  onClose: () => void;
+  onSave: (data: PersonClass) => void;
+}
+
+const PersonClassDialog: React.FC<PersonClassDialogProps> = ({ open, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState<PersonClass>(data || { id: '', name: '', description: '' });
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', name: '', description: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.name) {
+      alert('ID and Name are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Person Class</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Person Class ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              multiline
+              rows={2}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+interface PersonnelCapabilityDialogProps {
+  open: boolean;
+  data: PersonnelCapability | null;
+  onClose: () => void;
+  onSave: (data: PersonnelCapability) => void;
+}
+
+const PersonnelCapabilityDialog: React.FC<PersonnelCapabilityDialogProps> = ({ open, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState<PersonnelCapability>(
+    data || { id: '', capabilityName: '', description: '' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', capabilityName: '', description: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.capabilityName) {
+      alert('ID and Capability Name are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Personnel Capability</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Capability ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Capability Name"
+              value={formData.capabilityName}
+              onChange={(e) => setFormData({ ...formData, capabilityName: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              multiline
+              rows={2}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+interface EmployeeDialogProps {
+  open: boolean;
+  data: Employee | null;
+  personClasses: PersonClass[];
+  personnelCapabilities: PersonnelCapability[];
+  onClose: () => void;
+  onSave: (data: Employee) => void;
+}
+
+const EmployeeDialog: React.FC<EmployeeDialogProps> = ({
+  open,
+  data,
+  personClasses,
+  personnelCapabilities,
+  onClose,
+  onSave,
+}) => {
+  const [formData, setFormData] = useState<Employee>(
+    data || {
+      id: '',
+      employeeName: '',
+      personClassId: '',
+      personnelCapabilityId: '',
+      email: '',
+      phoneNumber: '',
+      description: '',
+    }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({
+        id: '',
+        employeeName: '',
+        personClassId: '',
+        personnelCapabilityId: '',
+        email: '',
+        phoneNumber: '',
+        description: '',
+      });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.id || !formData.employeeName || !formData.personClassId || !formData.personnelCapabilityId) {
+      alert('ID, Employee Name, Person Class, and Capability are required');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Employee</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid xs={6}>
+            <TextField
+              fullWidth
+              label="Employee ID"
+              value={formData.id}
+              onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+              disabled={!!data}
+              required
+            />
+          </Grid>
+          <Grid xs={6}>
+            <TextField
+              fullWidth
+              label="Employee Name"
+              value={formData.employeeName}
+              onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
+              required
+            />
+          </Grid>
+          <Grid xs={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Person Class</InputLabel>
+              <Select
+                value={formData.personClassId}
+                label="Person Class"
+                onChange={(e) => setFormData({ ...formData, personClassId: e.target.value })}
+              >
+                {personClasses.map((pc) => (
+                  <MenuItem key={pc.id} value={pc.id}>
+                    {pc.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Personnel Capability</InputLabel>
+              <Select
+                value={formData.personnelCapabilityId}
+                label="Personnel Capability"
+                onChange={(e) => setFormData({ ...formData, personnelCapabilityId: e.target.value })}
+              >
+                {personnelCapabilities.map((pc) => (
+                  <MenuItem key={pc.id} value={pc.id}>
+                    {pc.capabilityName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={6}>
+            <TextField
+              fullWidth
+              label="Email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            />
+          </Grid>
+          <Grid xs={6}>
+            <TextField
+              fullWidth
+              label="Phone Number"
+              value={formData.phoneNumber}
+              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
             />
           </Grid>
           <Grid xs={12}>
