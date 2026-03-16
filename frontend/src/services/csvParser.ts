@@ -275,8 +275,8 @@ class CSVParser {
       id: r.ProcessSegmentID,
       productMaterialId: r.ProductMaterialID,
       name: r.ProcessSegmentName,
-      sequence: parseInt(r.Seq) || 0,
-      durationHours: parseFloat(r.SegmentDurationHours) || 0,
+      sequence: parseInt(r.Sequence ?? r.Seq) || 0,
+      durationHours: parseFloat(r.DurationHours ?? r.SegmentDurationHours) || 0,
     }));
   }
 

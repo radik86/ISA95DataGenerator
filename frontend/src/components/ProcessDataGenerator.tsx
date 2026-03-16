@@ -397,10 +397,78 @@ const ProcessDataGenerator: React.FC = () => {
     try {
       const requests = await processDataApi.getAll('operationsRequests');
       const maintenanceIds = new Set((maintenanceBOMs || []).map((m) => m.materialId));
-      const filtered = requests.filter((req: any) => maintenanceIds.has(req.productMaterialId));
+      const filtered = requests.filter((req: any) => {
+        const type = (req.operationsType || '').toString().toLowerCase();
+        return type === 'maintenance' || maintenanceIds.has(req.productMaterialId);
+      });
       setSavedMaintenanceRequests(filtered);
     } catch (error) {
       console.error('Failed to load maintenance operations requests:', error);
+    }
+  };
+
+  const loadMaintenanceActualDataForRequest = async (maintenanceRequestId: string) => {
+    if (!maintenanceRequestId) {
+      setGeneratedMaintenanceResponse(null);
+      setMaintenanceSegmentResponses([]);
+      setMaintenanceMaterialActuals([]);
+      setMaintenanceEquipmentActuals([]);
+      setMaintenanceActualTimestamp(null);
+      setMaintenancePlanReference(null);
+      setMaintenanceSegReqReference([]);
+      return;
+    }
+
+    try {
+      const [allResponses, allSegmentResponses, allMaterialActuals, allEquipmentActuals, requestData] = await Promise.all([
+        processDataApi.getAll('operationsResponses'),
+        processDataApi.getAll('segmentResponses'),
+        processDataApi.getAll('segmentMaterialActuals'),
+        processDataApi.getAll('segmentEquipmentActuals'),
+        processDataApi.getOperationsRequestWithRequirements(maintenanceRequestId),
+      ]);
+
+      const matchingResponses = (allResponses as any[])
+        .filter((resp) => {
+          if (resp.operationsRequestId !== maintenanceRequestId) return false;
+          const type = (resp.operationsType || '').toString().toLowerCase();
+          return type === 'maintenance' || type === '';
+        })
+        .sort((a, b) => {
+          const aTs = Date.parse(a.actualEndDateTime || a.actualStartDateTime || '') || 0;
+          const bTs = Date.parse(b.actualEndDateTime || b.actualStartDateTime || '') || 0;
+          return bTs - aTs;
+        });
+
+      if (matchingResponses.length === 0) {
+        setGeneratedMaintenanceResponse(null);
+        setMaintenanceSegmentResponses([]);
+        setMaintenanceMaterialActuals([]);
+        setMaintenanceEquipmentActuals([]);
+        setMaintenanceActualTimestamp(null);
+      } else {
+        const selectedResponse = matchingResponses[0];
+        const segResponses = (allSegmentResponses as any[])
+          .filter((sr) => sr.operationsResponseId === selectedResponse.id);
+        const segIds = new Set(segResponses.map((sr) => sr.id));
+        const matActuals = (allMaterialActuals as any[])
+          .filter((ma) => segIds.has(ma.segmentResponseId));
+        const eqActuals = (allEquipmentActuals as any[])
+          .filter((ea) => segIds.has(ea.segmentResponseId));
+
+        setGeneratedMaintenanceResponse(selectedResponse);
+        setMaintenanceSegmentResponses(segResponses);
+        setMaintenanceMaterialActuals(matActuals);
+        setMaintenanceEquipmentActuals(eqActuals);
+        setMaintenanceActualTimestamp(new Date());
+      }
+
+      if (requestData?.operationsRequest) {
+        setMaintenancePlanReference(requestData.operationsRequest as any);
+        setMaintenanceSegReqReference((requestData.segmentRequirements || []) as any);
+      }
+    } catch (error) {
+      console.error('Failed to load maintenance actual data for selected request:', error);
     }
   };
 
@@ -530,6 +598,10 @@ const ProcessDataGenerator: React.FC = () => {
   useEffect(() => {
     loadSavedMaintenanceRequests();
   }, [maintenanceBOMs]);
+
+  useEffect(() => {
+    loadMaintenanceActualDataForRequest(selectedMaintenanceRequestId);
+  }, [selectedMaintenanceRequestId]);
 
   const generateActualData = async () => {
     if (!selectedOperationsRequestId || !actualProductQuantity) {

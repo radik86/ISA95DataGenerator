@@ -39,6 +39,7 @@ import {
   Download as DownloadIcon,
   Upload as UploadIcon,
   Refresh as RefreshIcon,
+  ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
 import { masterDataApi } from '../services/masterDataApi';
 import { templateLoader } from '../services/templateLoader';
@@ -367,6 +368,57 @@ interface MaterialDefinitionPropertyAssignment {
   description: string;
   valueUnitOfMeasure: string;
 }
+
+type StoreTemplateEntry = { storeName: string; csvFile: string; parserKey: string; label: string; clearFirst?: string[] };
+const STORE_TEMPLATE_MAP: Record<number, Record<number, StoreTemplateEntry | null>> = {
+  0: { // Materials
+    0: { storeName: 'materialClasses', csvFile: 'material_classes.csv', parserKey: 'materialClasses', label: 'Material Classes', clearFirst: ['materialClassPropertiesAssignments', 'materialClassProperties', 'materialDefinitionPropertyAssignments', 'materialDefinitionProperties', 'materialSublots', 'materialLots', 'materials'] },
+    1: { storeName: 'materials', csvFile: 'materials.csv', parserKey: 'materials', label: 'Materials', clearFirst: ['materialSublots', 'materialLots'] },
+    2: { storeName: 'materialLots', csvFile: 'material_lots.csv', parserKey: 'materialLots', label: 'Material Lots', clearFirst: ['materialSublots'] },
+    3: null,
+    4: { storeName: 'materialClassProperties', csvFile: 'material_class_properties.csv', parserKey: 'materialClassProperties', label: 'Material Class Properties', clearFirst: ['materialClassPropertiesAssignments'] },
+    5: { storeName: 'materialClassPropertiesAssignments', csvFile: 'material_class_properties_assignments.csv', parserKey: 'materialClassPropertiesAssignments', label: 'Material Class Property Assign.' },
+    6: { storeName: 'materialDefinitionProperties', csvFile: 'material_definition_property_template.csv', parserKey: 'materialDefinitionProperties', label: 'Material Definition Properties', clearFirst: ['materialDefinitionPropertyAssignments'] },
+    7: { storeName: 'materialDefinitionPropertyAssignments', csvFile: 'material_definition_property_assignment_template.csv', parserKey: 'materialDefinitionPropertyAssignments', label: 'Material Def. Property Assign.' },
+  },
+  1: { // Equipment & Facilities
+    0: { storeName: 'equipmentClasses', csvFile: 'equipment_classes.csv', parserKey: 'equipmentClasses', label: 'Equipment Classes', clearFirst: ['equipmentClassPropertiesAssignments', 'equipmentClassProperties'] },
+    1: { storeName: 'equipment', csvFile: 'equipment.csv', parserKey: 'equipment', label: 'Equipment', clearFirst: ['lineEquipment', 'equipmentPropertyAssignments', 'equipmentProperties'] },
+    2: { storeName: 'equipmentProperties', csvFile: 'equipment_properties.csv', parserKey: 'equipmentProperties', label: 'Equipment Properties', clearFirst: ['equipmentPropertyAssignments'] },
+    3: { storeName: 'equipmentPropertyAssignments', csvFile: 'equipment_property_assignments.csv', parserKey: 'equipmentPropertyAssignments', label: 'Equip. Property Assign.' },
+    4: { storeName: 'equipmentClassProperties', csvFile: 'equipment_class_properties.csv', parserKey: 'equipmentClassProperties', label: 'Equip. Class Properties', clearFirst: ['equipmentClassPropertiesAssignments'] },
+    5: { storeName: 'equipmentClassPropertiesAssignments', csvFile: 'equipment_class_properties_assignment.csv', parserKey: 'equipmentClassPropertyAssignments', label: 'Equip. Class Property Assign.' },
+    6: { storeName: 'plants', csvFile: 'plants.csv', parserKey: 'plants', label: 'Plants', clearFirst: ['productionLines'] },
+    7: { storeName: 'productionLines', csvFile: 'production_lines.csv', parserKey: 'productionLines', label: 'Production Lines', clearFirst: ['lineEquipment'] },
+    8: { storeName: 'lineEquipment', csvFile: 'line_equipment.csv', parserKey: 'lineEquipment', label: 'Line Equipment' },
+    9: { storeName: 'hierarchyScopes', csvFile: 'hierarchy_scope.csv', parserKey: 'hierarchyScopes', label: 'Hierarchy Scopes', clearFirst: ['hierarchyScopeParentChild', 'hierarchyScopesFlat'] },
+    10: { storeName: 'hierarchyScopesFlat', csvFile: 'hierarchy_scope_flat.csv', parserKey: 'hierarchyScopesFlat', label: 'Hierarchy Scopes Flat' },
+    11: null,
+  },
+  2: { // Production
+    0: { storeName: 'processSegments', csvFile: 'process_segments.csv', parserKey: 'processSegments', label: 'Process Segments', clearFirst: ['maintenanceBOMs', 'equipmentUsages', 'segmentBOMs', 'operationEventDefSegmentAssignments'] },
+    1: { storeName: 'segmentBOMs', csvFile: 'segment_material_bom.csv', parserKey: 'segmentBOMs', label: 'Segment BOMs' },
+    2: { storeName: 'equipmentUsages', csvFile: 'equipment_usage.csv', parserKey: 'equipmentUsages', label: 'Equipment Usages' },
+    3: { storeName: 'maintenanceBOMs', csvFile: 'maintenance_bom.csv', parserKey: 'maintenanceBOMs', label: 'Maintenance BOMs' },
+  },
+  3: { // Operations
+    0: { storeName: 'operationEventDefinitions', csvFile: 'operation_event_definitions.csv', parserKey: 'operationEventDefinitions', label: 'Operation Event Definitions', clearFirst: ['operationEventDefSegmentAssignments', 'operationEventDefinitionPropertyAssignments', 'operationEventDefinitionProperties'] },
+    1: { storeName: 'operationEventDefSegmentAssignments', csvFile: 'operations_event_definition_segment_assignments.csv', parserKey: 'operationEventDefSegmentAssignments', label: 'Event-Segment Assignments' },
+    2: { storeName: 'operationEventDefinitionProperties', csvFile: 'operation_event_definition_property.csv', parserKey: 'operationEventDefinitionProperties', label: 'Event Definition Properties', clearFirst: ['operationEventDefinitionPropertyAssignments'] },
+    3: { storeName: 'operationEventDefinitionPropertyAssignments', csvFile: 'operation_event_definition_property_assignment.csv', parserKey: 'operationEventDefinitionPropertyAssignments', label: 'Event Def. Property Assign.' },
+    4: { storeName: 'operationsEventClasses', csvFile: 'operations_event_classes.csv', parserKey: 'operationsEventClasses', label: 'Operations Event Classes' },
+    5: { storeName: 'operationsEventRecords', csvFile: 'operations_event_records_template.csv', parserKey: 'operationsEventRecords', label: 'Operations Event Records', clearFirst: ['operationsEventEntries'] },
+    6: { storeName: 'operationsEventEntries', csvFile: 'operations_event_entries_template.csv', parserKey: 'operationsEventEntries', label: 'Operations Event Entries' },
+  },
+  4: { // Personnel
+    0: { storeName: 'personClasses', csvFile: 'person_classes.csv', parserKey: 'personClasses', label: 'Person Classes', clearFirst: ['personnelCapabilities'] },
+    1: { storeName: 'personnelCapabilities', csvFile: 'personnel_capabilities.csv', parserKey: 'personnelCapabilities', label: 'Personnel Capabilities' },
+    2: { storeName: 'employees', csvFile: 'employees.csv', parserKey: 'employees', label: 'Employees', clearFirst: ['shiftCrewAssignments'] },
+    3: { storeName: 'shifts', csvFile: 'shifts.csv', parserKey: 'shifts', label: 'Shifts', clearFirst: ['shiftCrewAssignments'] },
+    4: { storeName: 'crews', csvFile: 'crews.csv', parserKey: 'crews', label: 'Crews', clearFirst: ['shiftCrewAssignments'] },
+    5: { storeName: 'shiftCrewAssignments', csvFile: 'shift_crew_assignments.csv', parserKey: 'shiftCrewAssignments', label: 'Shift-Crew Assignments' },
+  },
+};
 
 const MasterDataManager: React.FC = () => {
     // Equipment Class Property State
@@ -779,6 +831,25 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to reset data:', error);
       showSnackbar('Failed to reset data', 'error');
+      setLoading(false);
+    }
+  };
+
+  const handleResetCurrentTabToTemplate = async () => {
+    const storeConfig = STORE_TEMPLATE_MAP[categoryTab]?.[tabValue];
+    if (!storeConfig) {
+      showSnackbar('No template available for this tab', 'warning');
+      return;
+    }
+    if (!confirm(`This will delete all current "${storeConfig.label}" data and reload from template. Continue?`)) return;
+    try {
+      setLoading(true);
+      await templateLoader.resetSingleStoreToTemplate(storeConfig.storeName, storeConfig.csvFile, storeConfig.parserKey, storeConfig.clearFirst);
+      await loadAllData();
+      showSnackbar(`"${storeConfig.label}" reset to template`, 'success');
+    } catch (error) {
+      console.error('Failed to reset store to template:', error);
+      showSnackbar('Failed to reset to template', 'error');
       setLoading(false);
     }
   };
@@ -1340,6 +1411,30 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete maintenance BOM:', error);
       showSnackbar('Failed to delete maintenance BOM', 'error');
+    }
+  };
+
+  const handleCopyEquipmentBOM = async (sourceEquipmentId: string, targetEquipmentId: string) => {
+    const sourceBOMs = maintenanceBOMs.filter(b => b.equipmentId === sourceEquipmentId);
+    if (sourceBOMs.length === 0) {
+      showSnackbar('No BOM lines found for source equipment', 'warning');
+      return;
+    }
+    try {
+      const ts = Date.now();
+      const newEntries: MaintenanceBOM[] = sourceBOMs.map((b, i) => ({
+        ...b,
+        id: `MBOM-${targetEquipmentId}-${ts}-${i}`,
+        equipmentId: targetEquipmentId,
+      }));
+      for (const entry of newEntries) {
+        await masterDataApi.add('maintenanceBOMs', entry);
+      }
+      setMaintenanceBOMs(prev => [...prev, ...newEntries]);
+      showSnackbar(`Copied ${newEntries.length} BOM line(s) to ${targetEquipmentId}`, 'success');
+    } catch (error) {
+      console.error('Failed to copy BOM:', error);
+      showSnackbar('Failed to copy BOM', 'error');
     }
   };
 
@@ -2284,8 +2379,26 @@ const MasterDataManager: React.FC = () => {
               onClick={handleResetToTemplates}
               sx={{ mr: 1 }}
             >
-              Reset to Templates
+              Reset All to Templates
             </Button>
+            <Tooltip
+              title={STORE_TEMPLATE_MAP[categoryTab]?.[tabValue]
+                ? `Reset only "${STORE_TEMPLATE_MAP[categoryTab][tabValue]!.label}" to template`
+                : 'No template available for this tab'}
+              arrow
+            >
+              <span>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={handleResetCurrentTabToTemplate}
+                  disabled={!STORE_TEMPLATE_MAP[categoryTab]?.[tabValue]}
+                  sx={{ mr: 1 }}
+                >
+                  Reset Tab to Template
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               variant="outlined"
               color="warning"
@@ -3150,6 +3263,7 @@ const MasterDataManager: React.FC = () => {
                   setMaintenanceBomDialog(true);
                 }}
                 onDelete={handleDeleteMaintenanceAssignment}
+                onCopyBom={handleCopyEquipmentBOM}
               />
             )}
           </Box>
@@ -5065,6 +5179,7 @@ interface MaintenanceTabProps {
   onAdd: () => void;
   onEdit: (item: MaintenanceBOM) => void;
   onDelete: (id: string) => void;
+  onCopyBom: (sourceEquipmentId: string, targetEquipmentId: string) => void;
 }
 
 const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
@@ -5075,8 +5190,11 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
   onAdd,
   onEdit,
   onDelete,
+  onCopyBom,
 }) => {
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copyTargetEquipmentId, setCopyTargetEquipmentId] = useState('');
 
   const visibleAssignments = data.filter(item => !selectedEquipmentId || item.equipmentId === selectedEquipmentId);
   const groupedByEquipment = visibleAssignments.reduce<Record<string, MaintenanceBOM[]>>((acc, item) => {
@@ -5114,10 +5232,52 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
             </Select>
           </FormControl>
         </FormControl>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
-          Add Maintenance BOM
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedEquipmentId && (
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => { setCopyTargetEquipmentId(''); setCopyDialogOpen(true); }}
+            >
+              Copy BOM
+            </Button>
+          )}
+          <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
+            Add Maintenance BOM
+          </Button>
+        </Box>
       </Box>
+
+      <Dialog open={copyDialogOpen} onClose={() => setCopyDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Copy Maintenance BOM</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Copy all BOM lines from <strong>{equipment.find(e => e.id === selectedEquipmentId)?.name || selectedEquipmentId}</strong> to:
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel>Target Equipment</InputLabel>
+            <Select
+              value={copyTargetEquipmentId}
+              label="Target Equipment"
+              onChange={(e) => setCopyTargetEquipmentId(e.target.value)}
+            >
+              {equipment.filter(e => e.id !== selectedEquipmentId).map(eq => (
+                <MenuItem key={eq.id} value={eq.id}>{eq.name} ({eq.id})</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCopyDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!copyTargetEquipmentId}
+            onClick={() => { onCopyBom(selectedEquipmentId, copyTargetEquipmentId); setCopyDialogOpen(false); }}
+          >
+            Copy
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <TableContainer component={Paper}>
         <Table>

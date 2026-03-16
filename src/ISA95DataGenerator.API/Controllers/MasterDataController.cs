@@ -2782,5 +2782,81 @@ public class MasterDataController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Clear one or more specific master data stores, respecting FK dependency order.
+    /// Body: { "stores": ["processSegments", "segmentBOMs", ...] }
+    /// </summary>
+    [HttpPost("clear-stores")]
+    public async Task<IActionResult> ClearStores([FromBody] ClearStoresRequest request)
+    {
+        if (request?.Stores == null || request.Stores.Count == 0)
+            return BadRequest("No stores provided");
+
+        var s = new HashSet<string>(request.Stores, StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            // Always respect FK child-before-parent ordering; skip sets not requested.
+            if (s.Contains("operationsEventEntries"))   _context.OperationsEventEntries.RemoveRange(_context.OperationsEventEntries);
+            if (s.Contains("operationsEventRecords"))   _context.OperationsEventRecords.RemoveRange(_context.OperationsEventRecords);
+            if (s.Contains("operationEventDefSegmentAssignments")) _context.OperationEventDefSegmentAssignments.RemoveRange(_context.OperationEventDefSegmentAssignments);
+            if (s.Contains("operationEventDefinitionPropertyAssignments")) _context.OperationEventDefinitionPropertyAssignments.RemoveRange(_context.OperationEventDefinitionPropertyAssignments);
+            if (s.Contains("operationEventDefinitionProperties")) _context.OperationEventDefinitionProperties.RemoveRange(_context.OperationEventDefinitionProperties);
+            if (s.Contains("operationEventDefinitions")) _context.OperationEventDefinitions.RemoveRange(_context.OperationEventDefinitions);
+            if (s.Contains("operationsEventClasses"))   _context.OperationsEventClasses.RemoveRange(_context.OperationsEventClasses);
+
+            if (s.Contains("shiftCrewAssignments"))     _context.ShiftCrewAssignments.RemoveRange(_context.ShiftCrewAssignments);
+            if (s.Contains("employees"))                _context.Employees.RemoveRange(_context.Employees);
+            if (s.Contains("personnelCapabilities"))    _context.PersonnelCapabilities.RemoveRange(_context.PersonnelCapabilities);
+            if (s.Contains("personClasses"))            _context.PersonClasses.RemoveRange(_context.PersonClasses);
+            if (s.Contains("crews"))                    _context.Crews.RemoveRange(_context.Crews);
+            if (s.Contains("shifts"))                   _context.Shifts.RemoveRange(_context.Shifts);
+
+            if (s.Contains("lineEquipment"))            _context.LineEquipments.RemoveRange(_context.LineEquipments);
+            if (s.Contains("maintenanceBOMs"))          _context.MaintenanceBOMs.RemoveRange(_context.MaintenanceBOMs);
+            if (s.Contains("equipmentUsages"))          _context.EquipmentUsages.RemoveRange(_context.EquipmentUsages);
+            if (s.Contains("segmentBOMs"))              _context.SegmentBOMs.RemoveRange(_context.SegmentBOMs);
+            if (s.Contains("processSegments"))          _context.ProcessSegments.RemoveRange(_context.ProcessSegments);
+
+            if (s.Contains("equipmentPropertyAssignments")) _context.EquipmentPropertyAssignments.RemoveRange(_context.EquipmentPropertyAssignments);
+            if (s.Contains("equipmentProperties"))      _context.EquipmentProperties.RemoveRange(_context.EquipmentProperties);
+            if (s.Contains("equipment"))                _context.Equipments.RemoveRange(_context.Equipments);
+
+            if (s.Contains("equipmentClassPropertiesAssignments")) _context.EquipmentClassPropertyAssignments.RemoveRange(_context.EquipmentClassPropertyAssignments);
+            if (s.Contains("equipmentClassProperties")) _context.EquipmentClassProperties.RemoveRange(_context.EquipmentClassProperties);
+            if (s.Contains("equipmentClasses"))         _context.EquipmentClasses.RemoveRange(_context.EquipmentClasses);
+
+            if (s.Contains("materialClassPropertiesAssignments")) _context.MaterialClassPropertyAssignments.RemoveRange(_context.MaterialClassPropertyAssignments);
+            if (s.Contains("materialClassProperties"))  _context.MaterialClassProperties.RemoveRange(_context.MaterialClassProperties);
+            if (s.Contains("materialDefinitionPropertyAssignments")) _context.MaterialDefinitionPropertyAssignments.RemoveRange(_context.MaterialDefinitionPropertyAssignments);
+            if (s.Contains("materialDefinitionProperties")) _context.MaterialDefinitionProperties.RemoveRange(_context.MaterialDefinitionProperties);
+            if (s.Contains("materialSublots"))          _context.MaterialSublots.RemoveRange(_context.MaterialSublots);
+            if (s.Contains("materialLots"))             _context.MaterialLots.RemoveRange(_context.MaterialLots);
+            if (s.Contains("materials"))                _context.Materials.RemoveRange(_context.Materials);
+            if (s.Contains("materialClasses"))          _context.MaterialClasses.RemoveRange(_context.MaterialClasses);
+
+            if (s.Contains("productionLines"))          _context.ProductionLines.RemoveRange(_context.ProductionLines);
+            if (s.Contains("plants"))                   _context.Plants.RemoveRange(_context.Plants);
+
+            if (s.Contains("hierarchyScopeParentChild")) _context.HierarchyScopeParentChilds.RemoveRange(_context.HierarchyScopeParentChilds);
+            if (s.Contains("hierarchyScopesFlat"))      _context.HierarchyScopesFlat.RemoveRange(_context.HierarchyScopesFlat);
+            if (s.Contains("hierarchyScopes"))          _context.HierarchyScopes.RemoveRange(_context.HierarchyScopes);
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Cleared stores: {Stores}", string.Join(", ", request.Stores));
+            return Ok(new { cleared = request.Stores });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing stores");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     #endregion
+}
+
+public class ClearStoresRequest
+{
+    public List<string> Stores { get; set; } = new();
 }

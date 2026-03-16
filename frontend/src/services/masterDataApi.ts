@@ -306,7 +306,8 @@ export const masterDataApi = {
   },
 
   /**
-   * Clear all data from a store
+   * Clear all data from a store (fetches all IDs then deletes one by one).
+   * For stores with FK-dependent children prefer clearStores([...children, storeName]).
    */
   async clear(storeName: string): Promise<void> {
     // Get all records and delete them one by one
@@ -314,6 +315,17 @@ export const masterDataApi = {
     for (const item of items) {
       await this.delete(storeName, item.id);
     }
+  },
+
+  /**
+   * Clear one or more stores in FK-safe order via the backend bulk endpoint.
+   * Pass children before parents when stores have FK dependencies.
+   */
+  async clearStores(storeNames: string[]): Promise<void> {
+    await apiCall<void>('/masterdata/clear-stores', {
+      method: 'POST',
+      body: JSON.stringify({ stores: storeNames }),
+    });
   },
 
   /**

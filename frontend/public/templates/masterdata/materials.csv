@@ -1,13 +1,17 @@
 MaterialID,MaterialName,MaterialClassID,MaterialClass,DefaultUoM,Description
-BAGUETTE-250G,Baguette 250g,FINISHEDPRODUCT,FinishedProduct,EA,"Traditional baguette, 250g"
-BREAD-750G,Wheat Bread 750g,FINISHEDPRODUCT,FinishedProduct,EA,"Wheat bread, 750g"
-LOAF-750G,Wheat Loaf 750g,FINISHEDPRODUCT,FinishedProduct,EA,"Wheat loaf, 750g"
-PITA-200G,Pita 200g,FINISHEDPRODUCT,FinishedProduct,EA,"Flatbread pita, 200g"
-Dough,Dough,INPROCESSMATERIAL,InProcessMaterial,EA,Mixed and fermented dough
 Flour_Type_550,Flour Type 550,RAWMATERIAL,RawMaterial,kg,Standard wheat flour type 550
 Salt,Salt,RAWMATERIAL,RawMaterial,kg,Food-grade salt
 Water,Water,RAWMATERIAL,RawMaterial,l,Potable process water
 Yeast,Yeast,RAWMATERIAL,RawMaterial,kg,Baker's yeast for fermentation
-CARTON_400EA,Caerton 400EA,PACKMATERIAL,PackMaterial,EA,Carton box 400 
+Dough,Dough,INPROCESSMATERIAL,InProcessMaterial,EA,Mixed and fermented dough
+BAGUETTE-250G,Baguette 250g,FINISHEDPRODUCT,FinishedProduct,EA,Traditional baguette 250g
+PITA-200G,Pita 200g,FINISHEDPRODUCT,FinishedProduct,EA,Flatbread pita 200g
+BREAD-750G,Wheat Bread 750g,FINISHEDPRODUCT,FinishedProduct,EA,Wheat bread 750g
+LOAF-750G,Wheat Loaf 750g,FINISHEDPRODUCT,FinishedProduct,EA,Wheat loaf 750g
+LUBE-GREASE,Bearing grease,MAINTENANCE,Maintenance,g,Bearing grease
+CARTON_400EA,Caerton 400EA,PACKMATERIAL,PackMaterial,EA,Carton box 400
 EURO_PALLET,EURO Pallet,TRANSPORTMATERIAL,TransportMaterial,EA,Euro Pallet
-Paper,Paper,PACKMATERIAL,PackMaterial,g,Paper for packaging
+LUBE-OIL,Gear oil,MAINTENANCE,Maintenance,l,Lubrication Gear oil
+PACK-LABEL-ROLL,Label roll,MAINTENANCE,Maintenance,l,Label roll
+MIX-BEARING,Mixer bearing,MAINTENANCE,Maintenance,EA,Mixer bearing
+Paper,Paper,PACKMATERIAL,PackMaterial,EA,Paper for packaging

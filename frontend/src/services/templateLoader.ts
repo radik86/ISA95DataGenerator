@@ -217,6 +217,62 @@ export class TemplateDataLoader {
     return result;
   }
 
+  private parseTemplateByKey(parserKey: string, csvText: string): any[] {
+    switch (parserKey) {
+      case 'materialClasses': return csvParser.parseMaterialClasses(csvText);
+      case 'materials': return csvParser.parseMaterials(csvText);
+      case 'materialLots': return csvParser.parseMaterialLots(csvText);
+      case 'materialDefinitionProperties': return csvParser.parseMaterialDefinitionProperties(csvText);
+      case 'materialClassProperties': return csvParser.parseMaterialClassProperties(csvText);
+      case 'materialClassPropertiesAssignments': return csvParser.parseMaterialClassPropertiesAssignments(csvText);
+      case 'materialDefinitionPropertyAssignments': return csvParser.parseMaterialDefinitionPropertyAssignments(csvText);
+      case 'equipmentClasses': return csvParser.parseEquipmentClasses(csvText);
+      case 'equipment': return csvParser.parseEquipment(csvText);
+      case 'equipmentProperties': return csvParser.parseEquipmentProperties(csvText);
+      case 'equipmentPropertyAssignments': return csvParser.parseEquipmentPropertyAssignments(csvText);
+      case 'equipmentClassProperties': return csvParser.parseEquipmentClassProperties(csvText);
+      case 'equipmentClassPropertyAssignments': return csvParser.parseEquipmentClassPropertiesAssignments(csvText);
+      case 'processSegments': return csvParser.parseProcessSegments(csvText);
+      case 'segmentBOMs': return csvParser.parseSegmentBOMs(csvText);
+      case 'maintenanceBOMs': return csvParser.parseMaintenanceBOMs(csvText);
+      case 'equipmentUsages': return csvParser.parseEquipmentUsages(csvText);
+      case 'plants': return csvParser.parsePlants(csvText);
+      case 'productionLines': return csvParser.parseProductionLines(csvText);
+      case 'lineEquipment': return csvParser.parseLineEquipment(csvText);
+      case 'operationEventDefinitions': return csvParser.parseOperationEventDefinitions(csvText);
+      case 'operationEventDefSegmentAssignments': return csvParser.parseOperationEventDefSegmentAssignments(csvText);
+      case 'operationEventDefinitionProperties': return csvParser.parseOperationEventDefinitionProperties(csvText);
+      case 'operationEventDefinitionPropertyAssignments': return csvParser.parseOperationEventDefinitionPropertyAssignments(csvText);
+      case 'operationsEventClasses': return csvParser.parseOperationsEventClasses(csvText);
+      case 'operationsEventRecords': return csvParser.parseOperationsEventRecords(csvText);
+      case 'operationsEventEntries': return csvParser.parseOperationsEventEntries(csvText);
+      case 'hierarchyScopes': return csvParser.parseHierarchyScopes(csvText);
+      case 'hierarchyScopesFlat': return csvParser.parseHierarchyScopesFlat(csvText);
+      case 'shifts': return csvParser.parseShifts(csvText);
+      case 'crews': return csvParser.parseCrews(csvText);
+      case 'shiftCrewAssignments': return csvParser.parseShiftCrewAssignments(csvText);
+      case 'personClasses': return csvParser.parsePersonClasses(csvText);
+      case 'personnelCapabilities': return csvParser.parsePersonnelCapabilities(csvText);
+      case 'employees': return csvParser.parseEmployees(csvText);
+      default: return [];
+    }
+  }
+
+  /**
+   * Resets a single store to its template data.
+   * Clears all existing records for the store (and any FK-dependent child stores) then imports from the template CSV.
+   * clearFirst: stores to clear before the main store (children in FK order, then the store itself last).
+   */
+  async resetSingleStoreToTemplate(storeName: string, csvFileName: string, parserKey: string, clearFirst: string[] = []): Promise<void> {
+    const csvText = await this.fetchCSV(csvFileName);
+    const data = this.parseTemplateByKey(parserKey, csvText);
+    // Clear in FK-safe order: children first, then the target store
+    await masterDataApi.clearStores([...clearFirst, storeName]);
+    if (data.length > 0) {
+      await masterDataApi.bulkAdd(storeName, data);
+    }
+  }
+
   /**
    * Loads all templates and imports them into the SQL Server database via API.
    * Merge/upsert mode by default to preserve user-added records.

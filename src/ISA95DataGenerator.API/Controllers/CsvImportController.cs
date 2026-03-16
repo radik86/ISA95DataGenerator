@@ -413,7 +413,7 @@ public class CsvImportController : ControllerBase
 
     /// <summary>
     /// Import Process Segments from CSV
-    /// CSV Headers: ProcessSegmentID, ProductMaterialID, ProcessSegmentName, Seq, SegmentDurationHours
+    /// CSV Headers: ProcessSegmentID, ProcessSegmentName, ProductMaterialID, Sequence, DurationHours[, ProcessSegmentDescription]
     /// </summary>
     [HttpPost("process-segments")]
     public async Task<IActionResult> ImportProcessSegments(IFormFile file)
@@ -429,8 +429,8 @@ public class CsvImportController : ControllerBase
                 Id = GetValue(r, "ProcessSegmentID"),
                 ProductMaterialId = GetValue(r, "ProductMaterialID"),
                 Name = GetValue(r, "ProcessSegmentName"),
-                Sequence = ParseInt(GetValue(r, "Seq")),
-                DurationHours = ParseDecimal(GetValue(r, "SegmentDurationHours")),
+                Sequence = ParseInt(GetValue(r, "Sequence", "Seq")),
+                DurationHours = ParseDecimal(GetValue(r, "DurationHours", "SegmentDurationHours")),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 Version = 1
@@ -1005,8 +1005,8 @@ public class CsvImportController : ControllerBase
         Id = GetValue(r, "ProcessSegmentID"),
         ProductMaterialId = GetValue(r, "ProductMaterialID"),
         Name = GetValue(r, "ProcessSegmentName"),
-        Sequence = ParseInt(GetValue(r, "Seq")),
-        DurationHours = ParseDecimal(GetValue(r, "SegmentDurationHours")),
+        Sequence = ParseInt(GetValue(r, "Sequence", "Seq")),
+        DurationHours = ParseDecimal(GetValue(r, "DurationHours", "SegmentDurationHours")),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,
         Version = 1
