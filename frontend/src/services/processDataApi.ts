@@ -7,10 +7,12 @@ import type {
   SegmentRequirementRecord,
   SegmentMaterialRequirementRecord,
   SegmentEquipmentRequirementRecord,
+  SegmentPersonnelRequirementRecord,
   OperationsResponseRecord,
   SegmentResponseRecord,
   SegmentMaterialActualRecord,
   SegmentEquipmentActualRecord,
+  SegmentPersonnelActualRecord,
   TestResultRecord,
   EquipmentPropertyTrackingRecord,
   OperationsEventRecord,
@@ -26,10 +28,12 @@ export type {
   SegmentRequirementRecord,
   SegmentMaterialRequirementRecord,
   SegmentEquipmentRequirementRecord,
+  SegmentPersonnelRequirementRecord,
   OperationsResponseRecord,
   SegmentResponseRecord,
   SegmentMaterialActualRecord,
   SegmentEquipmentActualRecord,
+  SegmentPersonnelActualRecord,
   TestResultRecord,
   EquipmentPropertyTrackingRecord,
   OperationsEventRecord,
@@ -47,10 +51,12 @@ export type ProcessDataStoreName =
   | 'segmentRequirements'
   | 'segmentMaterialRequirements'
   | 'segmentEquipmentRequirements'
+  | 'segmentPersonnelRequirements'
   | 'operationsResponses'
   | 'segmentResponses'
   | 'segmentMaterialActuals'
   | 'segmentEquipmentActuals'
+  | 'segmentPersonnelActuals'
   | 'testResults'
   | 'equipmentPropertyTracking'
   | 'operationsEvents'
@@ -295,6 +301,7 @@ class ProcessDataApiService {
     segmentRequirements: Omit<SegmentRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     materialRequirements: Omit<SegmentMaterialRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     equipmentRequirements: Omit<SegmentEquipmentRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    personnelRequirements: Omit<SegmentPersonnelRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[] = [],
   ): Promise<void> {
     const now = new Date().toISOString();
     const enrich = (r: any) => ({
@@ -311,10 +318,12 @@ class ProcessDataApiService {
       segmentRequirements: segmentRequirements.map(enrich),
       segmentMaterialRequirements: materialRequirements.map(enrich),
       segmentEquipmentRequirements: equipmentRequirements.map(enrich),
+      segmentPersonnelRequirements: personnelRequirements.map(enrich),
       operationsResponses: [],
       segmentResponses: [],
       segmentMaterialActuals: [],
       segmentEquipmentActuals: [],
+      segmentPersonnelActuals: [],
       testResults: [],
       equipmentPropertyTracking: [],
       operationsEvents: [],
@@ -339,6 +348,7 @@ class ProcessDataApiService {
     operationsEventEntries: Omit<OperationsEventEntryRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     operationsEventProperties: Omit<OperationsEventPropertyRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     segmentData: Omit<SegmentDataRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    personnelActuals: Omit<SegmentPersonnelActualRecord, 'createdAt' | 'updatedAt' | 'version'>[] = [],
   ): Promise<void> {
     const now = new Date().toISOString();
     const enrich = (r: any) => ({
@@ -355,10 +365,12 @@ class ProcessDataApiService {
       segmentRequirements: [],
       segmentMaterialRequirements: [],
       segmentEquipmentRequirements: [],
+      segmentPersonnelRequirements: [],
       operationsResponses: [enrich(operationsResponse)],
       segmentResponses: segmentResponses.map(enrich),
       segmentMaterialActuals: materialActuals.map(enrich),
       segmentEquipmentActuals: equipmentActuals.map(enrich),
+      segmentPersonnelActuals: personnelActuals.map(enrich),
       equipmentPropertyTracking: equipmentPropertyTracking.map(enrich),
       testResults: testResults.map(enrich),
       operationsEvents: operationsEvents.map(enrich),
@@ -376,6 +388,7 @@ class ProcessDataApiService {
     segmentRequirements: SegmentRequirementRecord[];
     materialRequirements: SegmentMaterialRequirementRecord[];
     equipmentRequirements: SegmentEquipmentRequirementRecord[];
+    personnelRequirements: SegmentPersonnelRequirementRecord[];
   } | null> {
     const operationsRequest = await this.get('operationsRequests', operationsRequestId);
     if (!operationsRequest) return null;
@@ -393,11 +406,15 @@ class ProcessDataApiService {
     const allEqReqs = await this.getAll('segmentEquipmentRequirements') as SegmentEquipmentRequirementRecord[];
     const equipmentRequirements = allEqReqs.filter((er) => segReqIds.has(er.segmentRequirementId));
 
+    const allPersonnelReqs = await this.getAll('segmentPersonnelRequirements') as SegmentPersonnelRequirementRecord[];
+    const personnelRequirements = allPersonnelReqs.filter((pr) => segReqIds.has(pr.segmentRequirementId));
+
     return {
       operationsRequest,
       segmentRequirements,
       materialRequirements,
       equipmentRequirements,
+      personnelRequirements,
     };
   }
 }

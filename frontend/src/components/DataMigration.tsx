@@ -202,10 +202,12 @@ const PROCESS_STORE_MAP: Record<string, string> = {
   'segment_requirements': 'segmentRequirements',
   'segment_material_requirements': 'segmentMaterialRequirements',
   'segment_equipment_requirements': 'segmentEquipmentRequirements',
+  'segment_personnel_requirements': 'segmentPersonnelRequirements',
   'operations_responses': 'operationsResponses',
   'segment_responses': 'segmentResponses',
   'segment_material_actuals': 'segmentMaterialActuals',
   'segment_equipment_actuals': 'segmentEquipmentActuals',
+  'segment_personnel_actuals': 'segmentPersonnelActuals',
   'equipment_property_tracking': 'equipmentPropertyTracking',
   'test_results': 'testResults',
   'operations_events': 'operationsEvents',
@@ -591,9 +593,9 @@ const DataMigration: React.FC = () => {
       
       const processDataStores = [
         'operationsRequests', 'segmentRequirements', 
-        'segmentMaterialRequirements', 'segmentEquipmentRequirements',
+        'segmentMaterialRequirements', 'segmentEquipmentRequirements', 'segmentPersonnelRequirements',
         'operationsResponses', 'segmentResponses', 
-        'segmentMaterialActuals', 'segmentEquipmentActuals',
+        'segmentMaterialActuals', 'segmentEquipmentActuals', 'segmentPersonnelActuals',
         'equipmentPropertyTracking', 'testResults', 'operationsEvents', 
         'operationsEventRecords', 'operationsEventEntries', 'operationsEventProperties', 'segmentData'
       ];
@@ -645,10 +647,12 @@ const DataMigration: React.FC = () => {
       const segmentRequirements = processDataResults['segmentRequirements'];
       const segmentMaterialRequirements = processDataResults['segmentMaterialRequirements'];
       const segmentEquipmentRequirements = processDataResults['segmentEquipmentRequirements'];
+      const segmentPersonnelRequirements = processDataResults['segmentPersonnelRequirements'];
       const operationsResponses = processDataResults['operationsResponses'];
       const segmentResponses = processDataResults['segmentResponses'];
       const segmentMaterialActuals = processDataResults['segmentMaterialActuals'];
       const segmentEquipmentActuals = processDataResults['segmentEquipmentActuals'];
+      const segmentPersonnelActuals = processDataResults['segmentPersonnelActuals'];
       const equipmentPropertyTracking = processDataResults['equipmentPropertyTracking'];
       const testResults = processDataResults['testResults'];
       const operationsEvents = processDataResults['operationsEvents'];
@@ -918,6 +922,20 @@ const DataMigration: React.FC = () => {
           ],
         },
         {
+          name: 'segment_personnel_requirements',
+          rowCount: segmentPersonnelRequirements.length,
+          columns: [
+            { name: 'id', type: 'string', sample: segmentPersonnelRequirements[0]?.id },
+            { name: 'segmentRequirementId', type: 'string', sample: segmentPersonnelRequirements[0]?.segmentRequirementId },
+            { name: 'employeeId', type: 'string', sample: segmentPersonnelRequirements[0]?.employeeId },
+            { name: 'personClassId', type: 'string', sample: segmentPersonnelRequirements[0]?.personClassId },
+            { name: 'quantity', type: 'number', sample: segmentPersonnelRequirements[0]?.quantity?.toString() },
+            { name: 'quantityUnitOfMeasure', type: 'string', sample: segmentPersonnelRequirements[0]?.quantityUnitOfMeasure },
+            { name: 'personnelUse', type: 'string', sample: segmentPersonnelRequirements[0]?.personnelUse },
+            { name: 'operationsType', type: 'string', sample: segmentPersonnelRequirements[0]?.operationsType },
+          ],
+        },
+        {
           name: 'operations_responses',
           rowCount: operationsResponses.length,
           columns: [
@@ -968,6 +986,20 @@ const DataMigration: React.FC = () => {
             { name: 'actualQuantity', type: 'number', sample: segmentEquipmentActuals[0]?.actualQuantity?.toString() },
             { name: 'unitOfMeasure', type: 'string', sample: segmentEquipmentActuals[0]?.unitOfMeasure },
             { name: 'operationsType', type: 'string', sample: segmentEquipmentActuals[0]?.operationsType },
+          ],
+        },
+        {
+          name: 'segment_personnel_actuals',
+          rowCount: segmentPersonnelActuals.length,
+          columns: [
+            { name: 'id', type: 'string', sample: segmentPersonnelActuals[0]?.id },
+            { name: 'segmentResponseId', type: 'string', sample: segmentPersonnelActuals[0]?.segmentResponseId },
+            { name: 'employeeId', type: 'string', sample: segmentPersonnelActuals[0]?.employeeId },
+            { name: 'personClassId', type: 'string', sample: segmentPersonnelActuals[0]?.personClassId },
+            { name: 'actualQuantity', type: 'number', sample: segmentPersonnelActuals[0]?.actualQuantity?.toString() },
+            { name: 'quantityUnitOfMeasure', type: 'string', sample: segmentPersonnelActuals[0]?.quantityUnitOfMeasure },
+            { name: 'personnelUse', type: 'string', sample: segmentPersonnelActuals[0]?.personnelUse },
+            { name: 'operationsType', type: 'string', sample: segmentPersonnelActuals[0]?.operationsType },
           ],
         },
         {

@@ -21,10 +21,12 @@ public class GenericDataController : ControllerBase
         "segmentRequirements",
         "segmentMaterialRequirements",
         "segmentEquipmentRequirements",
+        "segmentPersonnelRequirements",
         "operationsResponses",
         "segmentResponses",
         "segmentMaterialActuals",
         "segmentEquipmentActuals",
+        "segmentPersonnelActuals",
         "operationsEvents",
     };
 
@@ -549,8 +551,8 @@ public class GenericDataController : ControllerBase
                 UpdatedAt = {0}
             WHERE StoreName IN (
                       'operationsRequests','segmentRequirements','segmentMaterialRequirements',
-                      'segmentEquipmentRequirements','operationsResponses','segmentResponses',
-                      'segmentMaterialActuals','segmentEquipmentActuals','operationsEvents')
+                      'segmentEquipmentRequirements','segmentPersonnelRequirements','operationsResponses','segmentResponses',
+                      'segmentMaterialActuals','segmentEquipmentActuals','segmentPersonnelActuals','operationsEvents')
               AND JSON_VALUE(DataJson, '$.operationsType') IS NULL", now);
         report["allProcessStores.backfillOperationsType"] = fix3;
 

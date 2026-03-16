@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -95,6 +95,17 @@ interface SegmentEquipmentRequirement {
   operationsType?: 'Production' | 'Maintenance';
 }
 
+interface SegmentPersonnelRequirement {
+  id: string;
+  segmentRequirementId: string;
+  employeeId?: string;
+  personClassId?: string;
+  quantity: number;
+  quantityUnitOfMeasure: string;
+  personnelUse: string;
+  operationsType?: 'Production' | 'Maintenance';
+}
+
 // Actual Data Interfaces
 interface OperationsResponse {
   id: string;
@@ -143,6 +154,19 @@ interface SegmentEquipmentActual {
   actualStartDateTime: string;
   actualEndDateTime: string;
   unitOfMeasure?: string;
+  operationsType?: 'Production' | 'Maintenance';
+}
+
+interface SegmentPersonnelActual {
+  id: string;
+  segmentResponseId: string;
+  employeeId?: string;
+  personClassId?: string;
+  actualQuantity: number;
+  quantityUnitOfMeasure: string;
+  personnelUse: string;
+  actualStartDateTime: string;
+  actualEndDateTime: string;
   operationsType?: 'Production' | 'Maintenance';
 }
 
@@ -212,6 +236,17 @@ interface TestResult {
   evaluatedCriterionResult: string;
 }
 
+interface PersonClass {
+  id: string;
+  name: string;
+}
+
+interface Employee {
+  id: string;
+  employeeName: string;
+  personClassId?: string;
+}
+
 const ProcessDataGenerator: React.FC = () => {
   const MAX_DAILY_ORDERS = 20;
   const MAX_UTILIZATION_PERCENT = 200;
@@ -248,6 +283,8 @@ const ProcessDataGenerator: React.FC = () => {
   const [crews, setCrews] = useState<any[]>([]);
   const [shiftCrewAssignments, setShiftCrewAssignments] = useState<any[]>([]);
   const [hierarchyScopes, setHierarchyScopes] = useState<any[]>([]);
+  const [personClasses, setPersonClasses] = useState<PersonClass[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
   // Form data for operations request
   const [formData, setFormData] = useState<OperationsRequest>({
@@ -272,6 +309,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [segmentRequirements, setSegmentRequirements] = useState<SegmentRequirement[]>([]);
   const [materialRequirements, setMaterialRequirements] = useState<SegmentMaterialRequirement[]>([]);
   const [equipmentRequirements, setEquipmentRequirements] = useState<SegmentEquipmentRequirement[]>([]);
+  const [personnelRequirements, setPersonnelRequirements] = useState<SegmentPersonnelRequirement[]>([]);
   const [generationTimestamp, setGenerationTimestamp] = useState<Date | null>(null);
   const [dataVersion, setDataVersion] = useState<number>(1);
 
@@ -283,6 +321,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [segmentResponses, setSegmentResponses] = useState<SegmentResponse[]>([]);
   const [materialActuals, setMaterialActuals] = useState<SegmentMaterialActual[]>([]);
   const [equipmentActuals, setEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
+  const [personnelActuals, setPersonnelActuals] = useState<SegmentPersonnelActual[]>([]);
   const [equipmentPropertyTracking, setEquipmentPropertyTracking] = useState<EquipmentPropertyTracking[]>([]);
   const [operationsEvents, setOperationsEvents] = useState<OperationsEvent[]>([]);
   const [operationsEventRecords, setOperationsEventRecords] = useState<OperationsEventRecord[]>([]);
@@ -301,6 +340,7 @@ const ProcessDataGenerator: React.FC = () => {
   const [storedSegmentResponses, setStoredSegmentResponses] = useState<any[]>([]);
   const [storedMaterialActuals, setStoredMaterialActuals] = useState<any[]>([]);
   const [storedEquipmentActuals, setStoredEquipmentActuals] = useState<any[]>([]);
+  const [storedPersonnelActuals, setStoredPersonnelActuals] = useState<any[]>([]);
   const [storedOperationsEvents, setStoredOperationsEvents] = useState<any[]>([]);
   const [storedOperationsEventRecords, setStoredOperationsEventRecords] = useState<any[]>([]);
   const [storedOperationsEventEntries, setStoredOperationsEventEntries] = useState<any[]>([]);
@@ -371,6 +411,7 @@ const ProcessDataGenerator: React.FC = () => {
     const [maintenanceSegmentRequirements, setMaintenanceSegmentRequirements] = useState<SegmentRequirement[]>([]);
     const [maintenanceMaterialRequirements, setMaintenanceMaterialRequirements] = useState<SegmentMaterialRequirement[]>([]);
     const [maintenanceEquipmentRequirements, setMaintenanceEquipmentRequirements] = useState<SegmentEquipmentRequirement[]>([]);
+    const [maintenancePersonnelRequirements, setMaintenancePersonnelRequirements] = useState<SegmentPersonnelRequirement[]>([]);
 
     // Maintenance actual state
     const [savedMaintenanceRequests, setSavedMaintenanceRequests] = useState<any[]>([]);
@@ -379,6 +420,7 @@ const ProcessDataGenerator: React.FC = () => {
     const [maintenanceSegmentResponses, setMaintenanceSegmentResponses] = useState<SegmentResponse[]>([]);
     const [maintenanceMaterialActuals, setMaintenanceMaterialActuals] = useState<SegmentMaterialActual[]>([]);
     const [maintenanceEquipmentActuals, setMaintenanceEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
+    const [maintenancePersonnelActuals, setMaintenancePersonnelActuals] = useState<SegmentPersonnelActual[]>([]);
     const [maintenanceActualTimestamp, setMaintenanceActualTimestamp] = useState<Date | null>(null);
     const [maintenancePlanReference, setMaintenancePlanReference] = useState<OperationsRequest | null>(null);
     const [maintenanceSegReqReference, setMaintenanceSegReqReference] = useState<SegmentRequirement[]>([]);
@@ -425,6 +467,7 @@ const ProcessDataGenerator: React.FC = () => {
       setMaintenanceSegmentResponses([]);
       setMaintenanceMaterialActuals([]);
       setMaintenanceEquipmentActuals([]);
+      setMaintenancePersonnelActuals([]);
       setMaintenanceActualTimestamp(null);
       setMaintenancePlanReference(null);
       setMaintenanceSegReqReference([]);
@@ -432,11 +475,12 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     try {
-      const [allResponses, allSegmentResponses, allMaterialActuals, allEquipmentActuals, requestData] = await Promise.all([
+      const [allResponses, allSegmentResponses, allMaterialActuals, allEquipmentActuals, allPersonnelActuals, requestData] = await Promise.all([
         processDataApi.getAll('operationsResponses'),
         processDataApi.getAll('segmentResponses'),
         processDataApi.getAll('segmentMaterialActuals'),
         processDataApi.getAll('segmentEquipmentActuals'),
+        processDataApi.getAll('segmentPersonnelActuals'),
         processDataApi.getOperationsRequestWithRequirements(maintenanceRequestId),
       ]);
 
@@ -457,6 +501,7 @@ const ProcessDataGenerator: React.FC = () => {
         setMaintenanceSegmentResponses([]);
         setMaintenanceMaterialActuals([]);
         setMaintenanceEquipmentActuals([]);
+        setMaintenancePersonnelActuals([]);
         setMaintenanceActualTimestamp(null);
       } else {
         const selectedResponse = matchingResponses[0];
@@ -467,11 +512,14 @@ const ProcessDataGenerator: React.FC = () => {
           .filter((ma) => segIds.has(ma.segmentResponseId));
         const eqActuals = (allEquipmentActuals as any[])
           .filter((ea) => segIds.has(ea.segmentResponseId));
+        const persActuals = (allPersonnelActuals as any[])
+          .filter((pa) => segIds.has(pa.segmentResponseId));
 
         setGeneratedMaintenanceResponse(selectedResponse);
         setMaintenanceSegmentResponses(segResponses);
         setMaintenanceMaterialActuals(matActuals);
         setMaintenanceEquipmentActuals(eqActuals);
+        setMaintenancePersonnelActuals(persActuals);
         setMaintenanceActualTimestamp(new Date());
       }
 
@@ -492,6 +540,7 @@ const ProcessDataGenerator: React.FC = () => {
         'segmentResponses',
         'segmentMaterialActuals',
         'segmentEquipmentActuals',
+        'segmentPersonnelActuals',
         'operationsEvents',
         'operationsEventRecords',
         'operationsEventEntries',
@@ -516,7 +565,7 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
-      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs, mBoms] = await Promise.all([
+      const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs, mBoms, personCls, emp] = await Promise.all([
         masterDataApi.getAll('materials'),
         masterDataApi.getAll('equipment'),
         masterDataApi.getAll('processSegments'),
@@ -539,6 +588,8 @@ const ProcessDataGenerator: React.FC = () => {
         masterDataApi.getAll('shiftCrewAssignments'),
         masterDataApi.getAll('hierarchyScopes'),
         masterDataApi.getAll('maintenanceBOMs'),
+        masterDataApi.getAll('personClasses'),
+        masterDataApi.getAll('employees'),
       ]);
 
       setMaterials(mat);
@@ -563,6 +614,8 @@ const ProcessDataGenerator: React.FC = () => {
       setShiftCrewAssignments(sca);
       setHierarchyScopes(hs);
       setMaintenanceBOMs(mBoms);
+      setPersonClasses(personCls as PersonClass[]);
+      setEmployees(emp as Employee[]);
 
       console.log('[Master Data] Loaded:', {
         materials: mat.length,
@@ -570,6 +623,8 @@ const ProcessDataGenerator: React.FC = () => {
         processSegments: ps.length,
         segmentBOMs: bom.length,
         maintenanceBOMs: mBoms.length,
+        personClasses: personCls.length,
+        employees: emp.length,
         equipmentProperties: eprop.length,
         equipmentPropertyAssignments: epa.length,
         equipmentClassPropertyAssignments: ecpa.length,
@@ -1814,29 +1869,40 @@ const ProcessDataGenerator: React.FC = () => {
       materialId: mb.materialId,
       requiredQty: Number(mb.qtyPerUnit) || 1,
       qtyUoM: mb.uom || 'EA',
-      requirementType: mb.materialUse || 'CONSUME',
-      operationsType: 'Maintenance',
-    }));
+        requirementType: 'consumed',
+        operationsType: 'Maintenance' as const,
+      }));
 
-    const eqReqs: SegmentEquipmentRequirement[] = sortedBoms.map((mb, index) => {
-      const eqData = equipment.find((e) => e.id === maintenancePlanFormData.equipmentId);
-      return {
+      const eqReqs: SegmentEquipmentRequirement[] = sortedBoms.map((mb, index) => ({
         id: `MNT-ER-${requestId}-${index + 1}`,
         segmentRequirementId: segReqs[index].id,
         lineId: maintenancePlanFormData.lineId,
-        equipmentClassId: eqData?.equipmentClassId || '',
+        equipmentClassId: '',
         equipmentId: maintenancePlanFormData.equipmentId,
-        requirementType: 'MUST_USE',
+        requirementType: 'Equipment',
         plannedQuantity: 1,
         unitOfMeasure: 'Machine',
-        operationsType: 'Maintenance',
-      };
-    });
+        operationsType: 'Maintenance' as const,
+      }));
+
+      const personnelReqs: SegmentPersonnelRequirement[] = sortedBoms
+        .filter((mb) => Number(mb.personQuantity) > 0)
+        .map((mb, index) => ({
+          id: `MNT-PR-${requestId}-${index + 1}`,
+          segmentRequirementId: segReqs[index].id,
+          employeeId: mb.employeeId || '',
+          personClassId: mb.personClassId || '',
+          quantity: Number(mb.personQuantity) || 1,
+          quantityUnitOfMeasure: 'Person',
+          personnelUse: 'MaintenanceWork',
+          operationsType: 'Maintenance' as const,
+        }));
 
     setGeneratedMaintenanceRequest(request);
     setMaintenanceSegmentRequirements(segReqs);
     setMaintenanceMaterialRequirements(matReqs);
     setMaintenanceEquipmentRequirements(eqReqs);
+    setMaintenancePersonnelRequirements(personnelReqs);
     showSnackbar(`Maintenance plan generated: ${segReqs.length} segments`, 'success');
   };
 
@@ -1853,6 +1919,7 @@ const ProcessDataGenerator: React.FC = () => {
         maintenanceSegmentRequirements,
         maintenanceMaterialRequirements,
         maintenanceEquipmentRequirements,
+        maintenancePersonnelRequirements,
       );
       await loadSavedMaintenanceRequests();
       await loadSavedOperationsRequests();
@@ -1914,18 +1981,18 @@ const ProcessDataGenerator: React.FC = () => {
 
       const segRespBySegReq = new Map(segResponses.map((sr) => [sr.segmentRequirementId, sr]));
 
-      const matActuals: SegmentMaterialActual[] = (orData.materialRequirements || []).map((mr: any, index: number) => ({
+      const matActuals: SegmentMaterialActual[] = (orData.materialRequirements || []).map((mr: any, index: number): SegmentMaterialActual => ({
         id: `MNT-MACT-${respId}-${index + 1}`,
         segmentResponseId: segRespBySegReq.get(mr.segmentRequirementId)?.id || '',
         materialId: mr.materialId,
         materialLotId: `MNT-LOT-${timestamp.getTime()}-${index + 1}`,
         actualQty: mr.requiredQty || 1,
         qtyUoM: mr.qtyUoM || 'EA',
-        direction: 'CONSUME',
-        operationsType: 'Maintenance',
+        direction: 'CONSUME' as const,
+        operationsType: 'Maintenance' as const,
       })).filter((m) => !!m.segmentResponseId);
 
-      const eqActuals: SegmentEquipmentActual[] = (orData.equipmentRequirements || []).map((er: any, index: number) => ({
+      const eqActuals: SegmentEquipmentActual[] = (orData.equipmentRequirements || []).map((er: any, index: number): SegmentEquipmentActual => ({
         id: `MNT-EACT-${respId}-${index + 1}`,
         segmentResponseId: segRespBySegReq.get(er.segmentRequirementId)?.id || '',
         equipmentId: er.equipmentId,
@@ -1933,13 +2000,27 @@ const ProcessDataGenerator: React.FC = () => {
         actualStartDateTime: baseReq.plannedStartDateTime,
         actualEndDateTime: baseReq.plannedEndDateTime,
         unitOfMeasure: 'Machine',
-        operationsType: 'Maintenance',
+        operationsType: 'Maintenance' as const,
       })).filter((e) => !!e.segmentResponseId);
+
+      const persActuals: SegmentPersonnelActual[] = (orData.personnelRequirements || []).map((pr: any, index: number): SegmentPersonnelActual => ({
+        id: `MNT-PACT-${respId}-${index + 1}`,
+        segmentResponseId: segRespBySegReq.get(pr.segmentRequirementId)?.id || '',
+        employeeId: pr.employeeId || '',
+        personClassId: pr.personClassId || '',
+        actualQuantity: pr.quantity || 1,
+        quantityUnitOfMeasure: pr.quantityUnitOfMeasure || 'Person',
+        personnelUse: pr.personnelUse || 'MaintenanceWork',
+        actualStartDateTime: baseReq.plannedStartDateTime,
+        actualEndDateTime: baseReq.plannedEndDateTime,
+        operationsType: 'Maintenance' as const,
+      })).filter((p) => !!p.segmentResponseId);
 
       setGeneratedMaintenanceResponse(response);
       setMaintenanceSegmentResponses(segResponses);
       setMaintenanceMaterialActuals(matActuals);
       setMaintenanceEquipmentActuals(eqActuals);
+      setMaintenancePersonnelActuals(persActuals);
       setMaintenanceActualTimestamp(timestamp);
       setMaintenancePlanReference(orData.operationsRequest);
       setMaintenanceSegReqReference(orData.segmentRequirements || []);
@@ -1971,6 +2052,9 @@ const ProcessDataGenerator: React.FC = () => {
       if (maintenanceEquipmentActuals.length > 0) {
         await processDataApi.upsertStoreRecords('segmentEquipmentActuals', maintenanceEquipmentActuals);
       }
+      if (maintenancePersonnelActuals.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentPersonnelActuals', maintenancePersonnelActuals);
+      }
       await loadStoredActualData();
       setLoading(false);
       showSnackbar('Maintenance actual data saved to database successfully', 'success');
@@ -1986,6 +2070,7 @@ const ProcessDataGenerator: React.FC = () => {
     setMaintenanceSegmentRequirements([]);
     setMaintenanceMaterialRequirements([]);
     setMaintenanceEquipmentRequirements([]);
+    setMaintenancePersonnelRequirements([]);
   };
 
   const resetMaintenanceActual = () => {
@@ -1994,6 +2079,7 @@ const ProcessDataGenerator: React.FC = () => {
     setMaintenanceSegmentResponses([]);
     setMaintenanceMaterialActuals([]);
     setMaintenanceEquipmentActuals([]);
+    setMaintenancePersonnelActuals([]);
     setMaintenanceActualTimestamp(null);
     setMaintenancePlanReference(null);
     setMaintenanceSegReqReference([]);
@@ -2225,7 +2311,8 @@ const ProcessDataGenerator: React.FC = () => {
         'operationsRequests',
         'segmentRequirements',
         'segmentMaterialRequirements',
-        'segmentEquipmentRequirements'
+        'segmentEquipmentRequirements',
+        'segmentPersonnelRequirements'
       ];
       
       for (const store of planStores) {
@@ -2287,9 +2374,17 @@ const ProcessDataGenerator: React.FC = () => {
         await processDataApi.delete('segmentEquipmentRequirements', eqReq.id);
       }
       console.log(`[Cleanup Orphans] Deleted ${orphanedEqReqs.length} orphaned equipment requirements`);
+
+      const allPersonnelReqs = await processDataApi.getAll('segmentPersonnelRequirements');
+      const orphanedPersonnelReqs = allPersonnelReqs.filter((pr: any) => !validSegReqIds.has(pr.segmentRequirementId));
+
+      for (const personnelReq of orphanedPersonnelReqs) {
+        await processDataApi.delete('segmentPersonnelRequirements', personnelReq.id);
+      }
+      console.log(`[Cleanup Orphans] Deleted ${orphanedPersonnelReqs.length} orphaned personnel requirements`);
       
       setLoading(false);
-      showSnackbar(`Cleaned up ${orphanedMatReqs.length} material and ${orphanedEqReqs.length} equipment orphaned records`, 'success');
+      showSnackbar(`Cleaned up ${orphanedMatReqs.length} material, ${orphanedEqReqs.length} equipment, and ${orphanedPersonnelReqs.length} personnel orphaned records`, 'success');
     } catch (error) {
       console.error('Failed to cleanup orphaned records:', error);
       showSnackbar('Failed to cleanup orphaned records', 'error');
@@ -2312,6 +2407,7 @@ const ProcessDataGenerator: React.FC = () => {
         'segmentResponses',
         'segmentMaterialActuals',
         'segmentEquipmentActuals',
+        'segmentPersonnelActuals',
         'equipmentPropertyTracking',
         'testResults',
         'operationsEvents',
@@ -2377,8 +2473,9 @@ const ProcessDataGenerator: React.FC = () => {
       const segmentReqs = orData.segmentRequirements || [];
       const materialReqs = orData.materialRequirements || [];
       const equipmentReqs = orData.equipmentRequirements || [];
+      const personnelReqs = orData.personnelRequirements || [];
 
-      console.log(`[Delete Plan] Found ${segmentReqs.length} segment requirements, ${materialReqs.length} material requirements, ${equipmentReqs.length} equipment requirements`);
+      console.log(`[Delete Plan] Found ${segmentReqs.length} segment requirements, ${materialReqs.length} material requirements, ${equipmentReqs.length} equipment requirements, ${personnelReqs.length} personnel requirements`);
       
       // Delete all related data in order
       // 1. Delete segment material requirements
@@ -2393,13 +2490,19 @@ const ProcessDataGenerator: React.FC = () => {
       }
       console.log(`[Delete Plan] Deleted ${equipmentReqs.length} segment equipment requirements`);
       
-      // 3. Delete segment requirements
+      // 3. Delete segment personnel requirements
+      for (const pr of personnelReqs) {
+        await processDataApi.delete('segmentPersonnelRequirements', pr.id);
+      }
+      console.log(`[Delete Plan] Deleted ${personnelReqs.length} segment personnel requirements`);
+
+      // 4. Delete segment requirements
       for (const sr of segmentReqs) {
         await processDataApi.delete('segmentRequirements', sr.id);
       }
       console.log(`[Delete Plan] Deleted ${segmentReqs.length} segment requirements`);
       
-      // 4. Delete the operations request itself
+      // 5. Delete the operations request itself
       await processDataApi.delete('operationsRequests', operationsRequestId);
       console.log(`[Delete Plan] Deleted operations request ${operationsRequestId}`);
       
@@ -2448,8 +2551,17 @@ const ProcessDataGenerator: React.FC = () => {
         }
         console.log(`[Delete] Deleted ${eqActuals.length} equipment actuals for segment ${segId}`);
       }
+
+      // 3. Delete personnel actuals
+      for (const segId of segmentResponseIds) {
+        const persActuals = storedPersonnelActuals.filter(pa => pa.segmentResponseId === segId);
+        for (const pa of persActuals) {
+          await processDataApi.delete('segmentPersonnelActuals', pa.id);
+        }
+        console.log(`[Delete] Deleted ${persActuals.length} personnel actuals for segment ${segId}`);
+      }
       
-      // 3. Delete operations events
+      // 4. Delete operations events
       for (const segId of segmentResponseIds) {
         const events = storedOperationsEvents.filter(oe => oe.segmentResponseId === segId);
         for (const evt of events) {
@@ -2458,7 +2570,7 @@ const ProcessDataGenerator: React.FC = () => {
         console.log(`[Delete] Deleted ${events.length} operations events for segment ${segId}`);
       }
       
-      // 4. Delete segment data (shifts and crews)
+      // 5. Delete segment data (shifts and crews)
       for (const segId of segmentResponseIds) {
         const segData = storedSegmentData.filter(sd => sd.segmentResponseId === segId);
         for (const sd of segData) {
@@ -3618,7 +3730,7 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
-  const exportMaintenancePlanToCSV = (type: 'all' | 'operations' | 'segments' | 'materials' | 'equipment') => {
+  const exportMaintenancePlanToCSV = (type: 'all' | 'operations' | 'segments' | 'materials' | 'equipment' | 'personnel') => {
     if (!generatedMaintenanceRequest || maintenanceSegmentRequirements.length === 0) {
       showSnackbar('No maintenance plan data to export', 'error');
       return;
@@ -3645,11 +3757,18 @@ const ProcessDataGenerator: React.FC = () => {
       .join('\n');
     const erCsv = `${erHeaders}\n${erRows}`;
 
+    const prHeaders = 'SegmentPersonnelReqID,SegmentRequirementID,EmployeeID,PersonClassID,Quantity,QuantityUnitOfMeasure,PersonnelUse,OperationsType';
+    const prRows = maintenancePersonnelRequirements
+      .map((pr) => `${pr.id},${pr.segmentRequirementId},${pr.employeeId || ''},${pr.personClassId || ''},${pr.quantity},${pr.quantityUnitOfMeasure},${pr.personnelUse},${pr.operationsType || ''}`)
+      .join('\n');
+    const prCsv = `${prHeaders}\n${prRows}`;
+
     if (type === 'all') {
       downloadCSV(orCsv, 'maintenance_operations_request.csv');
       downloadCSV(srCsv, 'maintenance_segment_requirements.csv');
       downloadCSV(mrCsv, 'maintenance_material_requirements.csv');
       downloadCSV(erCsv, 'maintenance_equipment_requirements.csv');
+      downloadCSV(prCsv, 'maintenance_personnel_requirements.csv');
       showSnackbar('All maintenance plan data exported successfully', 'success');
     } else if (type === 'operations') {
       downloadCSV(orCsv, 'maintenance_operations_request.csv');
@@ -3663,10 +3782,13 @@ const ProcessDataGenerator: React.FC = () => {
     } else if (type === 'equipment') {
       downloadCSV(erCsv, 'maintenance_equipment_requirements.csv');
       showSnackbar('Maintenance equipment requirements exported successfully', 'success');
+    } else if (type === 'personnel') {
+      downloadCSV(prCsv, 'maintenance_personnel_requirements.csv');
+      showSnackbar('Maintenance personnel requirements exported successfully', 'success');
     }
   };
 
-  const exportMaintenanceActualToCSV = (type: 'all' | 'response' | 'segments' | 'materials' | 'equipment') => {
+  const exportMaintenanceActualToCSV = (type: 'all' | 'response' | 'segments' | 'materials' | 'equipment' | 'personnel') => {
     if (!generatedMaintenanceResponse || maintenanceSegmentResponses.length === 0) {
       showSnackbar('No maintenance actual data to export', 'error');
       return;
@@ -3692,11 +3814,18 @@ const ProcessDataGenerator: React.FC = () => {
       .join('\n');
     const eaCsv = `${eaHeaders}\n${eaRows}`;
 
+    const paHeaders = 'SegmentPersonnelActualID,SegmentResponseID,EmployeeID,PersonClassID,ActualQuantity,QuantityUnitOfMeasure,PersonnelUse,ActualStartDateTime,ActualEndDateTime,OperationsType';
+    const paRows = maintenancePersonnelActuals
+      .map((pa) => `${pa.id},${pa.segmentResponseId},${pa.employeeId || ''},${pa.personClassId || ''},${pa.actualQuantity},${pa.quantityUnitOfMeasure},${pa.personnelUse},${pa.actualStartDateTime},${pa.actualEndDateTime},${pa.operationsType || ''}`)
+      .join('\n');
+    const paCsv = `${paHeaders}\n${paRows}`;
+
     if (type === 'all') {
       downloadCSV(orCsv, 'maintenance_operations_response.csv');
       downloadCSV(srCsv, 'maintenance_segment_responses.csv');
       downloadCSV(maCsv, 'maintenance_material_actuals.csv');
       downloadCSV(eaCsv, 'maintenance_equipment_actuals.csv');
+      downloadCSV(paCsv, 'maintenance_personnel_actuals.csv');
       showSnackbar('All maintenance actual data exported successfully', 'success');
     } else if (type === 'response') {
       downloadCSV(orCsv, 'maintenance_operations_response.csv');
@@ -3710,6 +3839,9 @@ const ProcessDataGenerator: React.FC = () => {
     } else if (type === 'equipment') {
       downloadCSV(eaCsv, 'maintenance_equipment_actuals.csv');
       showSnackbar('Maintenance equipment actuals exported successfully', 'success');
+    } else if (type === 'personnel') {
+      downloadCSV(paCsv, 'maintenance_personnel_actuals.csv');
+      showSnackbar('Maintenance personnel actuals exported successfully', 'success');
     }
   };
 
@@ -3730,10 +3862,11 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     try {
-      // Load all segment requirements, material requirements, and equipment requirements from database
+      // Load all segment requirements, material requirements, equipment requirements, and personnel requirements from database
       const allSegmentRequirements = await processDataApi.getAll('segmentRequirements');
       const allMaterialRequirements = await processDataApi.getAll('segmentMaterialRequirements');
       const allEquipmentRequirements = await processDataApi.getAll('segmentEquipmentRequirements');
+      const allPersonnelRequirements = await processDataApi.getAll('segmentPersonnelRequirements');
 
       // Export Operations Requests
       const orHeaders = 'OperationsRequestID,Description,PlantID,LineID,ProductMaterialID,PlannedQuantity,QuantityUoM,PlannedStartDateTime,PlannedEndDateTime,Priority,Status';
@@ -3763,11 +3896,18 @@ const ProcessDataGenerator: React.FC = () => {
       ).join('\n');
       const erCsv = `${erHeaders}\n${erRows}`;
 
+      const prHeaders = 'SegmentPersonnelReqID,SegmentRequirementID,EmployeeID,PersonClassID,Quantity,QuantityUnitOfMeasure,PersonnelUse';
+      const prRows = allPersonnelRequirements.map(pr => 
+        `${pr.id},${pr.segmentRequirementId},${pr.employeeId || ''},${pr.personClassId || ''},${pr.quantity},${pr.quantityUnitOfMeasure},${pr.personnelUse}`
+      ).join('\n');
+      const prCsv = `${prHeaders}\n${prRows}`;
+
       // Download all files
       downloadCSV(orCsv, 'all_operations_requests.csv');
       downloadCSV(srCsv, 'all_segment_requirements.csv');
       downloadCSV(mrCsv, 'all_segment_material_requirements.csv');
       downloadCSV(erCsv, 'all_segment_equipment_requirements.csv');
+      downloadCSV(prCsv, 'all_segment_personnel_requirements.csv');
 
       showSnackbar(`Exported ${savedOperationsRequests.length} operations requests with all related data`, 'success');
     } catch (error) {
@@ -3787,6 +3927,7 @@ const ProcessDataGenerator: React.FC = () => {
       const allSegmentRequirements = await processDataApi.getAll('segmentRequirements');
       const allMaterialRequirements = await processDataApi.getAll('segmentMaterialRequirements');
       const allEquipmentRequirements = await processDataApi.getAll('segmentEquipmentRequirements');
+      const allPersonnelRequirements = await processDataApi.getAll('segmentPersonnelRequirements');
 
       // Create a single JSON object with all plan data
       const planDataExport = {
@@ -3796,7 +3937,8 @@ const ProcessDataGenerator: React.FC = () => {
         operationsRequests: savedOperationsRequests,
         segmentRequirements: allSegmentRequirements,
         segmentMaterialRequirements: allMaterialRequirements,
-        segmentEquipmentRequirements: allEquipmentRequirements
+        segmentEquipmentRequirements: allEquipmentRequirements,
+        segmentPersonnelRequirements: allPersonnelRequirements
       };
 
       // Convert to JSON and download
@@ -3848,6 +3990,11 @@ const ProcessDataGenerator: React.FC = () => {
       // Import equipment requirements
       for (const er of planDataImport.segmentEquipmentRequirements) {
         await processDataApi.add('segmentEquipmentRequirements', er);
+      }
+
+      // Import personnel requirements
+      for (const pr of (planDataImport.segmentPersonnelRequirements || [])) {
+        await processDataApi.add('segmentPersonnelRequirements', pr);
       }
 
       // Reload saved operations requests
@@ -3979,6 +4126,73 @@ const ProcessDataGenerator: React.FC = () => {
 
   const finishedProducts = materials.filter(m => m.classId === 'FINISHEDPRODUCT');
   const linesForPlant = productionLines.filter(pl => pl.plantId === formData.plantId);
+  const maintenanceEquipmentForPlant = (() => {
+    const pickField = (obj: any, candidates: string[]): any => {
+      if (!obj) return undefined;
+      for (const key of candidates) {
+        const val = obj[key];
+        if (val !== undefined && val !== null && `${val}`.trim() !== '') return val;
+      }
+      const keys = Object.keys(obj);
+      for (const candidate of candidates) {
+        const match = keys.find((k) => k.toLowerCase() === candidate.toLowerCase());
+        if (match) {
+          const val = obj[match];
+          if (val !== undefined && val !== null && `${val}`.trim() !== '') return val;
+        }
+      }
+      return undefined;
+    };
+
+    const selectedPlantId = maintenancePlanFormData.plantId;
+    if (!selectedPlantId) return [] as any[];
+
+    const lineIdsForPlant = new Set(
+      productionLines
+        .filter((line: any) => pickField(line, ['plantId', 'PlantID', 'PlantId']) === selectedPlantId)
+        .map((line: any) => pickField(line, ['id', 'lineId', 'LineID', 'LineId']))
+        .filter(Boolean)
+    );
+
+    const equipmentIdsFromLineEquipment = new Set(
+      lineEquipment
+        .filter((le: any) => {
+          const lePlantId = pickField(le, ['plantId', 'PlantID', 'PlantId']);
+          const leLineId = pickField(le, ['productionLineId', 'lineId', 'LineID', 'LineId', 'ProductionLineId']);
+          return lePlantId === selectedPlantId || (!!leLineId && lineIdsForPlant.has(leLineId));
+        })
+        .map((le: any) => pickField(le, ['equipmentId', 'EquipmentID', 'EquipmentId']))
+        .filter(Boolean)
+    );
+
+    const hasDirectPlantMapping = equipment.some((eq: any) => pickField(eq, ['plantId', 'PlantID', 'PlantId']) === selectedPlantId);
+
+    const filtered = equipment.filter((eq: any) => {
+      const eqId = pickField(eq, ['id', 'equipmentId', 'EquipmentID', 'EquipmentId']);
+      const directPlantMatch = pickField(eq, ['plantId', 'PlantID', 'PlantId']) === selectedPlantId;
+      const lineEquipmentMatch = !!eqId && equipmentIdsFromLineEquipment.has(eqId);
+
+      if (hasDirectPlantMapping || equipmentIdsFromLineEquipment.size > 0) {
+        return directPlantMatch || lineEquipmentMatch;
+      }
+
+      // Fallback for datasets that do not contain plant/line mappings on equipment tables.
+      return true;
+    });
+
+    const seen = new Set<string>();
+    const deduped = filtered.filter((eq: any) => {
+      const id = pickField(eq, ['id', 'equipmentId', 'EquipmentID', 'EquipmentId']);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    if (deduped.length > 0) return deduped;
+
+    // Fallback: if equipment records are missing, surface IDs from line-equipment mapping.
+    return Array.from(equipmentIdsFromLineEquipment).map((id) => ({ id, name: id }));
+  })();
 
   if (loading) {
     return (
@@ -5044,6 +5258,7 @@ const ProcessDataGenerator: React.FC = () => {
                         <Chip label={`${storedActualSummary.segmentResponses || 0} Segments`} size="small" color="success" />
                         <Chip label={`${storedActualSummary.segmentMaterialActuals || 0} Materials`} size="small" color="warning" />
                         <Chip label={`${storedActualSummary.segmentEquipmentActuals || 0} Equipment`} size="small" color="info" />
+                        <Chip label={`${storedActualSummary.segmentPersonnelActuals || 0} Personnel`} size="small" color="secondary" />
                         <Chip label={`${storedActualSummary.operationsEvents || 0} Events`} size="small" color="error" />
                         <Chip label={`${storedActualSummary.operationsEventRecords || 0} Event Records`} size="small" color="warning" />
                         <Chip label={`${storedActualSummary.operationsEventEntries || 0} Event Entries`} size="small" color="warning" />
@@ -6285,10 +6500,12 @@ const ProcessDataGenerator: React.FC = () => {
                             <Select
                               value={maintenancePlanFormData.plantId}
                               label="Plant"
-                              onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, plantId: e.target.value, lineId: '' })}
+                              onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, plantId: e.target.value, lineId: '', equipmentId: '' })}
                             >
                               {plants.map((plant) => (
-                                <MenuItem key={plant.id} value={plant.id}>{plant.name || plant.id}</MenuItem>
+                                <MenuItem key={plant.id ?? plant.plantId ?? plant.PlantID} value={plant.id ?? plant.plantId ?? plant.PlantID}>
+                                  {plant.name || plant.plantName || plant.PlantName || plant.id || plant.plantId || plant.PlantID}
+                                </MenuItem>
                               ))}
                             </Select>
                           </FormControl>
@@ -6303,9 +6520,11 @@ const ProcessDataGenerator: React.FC = () => {
                               disabled={!maintenancePlanFormData.plantId}
                             >
                               {productionLines
-                                .filter((line) => line.plantId === maintenancePlanFormData.plantId)
+                                .filter((line) => (line.plantId ?? line.PlantID ?? line.PlantId) === maintenancePlanFormData.plantId)
                                 .map((line) => (
-                                  <MenuItem key={line.id} value={line.id}>{line.name || line.lineName || line.id}</MenuItem>
+                                  <MenuItem key={line.id ?? line.lineId ?? line.LineID ?? line.LineId} value={line.id ?? line.lineId ?? line.LineID ?? line.LineId}>
+                                    {line.name || line.lineName || line.LineName || line.id || line.lineId || line.LineID || line.LineId}
+                                  </MenuItem>
                                 ))}
                             </Select>
                           </FormControl>
@@ -6317,10 +6536,17 @@ const ProcessDataGenerator: React.FC = () => {
                               value={maintenancePlanFormData.equipmentId}
                               label="Equipment"
                               onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, equipmentId: e.target.value })}
+                              disabled={!maintenancePlanFormData.plantId}
                             >
-                              {equipment.map((eq) => (
-                                <MenuItem key={eq.id} value={eq.id}>{eq.name || eq.id}</MenuItem>
-                              ))}
+                              {maintenanceEquipmentForPlant
+                                .map((eq) => (
+                                  <MenuItem
+                                    key={eq.id ?? eq.equipmentId ?? eq.EquipmentID ?? eq.EquipmentId}
+                                    value={eq.id ?? eq.equipmentId ?? eq.EquipmentID ?? eq.EquipmentId}
+                                  >
+                                    {eq.name || eq.equipmentName || eq.EquipmentName || eq.id || eq.equipmentId || eq.EquipmentID || eq.EquipmentId}
+                                  </MenuItem>
+                                ))}
                             </Select>
                           </FormControl>
                         </Grid>
@@ -6378,6 +6604,7 @@ const ProcessDataGenerator: React.FC = () => {
                           <Typography variant="body2" gutterBottom><strong>Segments:</strong> {maintenanceSegmentRequirements.length}</Typography>
                           <Typography variant="body2" gutterBottom><strong>Material Requirements:</strong> {maintenanceMaterialRequirements.length}</Typography>
                           <Typography variant="body2" gutterBottom><strong>Equipment Requirements:</strong> {maintenanceEquipmentRequirements.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Personnel Requirements:</strong> {maintenancePersonnelRequirements.length}</Typography>
                         </Box>
                       )}
                     </CardContent>
@@ -6545,6 +6772,47 @@ const ProcessDataGenerator: React.FC = () => {
                     </TableContainer>
                   </Paper>
 
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'warning.dark', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Personnel Requirements</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenancePlanToCSV('personnel')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Segment Requirement</TableCell>
+                            <TableCell>Employee</TableCell>
+                            <TableCell>Person Class</TableCell>
+                            <TableCell>Quantity</TableCell>
+                            <TableCell>Use</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenancePersonnelRequirements.map((pr) => {
+                            const employee = employees.find((item) => item.id === pr.employeeId);
+                            const personClass = personClasses.find((item) => item.id === pr.personClassId);
+                            return (
+                              <TableRow key={pr.id}>
+                                <TableCell>{pr.id}</TableCell>
+                                <TableCell>{pr.segmentRequirementId}</TableCell>
+                                <TableCell>{employee?.employeeName || pr.employeeId || 'N/A'}</TableCell>
+                                <TableCell>{personClass?.name || pr.personClassId || 'N/A'}</TableCell>
+                                <TableCell>{pr.quantity} {pr.quantityUnitOfMeasure}</TableCell>
+                                <TableCell>{pr.personnelUse}</TableCell>
+                                <TableCell>{pr.operationsType || 'N/A'}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
                     <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => exportMaintenancePlanToCSV('all')}>
                       Export All Maintenance Plan CSV
@@ -6650,6 +6918,7 @@ const ProcessDataGenerator: React.FC = () => {
                             <Chip label={`${maintenanceSegmentResponses.length} Segments`} size="small" color="success" />
                             <Chip label={`${maintenanceMaterialActuals.length} Materials`} size="small" color="warning" />
                             <Chip label={`${maintenanceEquipmentActuals.length} Equipment`} size="small" color="info" />
+                            <Chip label={`${maintenancePersonnelActuals.length} Personnel`} size="small" color="secondary" />
                           </Box>
                           <Typography variant="caption" color="text.secondary" display="block">
                             Response time: {generatedMaintenanceResponse.actualStartDateTime} → {generatedMaintenanceResponse.actualEndDateTime}
@@ -6725,6 +6994,7 @@ const ProcessDataGenerator: React.FC = () => {
                           <Typography variant="body2" gutterBottom><strong>Segment Responses:</strong> {maintenanceSegmentResponses.length}</Typography>
                           <Typography variant="body2" gutterBottom><strong>Material Actuals:</strong> {maintenanceMaterialActuals.length}</Typography>
                           <Typography variant="body2" gutterBottom><strong>Equipment Actuals:</strong> {maintenanceEquipmentActuals.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Personnel Actuals:</strong> {maintenancePersonnelActuals.length}</Typography>
                         </Box>
                       )}
                     </CardContent>
@@ -6898,6 +7168,51 @@ const ProcessDataGenerator: React.FC = () => {
                               <TableCell>{ea.operationsType || 'N/A'}</TableCell>
                             </TableRow>
                           ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'secondary.dark', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">Maintenance Personnel Actuals</Typography>
+                      <Button size="small" variant="outlined" startIcon={<GetAppIcon />} onClick={() => exportMaintenanceActualToCSV('personnel')} sx={{ color: 'white', borderColor: 'white' }}>
+                        Export CSV
+                      </Button>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Segment Response</TableCell>
+                            <TableCell>Employee</TableCell>
+                            <TableCell>Person Class</TableCell>
+                            <TableCell>Actual Quantity</TableCell>
+                            <TableCell>Use</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {maintenancePersonnelActuals.map((pa) => {
+                            const employee = employees.find((item) => item.id === pa.employeeId);
+                            const personClass = personClasses.find((item) => item.id === pa.personClassId);
+                            return (
+                              <TableRow key={pa.id}>
+                                <TableCell>{pa.id}</TableCell>
+                                <TableCell>{pa.segmentResponseId}</TableCell>
+                                <TableCell>{employee?.employeeName || pa.employeeId || 'N/A'}</TableCell>
+                                <TableCell>{personClass?.name || pa.personClassId || 'N/A'}</TableCell>
+                                <TableCell>{pa.actualQuantity} {pa.quantityUnitOfMeasure}</TableCell>
+                                <TableCell>{pa.personnelUse}</TableCell>
+                                <TableCell>{pa.actualStartDateTime}</TableCell>
+                                <TableCell>{pa.actualEndDateTime}</TableCell>
+                                <TableCell>{pa.operationsType || 'N/A'}</TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </TableContainer>

@@ -22,6 +22,11 @@ interface ProcessDataDB extends DBSchema {
     value: SegmentEquipmentRequirementRecord;
     indexes: { 'by-segment-req': string; 'by-equipment': string; 'by-updated': Date };
   };
+  segmentPersonnelRequirements: {
+    key: string;
+    value: SegmentPersonnelRequirementRecord;
+    indexes: { 'by-segment-req': string; 'by-employee': string; 'by-person-class': string; 'by-updated': Date };
+  };
   operationsResponses: {
     key: string;
     value: OperationsResponseRecord;
@@ -41,6 +46,11 @@ interface ProcessDataDB extends DBSchema {
     key: string;
     value: SegmentEquipmentActualRecord;
     indexes: { 'by-segment-resp': string; 'by-equipment': string; 'by-updated': Date };
+  };
+  segmentPersonnelActuals: {
+    key: string;
+    value: SegmentPersonnelActualRecord;
+    indexes: { 'by-segment-resp': string; 'by-employee': string; 'by-person-class': string; 'by-updated': Date };
   };
   testResults: {
     key: string;
@@ -137,6 +147,17 @@ export interface SegmentEquipmentRequirementRecord extends BaseRecord {
   operationsType?: 'Production' | 'Maintenance';
 }
 
+export interface SegmentPersonnelRequirementRecord extends BaseRecord {
+  id: string;
+  segmentRequirementId: string;
+  employeeId?: string;
+  personClassId?: string;
+  quantity: number;
+  quantityUnitOfMeasure: string;
+  personnelUse: string;
+  operationsType?: 'Production' | 'Maintenance';
+}
+
 export interface OperationsResponseRecord extends BaseRecord {
   id: string;
   operationsRequestId: string;
@@ -181,6 +202,19 @@ export interface SegmentEquipmentActualRecord extends BaseRecord {
   actualStartDateTime: string;
   actualEndDateTime: string;
   unitOfMeasure?: string;
+  operationsType?: 'Production' | 'Maintenance';
+}
+
+export interface SegmentPersonnelActualRecord extends BaseRecord {
+  id: string;
+  segmentResponseId: string;
+  employeeId?: string;
+  personClassId?: string;
+  actualQuantity: number;
+  quantityUnitOfMeasure: string;
+  personnelUse: string;
+  actualStartDateTime: string;
+  actualEndDateTime: string;
   operationsType?: 'Production' | 'Maintenance';
 }
 
@@ -259,7 +293,7 @@ export interface SegmentDataRecord extends BaseRecord {
 }
 
 const DB_NAME = 'process-data-db';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 class ProcessDataDBService {
   private db: IDBPDatabase<ProcessDataDB> | null = null;
@@ -302,6 +336,15 @@ class ProcessDataDBService {
           serStore.createIndex('by-updated', 'updatedAt');
         }
 
+        // Segment Personnel Requirements
+        if (!db.objectStoreNames.contains('segmentPersonnelRequirements')) {
+          const sprStore = db.createObjectStore('segmentPersonnelRequirements', { keyPath: 'id' });
+          sprStore.createIndex('by-segment-req', 'segmentRequirementId');
+          sprStore.createIndex('by-employee', 'employeeId');
+          sprStore.createIndex('by-person-class', 'personClassId');
+          sprStore.createIndex('by-updated', 'updatedAt');
+        }
+
         // Operations Responses (Actual Data)
         if (!db.objectStoreNames.contains('operationsResponses')) {
           const opsRespStore = db.createObjectStore('operationsResponses', { keyPath: 'id' });
@@ -331,6 +374,15 @@ class ProcessDataDBService {
           eqActStore.createIndex('by-segment-resp', 'segmentResponseId');
           eqActStore.createIndex('by-equipment', 'equipmentId');
           eqActStore.createIndex('by-updated', 'updatedAt');
+        }
+
+        // Segment Personnel Actuals
+        if (!db.objectStoreNames.contains('segmentPersonnelActuals')) {
+          const personnelActStore = db.createObjectStore('segmentPersonnelActuals', { keyPath: 'id' });
+          personnelActStore.createIndex('by-segment-resp', 'segmentResponseId');
+          personnelActStore.createIndex('by-employee', 'employeeId');
+          personnelActStore.createIndex('by-person-class', 'personClassId');
+          personnelActStore.createIndex('by-updated', 'updatedAt');
         }
 
         // Test Results
@@ -456,11 +508,12 @@ class ProcessDataDBService {
     operationsRequest: Omit<OperationsRequestRecord, 'createdAt' | 'updatedAt' | 'version'>,
     segmentRequirements: Omit<SegmentRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     materialRequirements: Omit<SegmentMaterialRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
-    equipmentRequirements: Omit<SegmentEquipmentRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[]
+    equipmentRequirements: Omit<SegmentEquipmentRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    personnelRequirements: Omit<SegmentPersonnelRequirementRecord, 'createdAt' | 'updatedAt' | 'version'>[] = []
   ): Promise<void> {
     const db = await this.init();
     const tx = db.transaction(
-      ['operationsRequests', 'segmentRequirements', 'segmentMaterialRequirements', 'segmentEquipmentRequirements'],
+      ['operationsRequests', 'segmentRequirements', 'segmentMaterialRequirements', 'segmentEquipmentRequirements', 'segmentPersonnelRequirements'],
       'readwrite'
     );
 
@@ -512,6 +565,18 @@ class ProcessDataDBService {
       });
     }
 
+    // Save personnel requirements
+    for (const pr of personnelRequirements) {
+      await tx.objectStore('segmentPersonnelRequirements').put({
+        ...pr,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        DataGeneratedAt: (pr as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (pr as any).LastDataMigrationAt ?? null,
+      });
+    }
+
     await tx.done;
   }
 
@@ -520,6 +585,7 @@ class ProcessDataDBService {
     segmentRequirements: SegmentRequirementRecord[];
     materialRequirements: SegmentMaterialRequirementRecord[];
     equipmentRequirements: SegmentEquipmentRequirementRecord[];
+    personnelRequirements: SegmentPersonnelRequirementRecord[];
   } | null> {
     const db = await this.init();
     
@@ -530,6 +596,7 @@ class ProcessDataDBService {
     
     const materialRequirements: SegmentMaterialRequirementRecord[] = [];
     const equipmentRequirements: SegmentEquipmentRequirementRecord[] = [];
+    const personnelRequirements: SegmentPersonnelRequirementRecord[] = [];
 
     for (const sr of segmentRequirements) {
       const mats = await db.getAllFromIndex('segmentMaterialRequirements', 'by-segment-req', sr.id);
@@ -537,6 +604,9 @@ class ProcessDataDBService {
 
       const eqs = await db.getAllFromIndex('segmentEquipmentRequirements', 'by-segment-req', sr.id);
       equipmentRequirements.push(...eqs);
+
+      const personnel = await db.getAllFromIndex('segmentPersonnelRequirements', 'by-segment-req', sr.id);
+      personnelRequirements.push(...personnel);
     }
 
     return {
@@ -544,6 +614,7 @@ class ProcessDataDBService {
       segmentRequirements,
       materialRequirements,
       equipmentRequirements,
+      personnelRequirements,
     };
   }
 
@@ -558,11 +629,12 @@ class ProcessDataDBService {
     operationsEventRecords: Omit<OperationsEventRecordRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     operationsEventEntries: Omit<OperationsEventEntryRecord, 'createdAt' | 'updatedAt' | 'version'>[],
     operationsEventProperties: Omit<OperationsEventPropertyRecord, 'createdAt' | 'updatedAt' | 'version'>[],
-    segmentData: Omit<SegmentDataRecord, 'createdAt' | 'updatedAt' | 'version'>[]
+    segmentData: Omit<SegmentDataRecord, 'createdAt' | 'updatedAt' | 'version'>[],
+    personnelActuals: Omit<SegmentPersonnelActualRecord, 'createdAt' | 'updatedAt' | 'version'>[] = []
   ): Promise<void> {
     const db = await this.init();
     const tx = db.transaction(
-      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'operationsEventRecords', 'operationsEventEntries', 'operationsEventProperties', 'segmentData'],
+      ['operationsResponses', 'segmentResponses', 'segmentMaterialActuals', 'segmentEquipmentActuals', 'segmentPersonnelActuals', 'equipmentPropertyTracking', 'testResults', 'operationsEvents', 'operationsEventRecords', 'operationsEventEntries', 'operationsEventProperties', 'segmentData'],
       'readwrite'
     );
 
@@ -611,6 +683,18 @@ class ProcessDataDBService {
         version: 1,
         DataGeneratedAt: (ea as any).DataGeneratedAt ?? now,
         LastDataMigrationAt: (ea as any).LastDataMigrationAt ?? null,
+      });
+    }
+
+    // Save personnel actuals
+    for (const pa of personnelActuals) {
+      await tx.objectStore('segmentPersonnelActuals').put({
+        ...pa,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        DataGeneratedAt: (pa as any).DataGeneratedAt ?? now,
+        LastDataMigrationAt: (pa as any).LastDataMigrationAt ?? null,
       });
     }
 
