@@ -300,6 +300,9 @@ class CSVParser {
       processSegmentId: r.ProcessSegmentID,
       materialId: r.MaterialID,
       qtyPerUnit: parseFloat(r.QtyPerUnit) || 0,
+      personQuantity: parseFloat(r.PersonQuantity) || 0,
+      employeeId: r.EmployeeID || '',
+      personClassId: r.PersonClassID || '',
       uom: r.UoM || 'EA',
       materialUse: r.MaterialUse || 'CONSUME',
     }));

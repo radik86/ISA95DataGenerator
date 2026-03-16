@@ -387,11 +387,16 @@ public class MigrationDbContext : DbContext
                 entity.Property(e => e.ProcessSegmentId).HasMaxLength(100);
                 entity.Property(e => e.MaterialId).HasMaxLength(100);
                 entity.Property(e => e.QtyPerUnit).HasPrecision(18, 4);
+                entity.Property(e => e.PersonQuantity).HasPrecision(18, 4);
+                entity.Property(e => e.EmployeeId).HasMaxLength(100);
+                entity.Property(e => e.PersonClassId).HasMaxLength(100);
                 entity.Property(e => e.Uom).HasMaxLength(50);
                 entity.Property(e => e.MaterialUse).HasMaxLength(50);
                 entity.HasIndex(e => e.EquipmentId);
                 entity.HasIndex(e => e.ProcessSegmentId);
                 entity.HasIndex(e => e.MaterialId);
+                entity.HasIndex(e => e.EmployeeId);
+                entity.HasIndex(e => e.PersonClassId);
                 entity.HasOne(e => e.ProcessSegment)
                 .WithMany(ps => ps.MaintenanceBOMs)
                 .HasForeignKey(e => e.ProcessSegmentId)

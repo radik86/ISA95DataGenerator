@@ -12,6 +12,9 @@ public class MaintenanceBOM
     public string ProcessSegmentId { get; set; } = string.Empty;
     public string MaterialId { get; set; } = string.Empty;
     public decimal QtyPerUnit { get; set; }
+    public decimal PersonQuantity { get; set; }
+    public string? EmployeeId { get; set; }
+    public string? PersonClassId { get; set; }
     public string Uom { get; set; } = string.Empty;
     public string MaterialUse { get; set; } = "CONSUME";
     public DateTime CreatedAt { get; set; }

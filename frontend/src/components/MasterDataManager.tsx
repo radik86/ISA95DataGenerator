@@ -166,6 +166,9 @@ interface MaintenanceBOM {
   processSegmentId: string;
   materialId: string;
   qtyPerUnit: number;
+  personQuantity: number;
+  employeeId: string;
+  personClassId: string;
   uom: string;
   materialUse: string;
 }
@@ -370,6 +373,29 @@ interface MaterialDefinitionPropertyAssignment {
 }
 
 type StoreTemplateEntry = { storeName: string; csvFile: string; parserKey: string; label: string; clearFirst?: string[] };
+const TEMPLATE_UPDATE_SUPPORTED_FILES = new Set<string>([
+  'material_classes.csv',
+  'materials.csv',
+  'material_lots.csv',
+  'material_class_properties.csv',
+  'material_class_properties_assignments.csv',
+  'material_definition_property_template.csv',
+  'material_definition_property_assignment_template.csv',
+  'equipment_classes.csv',
+  'equipment.csv',
+  'equipment_properties.csv',
+  'equipment_property_assignments.csv',
+  'plants.csv',
+  'production_lines.csv',
+  'line_equipment.csv',
+  'process_segments.csv',
+  'segment_material_bom.csv',
+  'maintenance_bom.csv',
+  'equipment_usage.csv',
+  'person_classes.csv',
+  'personnel_capabilities.csv',
+  'employees.csv',
+]);
 const STORE_TEMPLATE_MAP: Record<number, Record<number, StoreTemplateEntry | null>> = {
   0: { // Materials
     0: { storeName: 'materialClasses', csvFile: 'material_classes.csv', parserKey: 'materialClasses', label: 'Material Classes', clearFirst: ['materialClassPropertiesAssignments', 'materialClassProperties', 'materialDefinitionPropertyAssignments', 'materialDefinitionProperties', 'materialSublots', 'materialLots', 'materials'] },
@@ -2067,8 +2093,8 @@ const MasterDataManager: React.FC = () => {
         await sbWritable.close();
 
         // Export Maintenance BOM
-        const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
-        const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.uom},${mb.materialUse}`).join('\n');
+        const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,PersonQuantity,EmployeeID,PersonClassID,UoM,MaterialUse';
+        const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
         const mbCsv = `${mbHeaders}\n${mbRows}`;
         const mbFileHandle = await dirHandle.getFileHandle('maintenance_bom.csv', { create: true });
         const mbWritable = await mbFileHandle.createWritable();
@@ -2202,8 +2228,8 @@ const MasterDataManager: React.FC = () => {
       downloadCSV(`${sbHeaders}\n${sbRows}`, 'segment_material_bom.csv');
 
       // Export Maintenance BOM
-      const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
-      const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.uom},${mb.materialUse}`).join('\n');
+      const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,PersonQuantity,EmployeeID,PersonClassID,UoM,MaterialUse';
+      const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
       downloadCSV(`${mbHeaders}\n${mbRows}`, 'maintenance_bom.csv');
 
       // Export Equipment Usage
@@ -2267,8 +2293,8 @@ const MasterDataManager: React.FC = () => {
     const sbHeaders = 'ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
     const sbRows = segmentBOMs.map(sb => `${sb.processSegmentId},${sb.materialId},${sb.qtyPerUnit},${sb.uom},${sb.materialUse}`).join('\n');
 
-    const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
-    const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.uom},${mb.materialUse}`).join('\n');
+    const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,PersonQuantity,EmployeeID,PersonClassID,UoM,MaterialUse';
+    const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
 
     const euHeaders = 'ProcessSegmentID,EquipmentID,Sequence';
     const euRows = equipmentUsages.map((eu: any) => `${eu.processSegmentId},${eu.equipmentId},${eu.sequence || ''}`).join('\n');
@@ -2357,6 +2383,59 @@ const MasterDataManager: React.FC = () => {
     }
   };
 
+  const handleUpdateCurrentTabTemplateCsvFile = async () => {
+    const storeConfig = STORE_TEMPLATE_MAP[categoryTab]?.[tabValue];
+    if (!storeConfig) {
+      showSnackbar('No template configured for this tab', 'error');
+      return;
+    }
+    if (!TEMPLATE_UPDATE_SUPPORTED_FILES.has(storeConfig.csvFile)) {
+      showSnackbar(`Template update not yet supported for ${storeConfig.label}`, 'error');
+      return;
+    }
+    if (!('showDirectoryPicker' in window)) {
+      showSnackbar('Your browser does not support direct file overwrite. Use Export All and copy files manually.', 'error');
+      return;
+    }
+
+    const proceed = confirm(
+      `This will overwrite ${storeConfig.csvFile} with current UI data from ${storeConfig.label}.\n` +
+      'Please select frontend/public/templates/masterdata in the next dialog. Continue?'
+    );
+    if (!proceed) return;
+
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      const payload = buildTemplateCsvPayloads().find(p => p.filename === storeConfig.csvFile);
+      if (!payload) {
+        showSnackbar(`No CSV payload available for ${storeConfig.csvFile}`, 'error');
+        return;
+      }
+
+      const fileHandle = await dirHandle.getFileHandle(payload.filename, { create: true });
+      const existingFile = await fileHandle.getFile();
+      const existingContent = await existingFile.text();
+
+      if (existingContent === payload.content) {
+        showSnackbar(`No changes detected for ${payload.filename}`, 'success');
+        return;
+      }
+
+      const writable = await fileHandle.createWritable();
+      await writable.write(payload.content);
+      await writable.close();
+
+      showSnackbar(`Updated ${payload.filename}`, 'success');
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        showSnackbar('Folder selection cancelled', 'error');
+        return;
+      }
+      console.error('Failed to update current tab template CSV file:', error);
+      showSnackbar('Failed to update tab template CSV', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -2425,6 +2504,31 @@ const MasterDataManager: React.FC = () => {
             >
               Update Template CSVs
             </Button>
+            <Tooltip
+              title={(() => {
+                const cfg = STORE_TEMPLATE_MAP[categoryTab]?.[tabValue];
+                if (!cfg) return 'No template configured for this tab';
+                if (!TEMPLATE_UPDATE_SUPPORTED_FILES.has(cfg.csvFile)) return `Update not yet supported for ${cfg.label}`;
+                return `Update only ${cfg.csvFile}`;
+              })()}
+              arrow
+            >
+              <span>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleUpdateCurrentTabTemplateCsvFile}
+                  disabled={(() => {
+                    const cfg = STORE_TEMPLATE_MAP[categoryTab]?.[tabValue];
+                    return !cfg || !TEMPLATE_UPDATE_SUPPORTED_FILES.has(cfg.csvFile);
+                  })()}
+                  sx={{ mr: 1 }}
+                >
+                  Update Tab Template CSV
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               variant="contained"
               startIcon={<DownloadIcon />}
@@ -3253,6 +3357,8 @@ const MasterDataManager: React.FC = () => {
                 equipment={equipment}
                 processSegments={processSegments}
                 materials={materials}
+                personClasses={personClasses}
+                employees={employees}
                 data={maintenanceBOMs}
                 onAdd={() => {
                   setEditingMaintenanceBom(null);
@@ -4076,6 +4182,8 @@ const MasterDataManager: React.FC = () => {
         equipment={equipment}
         processSegments={processSegments}
         materials={materials}
+        personClasses={personClasses}
+        employees={employees}
         onClose={() => {
           setMaintenanceBomDialog(false);
           setEditingMaintenanceBom(null);
@@ -5176,6 +5284,8 @@ interface MaintenanceTabProps {
   equipment: Equipment[];
   processSegments: ProcessSegment[];
   materials: Material[];
+  personClasses: PersonClass[];
+  employees: Employee[];
   onAdd: () => void;
   onEdit: (item: MaintenanceBOM) => void;
   onDelete: (id: string) => void;
@@ -5187,6 +5297,8 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
   equipment,
   processSegments,
   materials,
+  personClasses,
+  employees,
   onAdd,
   onEdit,
   onDelete,
@@ -5233,15 +5345,21 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
           </FormControl>
         </FormControl>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          {selectedEquipmentId && (
-            <Button
-              variant="outlined"
-              startIcon={<ContentCopyIcon />}
-              onClick={() => { setCopyTargetEquipmentId(''); setCopyDialogOpen(true); }}
-            >
-              Copy BOM
-            </Button>
-          )}
+          <Tooltip
+            title={selectedEquipmentId ? 'Copy BOM lines to another equipment' : 'Select an equipment first'}
+            arrow
+          >
+            <span>
+              <Button
+                variant="outlined"
+                startIcon={<ContentCopyIcon />}
+                disabled={!selectedEquipmentId}
+                onClick={() => { setCopyTargetEquipmentId(''); setCopyDialogOpen(true); }}
+              >
+                Copy BOM
+              </Button>
+            </span>
+          </Tooltip>
           <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
             Add Maintenance BOM
           </Button>
@@ -5288,6 +5406,8 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
               <TableCell>Segment Seq</TableCell>
               <TableCell>Material</TableCell>
               <TableCell>Qty</TableCell>
+              <TableCell>Personnel Qty</TableCell>
+              <TableCell>Personnel Ref</TableCell>
               <TableCell>UoM</TableCell>
               <TableCell>Use</TableCell>
               <TableCell align="right">Actions</TableCell>
@@ -5296,7 +5416,7 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
           <TableBody>
             {groupedEntries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                     No maintenance BOM lines found.
                   </Typography>
@@ -5308,6 +5428,8 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
                   const eq = equipment.find(e => e.id === row.equipmentId);
                   const segment = processSegments.find(ps => ps.id === row.processSegmentId);
                   const mat = materials.find(m => m.id === row.materialId);
+                  const employee = employees.find(e => e.id === row.employeeId);
+                  const personClass = personClasses.find(pc => pc.id === row.personClassId);
                   return (
                     <TableRow key={row.id}>
                       <TableCell>{index === 0 ? (eq?.name || equipmentId) : ''}</TableCell>
@@ -5315,6 +5437,8 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
                       <TableCell>{segment?.sequence ?? '-'}</TableCell>
                       <TableCell>{mat?.name || row.materialId}</TableCell>
                       <TableCell>{row.qtyPerUnit}</TableCell>
+                      <TableCell>{row.personQuantity || '-'}</TableCell>
+                      <TableCell>{employee?.employeeName || personClass?.name || row.employeeId || row.personClassId || '-'}</TableCell>
                       <TableCell>{row.uom}</TableCell>
                       <TableCell>{row.materialUse}</TableCell>
                       <TableCell align="right">
@@ -5343,6 +5467,8 @@ interface MaintenanceBomDialogProps {
   equipment: Equipment[];
   processSegments: ProcessSegment[];
   materials: Material[];
+  personClasses: PersonClass[];
+  employees: Employee[];
   onClose: () => void;
   onSave: (data: MaintenanceBOM) => void;
 }
@@ -5353,6 +5479,8 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
   equipment,
   processSegments,
   materials,
+  personClasses,
+  employees,
   onClose,
   onSave,
 }) => {
@@ -5363,6 +5491,9 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
       processSegmentId: '',
       materialId: '',
       qtyPerUnit: 1,
+      personQuantity: 1,
+      employeeId: '',
+      personClassId: '',
       uom: 'EA',
       materialUse: 'CONSUME',
     }
@@ -5370,7 +5501,12 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
 
   React.useEffect(() => {
     if (data) {
-      setFormData(data);
+      setFormData({
+        ...data,
+        personQuantity: data.personQuantity ?? 0,
+        employeeId: data.employeeId ?? '',
+        personClassId: data.personClassId ?? '',
+      });
     } else {
       setFormData({
         id: '',
@@ -5378,6 +5514,9 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
         processSegmentId: '',
         materialId: '',
         qtyPerUnit: 1,
+        personQuantity: 1,
+        employeeId: '',
+        personClassId: '',
         uom: 'EA',
         materialUse: 'CONSUME',
       });
@@ -5390,6 +5529,10 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
   const handleSubmit = () => {
     if (!formData.equipmentId || !formData.processSegmentId || !formData.materialId) {
       alert('Equipment, Process Segment, and Material are required');
+      return;
+    }
+    if (!formData.employeeId && !formData.personClassId) {
+      alert('Select either an Employee or a Person Class for personnel requirement');
       return;
     }
     onSave(formData);
@@ -5463,6 +5606,46 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
               value={formData.uom}
               onChange={(e) => setFormData({ ...formData, uom: e.target.value })}
             />
+          </Grid>
+          <Grid xs={12} md={6}>
+            <TextField
+              fullWidth
+              type="number"
+              label="Required Personnel (personQuantity)"
+              inputProps={{ step: 0.01, min: 0 }}
+              value={formData.personQuantity}
+              onChange={(e) => setFormData({ ...formData, personQuantity: parseFloat(e.target.value) || 0 })}
+            />
+          </Grid>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Employee (optional)</InputLabel>
+              <Select
+                value={formData.employeeId}
+                label="Employee (optional)"
+                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value, personClassId: e.target.value ? '' : formData.personClassId })}
+              >
+                <MenuItem value=""><em>None</em></MenuItem>
+                {employees.map(emp => (
+                  <MenuItem key={emp.id} value={emp.id}>{emp.employeeName} ({emp.id})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Person Class (optional)</InputLabel>
+              <Select
+                value={formData.personClassId}
+                label="Person Class (optional)"
+                onChange={(e) => setFormData({ ...formData, personClassId: e.target.value, employeeId: e.target.value ? '' : formData.employeeId })}
+              >
+                <MenuItem value=""><em>None</em></MenuItem>
+                {personClasses.map(pc => (
+                  <MenuItem key={pc.id} value={pc.id}>{pc.name} ({pc.id})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
           <Grid xs={12} md={6}>
             <FormControl fullWidth>

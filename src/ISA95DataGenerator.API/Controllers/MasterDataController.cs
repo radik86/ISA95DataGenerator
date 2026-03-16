@@ -625,6 +625,9 @@ public class MasterDataController : ControllerBase
             existing.ProcessSegmentId = entity.ProcessSegmentId;
             existing.MaterialId = entity.MaterialId;
             existing.QtyPerUnit = entity.QtyPerUnit;
+            existing.PersonQuantity = entity.PersonQuantity;
+            existing.EmployeeId = entity.EmployeeId;
+            existing.PersonClassId = entity.PersonClassId;
             existing.Uom = entity.Uom;
             existing.MaterialUse = entity.MaterialUse;
             existing.UpdatedAt = DateTime.UtcNow;
@@ -651,6 +654,9 @@ public class MasterDataController : ControllerBase
         existing.ProcessSegmentId = entity.ProcessSegmentId;
         existing.MaterialId = entity.MaterialId;
         existing.QtyPerUnit = entity.QtyPerUnit;
+        existing.PersonQuantity = entity.PersonQuantity;
+        existing.EmployeeId = entity.EmployeeId;
+        existing.PersonClassId = entity.PersonClassId;
         existing.Uom = entity.Uom;
         existing.MaterialUse = entity.MaterialUse;
         existing.UpdatedAt = DateTime.UtcNow;
