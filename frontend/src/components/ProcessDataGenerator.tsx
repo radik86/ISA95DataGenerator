@@ -333,6 +333,9 @@ const ProcessDataGenerator: React.FC = () => {
   const [actualDataFilter, setActualDataFilter] = useState('');
   const [materialActualsFilter, setMaterialActualsFilter] = useState<'ALL' | 'CONSUME' | 'PRODUCE' | 'Scrap'>('ALL');
   const [segmentResponsesFilter, setSegmentResponsesFilter] = useState('');
+  const [maintenancePlanDataExpanded, setMaintenancePlanDataExpanded] = useState(false);
+  const [maintenanceActualDataExpanded, setMaintenanceActualDataExpanded] = useState(false);
+  const [maintenancePlanDataFilter, setMaintenancePlanDataFilter] = useState('');
 
   // Automated batch generation inputs (plan + actual)
   const [batchStartDate, setBatchStartDate] = useState('');
@@ -379,6 +382,15 @@ const ProcessDataGenerator: React.FC = () => {
     const [maintenanceActualTimestamp, setMaintenanceActualTimestamp] = useState<Date | null>(null);
     const [maintenancePlanReference, setMaintenancePlanReference] = useState<OperationsRequest | null>(null);
     const [maintenanceSegReqReference, setMaintenanceSegReqReference] = useState<SegmentRequirement[]>([]);
+
+    const filteredSavedMaintenanceRequests = savedMaintenanceRequests.filter((req) =>
+      !maintenancePlanDataFilter ||
+      req.id?.toLowerCase().includes(maintenancePlanDataFilter.toLowerCase()) ||
+      req.description?.toLowerCase().includes(maintenancePlanDataFilter.toLowerCase()) ||
+      req.productMaterialId?.toLowerCase().includes(maintenancePlanDataFilter.toLowerCase())
+    );
+
+    const selectedMaintenanceOrder = savedMaintenanceRequests.find((req) => req.id === selectedMaintenanceRequestId) || null;
 
     const showSnackbar = (message: string, severity: 'success' | 'error') => {
       setSnackbar({ open: true, message, severity });
@@ -6166,6 +6178,91 @@ const ProcessDataGenerator: React.FC = () => {
                 Create maintenance plan orders from Maintenance BOM by equipment. This generates operations requests, segment requirements, material requirements, and equipment requirements.
               </Alert>
 
+              {savedMaintenanceRequests.length > 0 && (
+                <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.lighter' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6">
+                      📊 Saved Maintenance Plan Overview
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={() => setMaintenancePlanDataExpanded(!maintenancePlanDataExpanded)}
+                      variant="outlined"
+                    >
+                      {maintenancePlanDataExpanded ? 'Collapse' : 'Expand All'}
+                    </Button>
+                  </Box>
+                  <Divider sx={{ mb: 2 }} />
+
+                  {maintenancePlanDataExpanded && (
+                    <Box sx={{ mb: 2 }}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Filter Maintenance Orders"
+                        placeholder="Search by order ID, description, or material..."
+                        value={maintenancePlanDataFilter}
+                        onChange={(e) => setMaintenancePlanDataFilter(e.target.value)}
+                      />
+                    </Box>
+                  )}
+
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 8 }}>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        <strong>Maintenance Orders:</strong> {filteredSavedMaintenanceRequests.length} {maintenancePlanDataFilter && `(filtered from ${savedMaintenanceRequests.length})`}
+                      </Typography>
+                      <Box sx={{ maxHeight: maintenancePlanDataExpanded ? 420 : 200, overflowY: 'auto', pr: 1 }}>
+                        {filteredSavedMaintenanceRequests
+                          .slice(0, maintenancePlanDataExpanded ? undefined : 3)
+                          .map((req) => {
+                            const plant = plants.find((p) => p.id === req.plantId);
+                            const line = productionLines.find((l) => l.id === req.lineId);
+                            const material = materials.find((m) => m.id === req.productMaterialId);
+                            return (
+                              <Box key={req.id} sx={{ ml: 2, mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                                <Typography variant="caption" display="block">
+                                  <strong>{req.id}</strong> - {req.description}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Material: {material?.name || req.productMaterialId} | Qty: {req.plannedQuantity} {req.quantityUoM}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Plant: {plant?.name || req.plantId} | Line: {line?.name || line?.lineName || req.lineId}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {new Date(req.plannedStartDateTime).toLocaleString()} → {new Date(req.plannedEndDateTime).toLocaleString()}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                      </Box>
+                      {!maintenancePlanDataExpanded && filteredSavedMaintenanceRequests.length > 3 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+                          ...and {filteredSavedMaintenanceRequests.length - 3} more
+                        </Typography>
+                      )}
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        <Chip label={`${savedMaintenanceRequests.length} Orders`} color="primary" size="small" />
+                        <Chip
+                          label={`${new Set(savedMaintenanceRequests.map((req) => req.productMaterialId).filter(Boolean)).size} Materials`}
+                          color="secondary"
+                          size="small"
+                        />
+                        <Chip
+                          label={`${new Set(savedMaintenanceRequests.map((req) => req.equipmentId).filter(Boolean)).size} Equipment refs`}
+                          color="info"
+                          size="small"
+                        />
+                        <Chip label="Saved in DB" color="success" size="small" />
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              )}
+
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <Card>
@@ -6463,6 +6560,127 @@ const ProcessDataGenerator: React.FC = () => {
               <Alert severity="info" sx={{ mb: 3 }}>
                 Generate maintenance actual data from a saved maintenance order. It creates operations request execution data with segment, material, and equipment actuals.
               </Alert>
+
+              {savedMaintenanceRequests.length > 0 && (
+                <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.lighter' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6">
+                      📊 Maintenance Actual Data Overview
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={() => setMaintenanceActualDataExpanded(!maintenanceActualDataExpanded)}
+                      variant="outlined"
+                    >
+                      {maintenanceActualDataExpanded ? 'Collapse' : 'Expand All'}
+                    </Button>
+                  </Box>
+                  <Divider sx={{ mb: 2 }} />
+
+                  {maintenanceActualDataExpanded && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      Select a maintenance order to inspect existing stored actual records for that order.
+                    </Alert>
+                  )}
+
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                        Available Maintenance Orders:
+                      </Typography>
+                      <Typography variant="body2" color="text.primary" gutterBottom>
+                        <strong>{savedMaintenanceRequests.length}</strong> maintenance orders saved in database
+                      </Typography>
+                      <Box sx={{ maxHeight: maintenanceActualDataExpanded ? 420 : 160, overflowY: 'auto', pr: 1 }}>
+                        {savedMaintenanceRequests
+                          .slice(0, maintenanceActualDataExpanded ? undefined : 2)
+                          .map((req) => {
+                            const material = materials.find((m) => m.id === req.productMaterialId);
+                            const isSelected = req.id === selectedMaintenanceRequestId;
+                            return (
+                              <Box
+                                key={req.id}
+                                onClick={() => setSelectedMaintenanceRequestId(req.id)}
+                                sx={{
+                                  ml: 2,
+                                  mb: 1,
+                                  p: 1,
+                                  bgcolor: 'background.paper',
+                                  borderRadius: 1,
+                                  cursor: 'pointer',
+                                  border: isSelected ? 2 : 1,
+                                  borderColor: isSelected ? 'success.main' : 'divider'
+                                }}
+                              >
+                                <Typography variant="caption" display="block">
+                                  <strong>{req.id}</strong> - {req.description}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Material: {material?.name || req.productMaterialId} | Qty: {req.plannedQuantity} {req.quantityUoM}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {new Date(req.plannedStartDateTime).toLocaleString()} → {new Date(req.plannedEndDateTime).toLocaleString()}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                      </Box>
+                      {!maintenanceActualDataExpanded && savedMaintenanceRequests.length > 2 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, display: 'block', mt: 1 }}>
+                          ...and {savedMaintenanceRequests.length - 2} more
+                        </Typography>
+                      )}
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                        Stored Actual Data For Selected Order:
+                      </Typography>
+                      {!selectedMaintenanceOrder ? (
+                        <Typography variant="body2" color="text.secondary">
+                          Select a maintenance order to load its saved response, segment responses, material actuals, and equipment actuals.
+                        </Typography>
+                      ) : generatedMaintenanceResponse ? (
+                        <Box>
+                          <Typography variant="body2" color="text.primary" gutterBottom>
+                            <strong>{generatedMaintenanceResponse.id}</strong> stored operations response found for {selectedMaintenanceOrder.id}
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                            <Chip label="1 Response" size="small" color="primary" />
+                            <Chip label={`${maintenanceSegmentResponses.length} Segments`} size="small" color="success" />
+                            <Chip label={`${maintenanceMaterialActuals.length} Materials`} size="small" color="warning" />
+                            <Chip label={`${maintenanceEquipmentActuals.length} Equipment`} size="small" color="info" />
+                          </Box>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Response time: {generatedMaintenanceResponse.actualStartDateTime} → {generatedMaintenanceResponse.actualEndDateTime}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Plan reference: {maintenancePlanReference?.id || selectedMaintenanceOrder.id} | Segment requirements: {maintenanceSegReqReference.length}
+                          </Typography>
+                          {maintenanceActualTimestamp && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Loaded: {maintenanceActualTimestamp.toLocaleString()}
+                            </Typography>
+                          )}
+                        </Box>
+                      ) : (
+                        <Box>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            No stored actual response found yet for <strong>{selectedMaintenanceOrder.id}</strong>.
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                            <Chip label="0 Responses" size="small" color="default" />
+                            <Chip label={`${maintenanceSegReqReference.length} Planned Segments`} size="small" color="secondary" />
+                          </Box>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            The plan exists in the database, but actual execution records have not been saved for this order yet.
+                          </Typography>
+                        </Box>
+                      )}
+                    </Grid>
+                  </Grid>
+                </Paper>
+              )}
 
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, md: 6 }}>
