@@ -4126,6 +4126,41 @@ const ProcessDataGenerator: React.FC = () => {
 
   const finishedProducts = materials.filter(m => m.classId === 'FINISHEDPRODUCT');
   const linesForPlant = productionLines.filter(pl => pl.plantId === formData.plantId);
+  const allMaintenanceEquipmentOptions = (() => {
+    const pickField = (obj: any, candidates: string[]): any => {
+      if (!obj) return undefined;
+      for (const key of candidates) {
+        const val = obj[key];
+        if (val !== undefined && val !== null && `${val}`.trim() !== '') return val;
+      }
+      const keys = Object.keys(obj);
+      for (const candidate of candidates) {
+        const match = keys.find((k) => k.toLowerCase() === candidate.toLowerCase());
+        if (match) {
+          const val = obj[match];
+          if (val !== undefined && val !== null && `${val}`.trim() !== '') return val;
+        }
+      }
+      return undefined;
+    };
+
+    const fromEquipment = equipment.map((eq: any) => ({
+      id: pickField(eq, ['id', 'equipmentId', 'EquipmentID', 'EquipmentId']),
+      name: pickField(eq, ['name', 'equipmentName', 'EquipmentName', 'id', 'equipmentId', 'EquipmentID', 'EquipmentId']),
+      raw: eq,
+    }));
+
+    const knownIds = new Set(fromEquipment.map((e: any) => e.id).filter(Boolean));
+    const fromLineEquipmentOnly = lineEquipment
+      .map((le: any) => pickField(le, ['equipmentId', 'EquipmentID', 'EquipmentId']))
+      .filter((id: any) => !!id && !knownIds.has(id))
+      .map((id: any) => ({ id, name: id, raw: { id, name: id } }));
+
+    return [...fromEquipment, ...fromLineEquipmentOnly]
+      .filter((e: any) => !!e.id)
+      .map((e: any) => ({ ...e.raw, id: e.id, name: e.name }));
+  })();
+
   const maintenanceEquipmentForPlant = (() => {
     const pickField = (obj: any, candidates: string[]): any => {
       if (!obj) return undefined;
@@ -4191,7 +4226,12 @@ const ProcessDataGenerator: React.FC = () => {
     if (deduped.length > 0) return deduped;
 
     // Fallback: if equipment records are missing, surface IDs from line-equipment mapping.
-    return Array.from(equipmentIdsFromLineEquipment).map((id) => ({ id, name: id }));
+    if (equipmentIdsFromLineEquipment.size > 0) {
+      return Array.from(equipmentIdsFromLineEquipment).map((id) => ({ id, name: id }));
+    }
+
+    // Final safety net: allow selecting from all known equipment options.
+    return allMaintenanceEquipmentOptions;
   })();
 
   if (loading) {
@@ -6536,7 +6576,7 @@ const ProcessDataGenerator: React.FC = () => {
                               value={maintenancePlanFormData.equipmentId}
                               label="Equipment"
                               onChange={(e) => setMaintenancePlanFormData({ ...maintenancePlanFormData, equipmentId: e.target.value })}
-                              disabled={!maintenancePlanFormData.plantId}
+                              disabled={allMaintenanceEquipmentOptions.length === 0}
                             >
                               {maintenanceEquipmentForPlant
                                 .map((eq) => (

@@ -260,16 +260,28 @@ export class TemplateDataLoader {
 
   /**
    * Resets a single store to its template data.
-   * Clears all existing records for the store (and any FK-dependent child stores) then imports from the template CSV.
-   * clearFirst: stores to clear before the main store (children in FK order, then the store itself last).
+   * Non-destructive behavior: upserts template rows into the target store only.
+   * Related stores are intentionally not cleared.
    */
   async resetSingleStoreToTemplate(storeName: string, csvFileName: string, parserKey: string, clearFirst: string[] = []): Promise<void> {
     const csvText = await this.fetchCSV(csvFileName);
     const data = this.parseTemplateByKey(parserKey, csvText);
-    // Clear in FK-safe order: children first, then the target store
-    await masterDataApi.clearStores([...clearFirst, storeName]);
-    if (data.length > 0) {
-      await masterDataApi.bulkAdd(storeName, data);
+
+    // clearFirst kept in signature for backward compatibility; intentionally unused.
+    void clearFirst;
+
+    if (data.length === 0) return;
+
+    const existing = await masterDataApi.getAll<any>(storeName);
+    const existingIds = new Set(existing.map((item: any) => item?.id).filter(Boolean));
+
+    for (const row of data) {
+      const id = (row as any)?.id;
+      if (id && existingIds.has(id)) {
+        await masterDataApi.update(storeName, row as any);
+      } else {
+        await masterDataApi.add(storeName, row as any);
+      }
     }
   }
 

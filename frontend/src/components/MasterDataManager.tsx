@@ -867,7 +867,7 @@ const MasterDataManager: React.FC = () => {
       showSnackbar('No template available for this tab', 'warning');
       return;
     }
-    if (!confirm(`This will delete all current "${storeConfig.label}" data and reload from template. Continue?`)) return;
+    if (!confirm(`This will refresh "${storeConfig.label}" from template without deleting related stores. Continue?`)) return;
     try {
       setLoading(true);
       await templateLoader.resetSingleStoreToTemplate(storeConfig.storeName, storeConfig.csvFile, storeConfig.parserKey, storeConfig.clearFirst);
