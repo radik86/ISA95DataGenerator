@@ -1893,7 +1893,7 @@ const ProcessDataGenerator: React.FC = () => {
           employeeId: mb.employeeId || '',
           personClassId: mb.personClassId || '',
           quantity: Number(mb.personQuantity) || 1,
-          quantityUnitOfMeasure: 'Person',
+          quantityUnitOfMeasure: mb.personQuantityUoM || 'Person',
           personnelUse: 'MaintenanceWork',
           operationsType: 'Maintenance' as const,
         }));
@@ -2668,12 +2668,32 @@ const ProcessDataGenerator: React.FC = () => {
     ).join('\n');
     const trCsv = `${trHeaders}\n${trRows}`;
 
+    // Export Personnel Actuals
+    const paHeaders = 'SegmentPersonnelActualID,SegmentResponseID,EmployeeID,PersonClassID,ActualQuantity,QuantityUnitOfMeasure,PersonnelUse,ActualStartDateTime,ActualEndDateTime,OperationsType';
+    const paRows = personnelActuals.map(pa =>
+      `${pa.id},${pa.segmentResponseId},${pa.employeeId || ''},${pa.personClassId || ''},${pa.actualQuantity},${pa.quantityUnitOfMeasure},${pa.personnelUse},${pa.actualStartDateTime},${pa.actualEndDateTime},${pa.operationsType || ''}`
+    ).join('\n');
+    const paCsv = `${paHeaders}\n${paRows}`;
+
+    // Export Person (from employees)
+    const personHeaders = 'PersonID,Name,PersonClassID';
+    const personRows = employees.map(e =>
+      `${e.id},${e.employeeName},${e.personClassId || ''}`
+    ).join('\n');
+    const personCsv = `${personHeaders}\n${personRows}`;
+
     // Create downloads based on type
     if (type === 'all') {
       downloadCSV(orCsv, 'operations_response.csv');
       downloadCSV(srCsv, 'segment_responses.csv');
       downloadCSV(maCsv, 'segment_material_actuals.csv');
       downloadCSV(eaCsv, 'segment_equipment_actuals.csv');
+      if (personnelActuals.length > 0) {
+        downloadCSV(paCsv, 'segment_personnel_actuals.csv');
+      }
+      if (employees.length > 0) {
+        downloadCSV(personCsv, 'person.csv');
+      }
       if (equipmentPropertyTracking.length > 0) {
         downloadCSV(eptCsv, 'equipment_property_tracking.csv');
       }
@@ -3708,12 +3728,32 @@ const ProcessDataGenerator: React.FC = () => {
     ).join('\n');
     const erCsv = `${erHeaders}\n${erRows}`;
 
+    // Export Personnel Requirements
+    const prHeaders = 'SegmentPersonnelReqID,SegmentRequirementID,EmployeeID,PersonClassID,Quantity,QuantityUnitOfMeasure,PersonnelUse,OperationsType';
+    const prRows = personnelRequirements.map(pr =>
+      `${pr.id},${pr.segmentRequirementId},${pr.employeeId || ''},${pr.personClassId || ''},${pr.quantity},${pr.quantityUnitOfMeasure},${pr.personnelUse},${pr.operationsType || ''}`
+    ).join('\n');
+    const prCsv = `${prHeaders}\n${prRows}`;
+
+    // Export Person (from employees)
+    const personHeaders = 'PersonID,Name,PersonClassID';
+    const personRows = employees.map(e =>
+      `${e.id},${e.employeeName},${e.personClassId || ''}`
+    ).join('\n');
+    const personCsv = `${personHeaders}\n${personRows}`;
+
     // Create downloads based on type
     if (type === 'all') {
       downloadCSV(orCsv, 'operations_requests.csv');
       downloadCSV(srCsv, 'segment_requirements.csv');
       downloadCSV(mrCsv, 'segment_material_requirements.csv');
       downloadCSV(erCsv, 'segment_equipment_requirements.csv');
+      if (personnelRequirements.length > 0) {
+        downloadCSV(prCsv, 'segment_personnel_requirements.csv');
+      }
+      if (employees.length > 0) {
+        downloadCSV(personCsv, 'person.csv');
+      }
       showSnackbar('All data exported successfully', 'success');
     } else if (type === 'operations') {
       downloadCSV(orCsv, 'operations_requests.csv');
@@ -3763,12 +3803,22 @@ const ProcessDataGenerator: React.FC = () => {
       .join('\n');
     const prCsv = `${prHeaders}\n${prRows}`;
 
+    // Export Person (from employees) for maintenance
+    const personHeadersMaint = 'PersonID,Name,PersonClassID';
+    const personRowsMaint = employees.map(e =>
+      `${e.id},${e.employeeName},${e.personClassId || ''}`
+    ).join('\n');
+    const personCsvMaint = `${personHeadersMaint}\n${personRowsMaint}`;
+
     if (type === 'all') {
       downloadCSV(orCsv, 'maintenance_operations_request.csv');
       downloadCSV(srCsv, 'maintenance_segment_requirements.csv');
       downloadCSV(mrCsv, 'maintenance_material_requirements.csv');
       downloadCSV(erCsv, 'maintenance_equipment_requirements.csv');
       downloadCSV(prCsv, 'maintenance_personnel_requirements.csv');
+      if (employees.length > 0) {
+        downloadCSV(personCsvMaint, 'person.csv');
+      }
       showSnackbar('All maintenance plan data exported successfully', 'success');
     } else if (type === 'operations') {
       downloadCSV(orCsv, 'maintenance_operations_request.csv');
@@ -3820,12 +3870,22 @@ const ProcessDataGenerator: React.FC = () => {
       .join('\n');
     const paCsv = `${paHeaders}\n${paRows}`;
 
+    // Export Person (from employees) for maintenance actuals
+    const personHeadersMaintAct = 'PersonID,Name,PersonClassID';
+    const personRowsMaintAct = employees.map(e =>
+      `${e.id},${e.employeeName},${e.personClassId || ''}`
+    ).join('\n');
+    const personCsvMaintAct = `${personHeadersMaintAct}\n${personRowsMaintAct}`;
+
     if (type === 'all') {
       downloadCSV(orCsv, 'maintenance_operations_response.csv');
       downloadCSV(srCsv, 'maintenance_segment_responses.csv');
       downloadCSV(maCsv, 'maintenance_material_actuals.csv');
       downloadCSV(eaCsv, 'maintenance_equipment_actuals.csv');
       downloadCSV(paCsv, 'maintenance_personnel_actuals.csv');
+      if (employees.length > 0) {
+        downloadCSV(personCsvMaintAct, 'person.csv');
+      }
       showSnackbar('All maintenance actual data exported successfully', 'success');
     } else if (type === 'response') {
       downloadCSV(orCsv, 'maintenance_operations_response.csv');

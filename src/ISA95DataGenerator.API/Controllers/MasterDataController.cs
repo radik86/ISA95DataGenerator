@@ -618,14 +618,24 @@ public class MasterDataController : ControllerBase
     [HttpPost("maintenance-boms")]
     public async Task<IActionResult> CreateMaintenanceBOM([FromBody] MaintenanceBOM entity)
     {
+        var segmentSequence = await _context.ProcessSegments
+            .Where(ps => ps.Id == entity.ProcessSegmentId)
+            .Select(ps => (int?)ps.Sequence)
+            .FirstOrDefaultAsync();
+
+        entity.ProcessSegmentSequence = segmentSequence ?? entity.ProcessSegmentSequence;
+        entity.PersonQuantityUoM = string.Equals(entity.PersonQuantityUoM, "FTE", StringComparison.OrdinalIgnoreCase) ? "FTE" : "Person";
+
         var existing = await _context.MaintenanceBOMs.FindAsync(entity.Id);
         if (existing != null)
         {
             existing.EquipmentId = entity.EquipmentId;
             existing.ProcessSegmentId = entity.ProcessSegmentId;
+            existing.ProcessSegmentSequence = entity.ProcessSegmentSequence;
             existing.MaterialId = entity.MaterialId;
             existing.QtyPerUnit = entity.QtyPerUnit;
             existing.PersonQuantity = entity.PersonQuantity;
+            existing.PersonQuantityUoM = entity.PersonQuantityUoM;
             existing.EmployeeId = entity.EmployeeId;
             existing.PersonClassId = entity.PersonClassId;
             existing.Uom = entity.Uom;
@@ -650,11 +660,18 @@ public class MasterDataController : ControllerBase
         var existing = await _context.MaintenanceBOMs.FindAsync(id);
         if (existing == null) return NotFound();
 
+        var segmentSequence = await _context.ProcessSegments
+            .Where(ps => ps.Id == entity.ProcessSegmentId)
+            .Select(ps => (int?)ps.Sequence)
+            .FirstOrDefaultAsync();
+
         existing.EquipmentId = entity.EquipmentId;
         existing.ProcessSegmentId = entity.ProcessSegmentId;
+        existing.ProcessSegmentSequence = segmentSequence ?? entity.ProcessSegmentSequence;
         existing.MaterialId = entity.MaterialId;
         existing.QtyPerUnit = entity.QtyPerUnit;
         existing.PersonQuantity = entity.PersonQuantity;
+        existing.PersonQuantityUoM = string.Equals(entity.PersonQuantityUoM, "FTE", StringComparison.OrdinalIgnoreCase) ? "FTE" : "Person";
         existing.EmployeeId = entity.EmployeeId;
         existing.PersonClassId = entity.PersonClassId;
         existing.Uom = entity.Uom;

@@ -46,10 +46,12 @@ public class MigrationProcessorV2Service
         "segment_requirements",
         "segment_material_requirements",
         "segment_equipment_requirements",
+        "segment_personnel_requirements",
         "operations_responses",
         "segment_responses",
         "segment_material_actuals",
         "segment_equipment_actuals",
+        "segment_personnel_actuals",
         "equipment_property_tracking",
         "test_results",
         "operations_events",
@@ -81,7 +83,11 @@ public class MigrationProcessorV2Service
         ["process_segments"] = "processSegments",
         ["line_equipment"] = "lineEquipment",
         ["segment_boms"] = "segmentBOMs",
+        ["maintenance_boms"] = "maintenanceBOMs",
         ["equipment_usages"] = "equipmentUsages",
+        ["person_classes"] = "personClasses",
+        ["personnel_capabilities"] = "personnelCapabilities",
+        ["employees"] = "employees",
         ["operation_event_definitions"] = "operationEventDefinitions",
         ["operation_event_def_segment_assignments"] = "operationEventDefSegmentAssignments",
         ["operation_event_definition_properties"] = "operationEventDefinitionProperties",
@@ -138,7 +144,11 @@ public class MigrationProcessorV2Service
         ["processSegments"] = typeof(ProcessSegment),
         ["lineEquipment"] = typeof(LineEquipment),
         ["segmentBOMs"] = typeof(SegmentBOM),
+        ["maintenanceBOMs"] = typeof(MaintenanceBOM),
         ["equipmentUsages"] = typeof(EquipmentUsage),
+        ["personClasses"] = typeof(PersonClass),
+        ["personnelCapabilities"] = typeof(PersonnelCapability),
+        ["employees"] = typeof(Employee),
         ["operationEventDefinitions"] = typeof(OperationEventDefinition),
         ["operationEventDefSegmentAssignments"] = typeof(OperationEventDefSegmentAssignment),
         ["operationEventDefinitionProperties"] = typeof(OperationEventDefinitionProperty),
@@ -1170,12 +1180,47 @@ public class MigrationProcessorV2Service
 
     private static bool MatchesFilters(Dictionary<string, object?> rec, List<FilterDto> enabledFilters)
     {
+        static DateTime? ParseDate(object? raw)
+        {
+            if (raw == null) return null;
+            var text = raw.ToString();
+            if (string.IsNullOrWhiteSpace(text)) return null;
+
+            return DateTime.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed)
+                ? parsed
+                : null;
+        }
+
         foreach (var filter in enabledFilters)
         {
             var rawValue = rec.GetValueOrDefault(filter.Field);
             var isNull = rawValue == null;
             var value = rawValue?.ToString() ?? "";
             var filterValue = filter.Value ?? "";
+
+            if (string.Equals(filter.Operator, "delta_pending", StringComparison.OrdinalIgnoreCase))
+            {
+                var lastMigrationAt = ParseDate(rec.GetValueOrDefault("LastDataMigrationAt") ?? rec.GetValueOrDefault("lastDataMigrationAt"));
+                if (lastMigrationAt == null)
+                {
+                    continue;
+                }
+
+                var updatedAt = ParseDate(rec.GetValueOrDefault("UpdatedAt") ?? rec.GetValueOrDefault("updatedAt"));
+                var generatedAt = ParseDate(rec.GetValueOrDefault("DataGeneratedAt") ?? rec.GetValueOrDefault("dataGeneratedAt"));
+                var candidateTimestamp = updatedAt ?? generatedAt;
+
+                if (candidateTimestamp == null || candidateTimestamp <= lastMigrationAt.Value)
+                {
+                    return false;
+                }
+
+                continue;
+            }
 
             bool match = filter.Operator switch
             {

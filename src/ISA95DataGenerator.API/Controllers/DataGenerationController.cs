@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using ISA95DataGenerator.Application.Interfaces;
 using ISA95DataGenerator.Domain.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,14 @@ public class DataGenerationController : ControllerBase
     private readonly ITestDataGeneratorService _generatorService;
     private readonly IMappingFileService _mappingFileService;
     private readonly ILogger<DataGenerationController> _logger;
+    private static readonly string[] Isa95Terms =
+    {
+        "operations", "operation", "segment", "material", "equipment", "personnel", "person",
+        "requirement", "requirements", "response", "responses", "actual", "actuals",
+        "definition", "definitions", "property", "properties", "class", "classes",
+        "capability", "capabilities", "specification", "specifications", "hierarchy", "scope",
+        "line", "plant", "production", "test"
+    };
 
     public DataGenerationController(
         ITestDataGeneratorService generatorService,
@@ -21,6 +30,35 @@ public class DataGenerationController : ControllerBase
         _generatorService = generatorService;
         _mappingFileService = mappingFileService;
         _logger = logger;
+    }
+
+    private static string FormatEntityName(string entityName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName))
+        {
+            return entityName;
+        }
+
+        var normalized = entityName.Trim().Replace("_", " ").Replace("-", " ");
+        normalized = Regex.Replace(normalized, "([a-z])([A-Z])", "$1 $2");
+
+        if (!normalized.Contains(' '))
+        {
+            var lower = normalized.ToLowerInvariant();
+            foreach (var term in Isa95Terms.OrderByDescending(t => t.Length))
+            {
+                lower = Regex.Replace(lower, term, $" {term} ");
+            }
+            normalized = Regex.Replace(lower, "\\s+", " ").Trim();
+        }
+
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < words.Length; i++)
+        {
+            words[i] = char.ToUpper(words[i][0]) + words[i][1..];
+        }
+
+        return string.Join(" ", words);
     }
 
     [HttpPost("generate-data")]
@@ -75,9 +113,10 @@ public class DataGenerationController : ControllerBase
                 _logger.LogInformation("\n--- CSV Export: Creating {Count} files ---", response.GeneratedData.Count);
                 foreach (var kvp in response.GeneratedData)
                 {
-                    _logger.LogInformation("Exporting {EntityName}.csv ({InstanceCount} rows)", kvp.Key, kvp.Value.Count);
+                    var entityDisplayName = FormatEntityName(kvp.Key);
+                    _logger.LogInformation("Exporting {EntityName}.csv ({InstanceCount} rows)", entityDisplayName, kvp.Value.Count);
                     
-                    var entry = archive.CreateEntry($"{kvp.Key}.csv");
+                    var entry = archive.CreateEntry($"{entityDisplayName}.csv");
                     using var entryStream = entry.Open();
                     using var writer = new StreamWriter(entryStream);
                     

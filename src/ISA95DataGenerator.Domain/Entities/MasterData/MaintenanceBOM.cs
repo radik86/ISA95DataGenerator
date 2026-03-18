@@ -10,9 +10,11 @@ public class MaintenanceBOM
     public string Id { get; set; } = string.Empty;
     public string EquipmentId { get; set; } = string.Empty;
     public string ProcessSegmentId { get; set; } = string.Empty;
+    public int ProcessSegmentSequence { get; set; }
     public string MaterialId { get; set; } = string.Empty;
     public decimal QtyPerUnit { get; set; }
     public decimal PersonQuantity { get; set; }
+    public string PersonQuantityUoM { get; set; } = "Person";
     public string? EmployeeId { get; set; }
     public string? PersonClassId { get; set; }
     public string Uom { get; set; } = string.Empty;

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ISA95DataGenerator.Application.Interfaces;
 using ISA95DataGenerator.Domain.Models;
 
@@ -8,6 +9,14 @@ namespace ISA95DataGenerator.Infrastructure.Services;
 public class MappingFileService : IMappingFileService
 {
     private readonly IMetadataLoaderService _metadataLoader;
+    private static readonly string[] Isa95Terms =
+    {
+        "operations", "operation", "segment", "material", "equipment", "personnel", "person",
+        "requirement", "requirements", "response", "responses", "actual", "actuals",
+        "definition", "definitions", "property", "properties", "class", "classes",
+        "capability", "capabilities", "specification", "specifications", "hierarchy", "scope",
+        "line", "plant", "production", "test"
+    };
 
     public MappingFileService(IMetadataLoaderService metadataLoader)
     {
@@ -18,14 +27,27 @@ public class MappingFileService : IMappingFileService
     {
         if (string.IsNullOrEmpty(entityName))
             return entityName;
-        
-        // Split by spaces and capitalize first letter of each word
-        var words = entityName.Split(' ');
+
+        var normalized = entityName.Trim().Replace("_", " ").Replace("-", " ");
+        normalized = Regex.Replace(normalized, "([a-z])([A-Z])", "$1 $2");
+
+        // Split collapsed ISA-95 names like 'Personnelrequirement'.
+        if (!normalized.Contains(' '))
+        {
+            var lower = normalized.ToLowerInvariant();
+            foreach (var term in Isa95Terms.OrderByDescending(t => t.Length))
+            {
+                lower = Regex.Replace(lower, term, $" {term} ");
+            }
+            normalized = Regex.Replace(lower, "\\s+", " ").Trim();
+        }
+
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         for (int i = 0; i < words.Length; i++)
         {
             if (!string.IsNullOrEmpty(words[i]))
             {
-                words[i] = char.ToUpper(words[i][0]) + words[i].Substring(1);
+                words[i] = char.ToUpper(words[i][0]) + words[i][1..];
             }
         }
         return string.Join(" ", words);

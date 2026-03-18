@@ -164,9 +164,11 @@ interface MaintenanceBOM {
   id: string;
   equipmentId: string;
   processSegmentId: string;
+  processSegmentSequence: number;
   materialId: string;
   qtyPerUnit: number;
   personQuantity: number;
+  personQuantityUoM: 'Person' | 'FTE';
   employeeId: string;
   personClassId: string;
   uom: string;
@@ -1405,14 +1407,21 @@ const MasterDataManager: React.FC = () => {
   // Maintenance BOM handlers (dedicated maintenanceBOMs table)
   const handleSaveMaintenanceAssignment = async (data: MaintenanceBOM) => {
     try {
+      const selectedSegment = processSegments.find(ps => ps.id === data.processSegmentId);
+      const normalizedData: MaintenanceBOM = {
+        ...data,
+        processSegmentSequence: selectedSegment?.sequence ?? data.processSegmentSequence ?? 0,
+        personQuantityUoM: data.personQuantityUoM || 'Person',
+      };
+
       if (editingMaintenanceBom) {
-        await masterDataApi.update('maintenanceBOMs', data);
-        setMaintenanceBOMs(prev => prev.map(item => item.id === data.id ? data : item));
+        await masterDataApi.update('maintenanceBOMs', normalizedData);
+        setMaintenanceBOMs(prev => prev.map(item => item.id === normalizedData.id ? normalizedData : item));
         showSnackbar('Maintenance BOM updated', 'success');
       } else {
         const newRecord: MaintenanceBOM = {
-          ...data,
-          id: data.id || `MBOM-${Date.now()}`,
+          ...normalizedData,
+          id: normalizedData.id || `MBOM-${Date.now()}`,
         };
         await masterDataApi.add('maintenanceBOMs', newRecord);
         setMaintenanceBOMs(prev => [...prev, newRecord]);
@@ -1452,6 +1461,7 @@ const MasterDataManager: React.FC = () => {
         ...b,
         id: `MBOM-${targetEquipmentId}-${ts}-${i}`,
         equipmentId: targetEquipmentId,
+        personQuantityUoM: b.personQuantityUoM || 'Person',
       }));
       for (const entry of newEntries) {
         await masterDataApi.add('maintenanceBOMs', entry);
@@ -2093,8 +2103,8 @@ const MasterDataManager: React.FC = () => {
         await sbWritable.close();
 
         // Export Maintenance BOM
-        const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,PersonQuantity,EmployeeID,PersonClassID,UoM,MaterialUse';
-        const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
+        const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,ProcessSegmentSequence,MaterialID,QtyPerUnit,PersonQuantity,PersonQuantityUoM,EmployeeID,PersonClassID,UoM,MaterialUse';
+        const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.processSegmentSequence ?? ''},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.personQuantityUoM || 'Person'},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
         const mbCsv = `${mbHeaders}\n${mbRows}`;
         const mbFileHandle = await dirHandle.getFileHandle('maintenance_bom.csv', { create: true });
         const mbWritable = await mbFileHandle.createWritable();
@@ -2228,8 +2238,8 @@ const MasterDataManager: React.FC = () => {
       downloadCSV(`${sbHeaders}\n${sbRows}`, 'segment_material_bom.csv');
 
       // Export Maintenance BOM
-      const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,PersonQuantity,EmployeeID,PersonClassID,UoM,MaterialUse';
-      const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
+      const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,ProcessSegmentSequence,MaterialID,QtyPerUnit,PersonQuantity,PersonQuantityUoM,EmployeeID,PersonClassID,UoM,MaterialUse';
+      const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.processSegmentSequence ?? ''},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.personQuantityUoM || 'Person'},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
       downloadCSV(`${mbHeaders}\n${mbRows}`, 'maintenance_bom.csv');
 
       // Export Equipment Usage
@@ -2293,8 +2303,8 @@ const MasterDataManager: React.FC = () => {
     const sbHeaders = 'ProcessSegmentID,MaterialID,QtyPerUnit,UoM,MaterialUse';
     const sbRows = segmentBOMs.map(sb => `${sb.processSegmentId},${sb.materialId},${sb.qtyPerUnit},${sb.uom},${sb.materialUse}`).join('\n');
 
-    const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,MaterialID,QtyPerUnit,PersonQuantity,EmployeeID,PersonClassID,UoM,MaterialUse';
-    const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
+    const mbHeaders = 'MaintenanceBOMID,EquipmentID,ProcessSegmentID,ProcessSegmentSequence,MaterialID,QtyPerUnit,PersonQuantity,PersonQuantityUoM,EmployeeID,PersonClassID,UoM,MaterialUse';
+    const mbRows = maintenanceBOMs.map(mb => `${mb.id},${mb.equipmentId},${mb.processSegmentId},${mb.processSegmentSequence ?? ''},${mb.materialId},${mb.qtyPerUnit},${mb.personQuantity || ''},${mb.personQuantityUoM || 'Person'},${mb.employeeId || ''},${mb.personClassId || ''},${mb.uom},${mb.materialUse}`).join('\n');
 
     const euHeaders = 'ProcessSegmentID,EquipmentID,Sequence';
     const euRows = equipmentUsages.map((eu: any) => `${eu.processSegmentId},${eu.equipmentId},${eu.sequence || ''}`).join('\n');
@@ -5407,6 +5417,7 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
               <TableCell>Material</TableCell>
               <TableCell>Qty</TableCell>
               <TableCell>Personnel Qty</TableCell>
+              <TableCell>Person Qty UoM</TableCell>
               <TableCell>Personnel Ref</TableCell>
               <TableCell>UoM</TableCell>
               <TableCell>Use</TableCell>
@@ -5416,7 +5427,7 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
           <TableBody>
             {groupedEntries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={11} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                     No maintenance BOM lines found.
                   </Typography>
@@ -5434,10 +5445,11 @@ const MaintenanceTab: React.FC<MaintenanceTabProps> = ({
                     <TableRow key={row.id}>
                       <TableCell>{index === 0 ? (eq?.name || equipmentId) : ''}</TableCell>
                       <TableCell>{segment?.name || row.processSegmentId}</TableCell>
-                      <TableCell>{segment?.sequence ?? '-'}</TableCell>
+                      <TableCell>{row.processSegmentSequence ?? segment?.sequence ?? '-'}</TableCell>
                       <TableCell>{mat?.name || row.materialId}</TableCell>
                       <TableCell>{row.qtyPerUnit}</TableCell>
                       <TableCell>{row.personQuantity || '-'}</TableCell>
+                      <TableCell>{row.personQuantityUoM || 'Person'}</TableCell>
                       <TableCell>{employee?.employeeName || personClass?.name || row.employeeId || row.personClassId || '-'}</TableCell>
                       <TableCell>{row.uom}</TableCell>
                       <TableCell>{row.materialUse}</TableCell>
@@ -5489,9 +5501,11 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
       id: '',
       equipmentId: '',
       processSegmentId: '',
+      processSegmentSequence: 0,
       materialId: '',
       qtyPerUnit: 1,
       personQuantity: 1,
+      personQuantityUoM: 'Person',
       employeeId: '',
       personClassId: '',
       uom: 'EA',
@@ -5503,7 +5517,9 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
     if (data) {
       setFormData({
         ...data,
+        processSegmentSequence: data.processSegmentSequence ?? 0,
         personQuantity: data.personQuantity ?? 0,
+        personQuantityUoM: data.personQuantityUoM ?? 'Person',
         employeeId: data.employeeId ?? '',
         personClassId: data.personClassId ?? '',
       });
@@ -5512,9 +5528,11 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
         id: '',
         equipmentId: '',
         processSegmentId: '',
+        processSegmentSequence: 0,
         materialId: '',
         qtyPerUnit: 1,
         personQuantity: 1,
+        personQuantityUoM: 'Person',
         employeeId: '',
         personClassId: '',
         uom: 'EA',
@@ -5563,7 +5581,15 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
               <Select
                 value={formData.processSegmentId}
                 label="Maintenance Process Segment"
-                onChange={(e) => setFormData({ ...formData, processSegmentId: e.target.value })}
+                onChange={(e) => {
+                  const processSegmentId = e.target.value;
+                  const segment = processSegments.find(ps => ps.id === processSegmentId);
+                  setFormData({
+                    ...formData,
+                    processSegmentId,
+                    processSegmentSequence: segment?.sequence ?? 0,
+                  });
+                }}
               >
                 {maintenanceSegments.map(ps => (
                   <MenuItem key={ps.id} value={ps.id}>{ps.name} ({ps.id})</MenuItem>
@@ -5616,6 +5642,19 @@ const MaintenanceBomDialog: React.FC<MaintenanceBomDialogProps> = ({
               value={formData.personQuantity}
               onChange={(e) => setFormData({ ...formData, personQuantity: parseFloat(e.target.value) || 0 })}
             />
+          </Grid>
+          <Grid xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Personnel Quantity UoM</InputLabel>
+              <Select
+                value={formData.personQuantityUoM}
+                label="Personnel Quantity UoM"
+                onChange={(e) => setFormData({ ...formData, personQuantityUoM: e.target.value as 'Person' | 'FTE' })}
+              >
+                <MenuItem value="Person">Person</MenuItem>
+                <MenuItem value="FTE">FTE</MenuItem>
+              </Select>
+            </FormControl>
           </Grid>
           <Grid xs={12} md={6}>
             <FormControl fullWidth>

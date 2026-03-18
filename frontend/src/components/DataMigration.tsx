@@ -142,7 +142,7 @@ interface BridgeJoinField {
 
 interface TableFilter {
   column: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'is_null' | 'is_not_null' | 'is_empty' | 'is_not_empty';
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'is_null' | 'is_not_null' | 'is_empty' | 'is_not_empty' | 'delta_pending';
   value?: string;
   enabled: boolean;
 }
@@ -184,7 +184,11 @@ const MASTER_STORE_MAP: Record<string, string> = {
   'process_segments': 'processSegments',
   'line_equipment': 'lineEquipment',
   'segment_boms': 'segmentBOMs',
+  'maintenance_boms': 'maintenanceBOMs',
   'equipment_usages': 'equipmentUsages',
+  'person_classes': 'personClasses',
+  'personnel_capabilities': 'personnelCapabilities',
+  'employees': 'employees',
   'operation_event_definitions': 'operationEventDefinitions',
   'operation_event_def_segment_assignments': 'operationEventDefSegmentAssignments',
   'operation_event_definition_properties': 'operationEventDefinitionProperties',
@@ -583,7 +587,8 @@ const DataMigration: React.FC = () => {
         'materialDefinitionProperties', 'materialDefinitionPropertyAssignments',
         'equipmentClasses', 'equipment', 'equipmentProperties', 
         'equipmentPropertyAssignments', 'plants', 'productionLines',
-        'lineEquipment', 'processSegments', 'segmentBOMs', 'equipmentUsages',
+        'lineEquipment', 'processSegments', 'segmentBOMs', 'maintenanceBOMs', 'equipmentUsages',
+        'personClasses', 'personnelCapabilities', 'employees',
         'operationEventDefinitions', 'operationEventDefSegmentAssignments',
         'operationEventDefinitionProperties', 'operationEventDefinitionPropertyAssignments',
         'operationsEventClasses',
@@ -1134,6 +1139,29 @@ const DataMigration: React.FC = () => {
           ],
         });
       }
+
+      // Add maintenanceBOMs if available
+      if (masterDataResults['maintenanceBOMs']?.length > 0) {
+        const maintenanceBOMs = masterDataResults['maintenanceBOMs'];
+        additionalTables.push({
+          name: 'maintenance_boms',
+          rowCount: maintenanceBOMs.length,
+          columns: [
+            { name: 'id', type: 'string', sample: maintenanceBOMs[0]?.id },
+            { name: 'equipmentId', type: 'string', sample: maintenanceBOMs[0]?.equipmentId },
+            { name: 'processSegmentId', type: 'string', sample: maintenanceBOMs[0]?.processSegmentId },
+            { name: 'processSegmentSequence', type: 'number', sample: maintenanceBOMs[0]?.processSegmentSequence?.toString() },
+            { name: 'materialId', type: 'string', sample: maintenanceBOMs[0]?.materialId },
+            { name: 'qtyPerUnit', type: 'number', sample: maintenanceBOMs[0]?.qtyPerUnit?.toString() },
+            { name: 'personQuantity', type: 'number', sample: maintenanceBOMs[0]?.personQuantity?.toString() },
+            { name: 'personQuantityUoM', type: 'string', sample: maintenanceBOMs[0]?.personQuantityUoM },
+            { name: 'employeeId', type: 'string', sample: maintenanceBOMs[0]?.employeeId },
+            { name: 'personClassId', type: 'string', sample: maintenanceBOMs[0]?.personClassId },
+            { name: 'uom', type: 'string', sample: maintenanceBOMs[0]?.uom },
+            { name: 'materialUse', type: 'string', sample: maintenanceBOMs[0]?.materialUse },
+          ],
+        });
+      }
       
       // Add equipmentUsages if available
       if (masterDataResults['equipmentUsages']?.length > 0) {
@@ -1146,6 +1174,50 @@ const DataMigration: React.FC = () => {
             { name: 'processSegmentId', type: 'string', sample: equipmentUsages[0]?.processSegmentId },
             { name: 'equipmentId', type: 'string', sample: equipmentUsages[0]?.equipmentId },
             { name: 'durationHours', type: 'number', sample: equipmentUsages[0]?.durationHours?.toString() },
+          ],
+        });
+      }
+
+      // Add personClasses if available
+      if (masterDataResults['personClasses']?.length > 0) {
+        const personClasses = masterDataResults['personClasses'];
+        additionalTables.push({
+          name: 'person_classes',
+          rowCount: personClasses.length,
+          columns: [
+            { name: 'id', type: 'string', sample: personClasses[0]?.id },
+            { name: 'name', type: 'string', sample: personClasses[0]?.name },
+            { name: 'description', type: 'string', sample: personClasses[0]?.description },
+          ],
+        });
+      }
+
+      // Add personnelCapabilities if available
+      if (masterDataResults['personnelCapabilities']?.length > 0) {
+        const personnelCapabilities = masterDataResults['personnelCapabilities'];
+        additionalTables.push({
+          name: 'personnel_capabilities',
+          rowCount: personnelCapabilities.length,
+          columns: [
+            { name: 'id', type: 'string', sample: personnelCapabilities[0]?.id },
+            { name: 'personClassId', type: 'string', sample: personnelCapabilities[0]?.personClassId },
+            { name: 'capabilityType', type: 'string', sample: personnelCapabilities[0]?.capabilityType },
+            { name: 'description', type: 'string', sample: personnelCapabilities[0]?.description },
+          ],
+        });
+      }
+
+      // Add employees if available
+      if (masterDataResults['employees']?.length > 0) {
+        const employees = masterDataResults['employees'];
+        additionalTables.push({
+          name: 'employees',
+          rowCount: employees.length,
+          columns: [
+            { name: 'id', type: 'string', sample: employees[0]?.id },
+            { name: 'employeeName', type: 'string', sample: employees[0]?.employeeName },
+            { name: 'personClassId', type: 'string', sample: employees[0]?.personClassId },
+            { name: 'hourlyRate', type: 'number', sample: employees[0]?.hourlyRate?.toString() },
           ],
         });
       }
@@ -2398,6 +2470,12 @@ const DataMigration: React.FC = () => {
   const applyFilters = (data: any[], filters: TableFilter[]): any[] => {
     if (!filters || filters.length === 0) return data;
 
+    const parseDateValue = (raw: any): number | null => {
+      if (raw === null || raw === undefined || raw === '') return null;
+      const time = new Date(raw).getTime();
+      return Number.isNaN(time) ? null : time;
+    };
+
     return data.filter(record => {
       return filters.every(filter => {
         if (!filter.enabled) return true;
@@ -2430,6 +2508,22 @@ const DataMigration: React.FC = () => {
             return value === null || value === undefined || String(value).trim() === '';
           case 'is_not_empty':
             return value !== null && value !== undefined && String(value).trim() !== '';
+          case 'delta_pending': {
+            const lastMigrationAt = parseDateValue(record.LastDataMigrationAt ?? record.lastDataMigrationAt);
+            if (lastMigrationAt === null) {
+              return true;
+            }
+
+            const updatedAt = parseDateValue(record.updatedAt ?? record.UpdatedAt);
+            const generatedAt = parseDateValue(record.DataGeneratedAt ?? record.dataGeneratedAt);
+            const candidateTimestamp = updatedAt ?? generatedAt;
+
+            if (candidateTimestamp === null) {
+              return false;
+            }
+
+            return candidateTimestamp > lastMigrationAt;
+          }
           default:
             return true;
         }
@@ -5553,11 +5647,44 @@ const DataMigration: React.FC = () => {
         }
       }
 
+      // Build execution mappings.
+      // In delta mode, keep full source tables available for lookups/joins,
+      // but filter output rows at mapping execution time.
+      const mappingsForExecution = migrationLoadMode === 'delta'
+        ? tableMappings.map((m) => {
+            const hasDeltaFilter = (m.filters || []).some((f: any) =>
+              (f.column || '').toLowerCase() === 'lastdatamigrationat' &&
+              ['is_null', 'delta_pending'].includes((f.operator || '').toLowerCase()) &&
+              f.enabled !== false
+            );
+
+            if (hasDeltaFilter) {
+              return m;
+            }
+
+            return {
+              ...m,
+              filters: [
+                ...(m.filters || []),
+                {
+                  column: 'LastDataMigrationAt',
+                  operator: 'delta_pending',
+                  enabled: true,
+                },
+              ],
+            };
+          })
+        : tableMappings;
+
       log(`${referencedTables.size} source table(s) needed`);
 
       const hasImportedReferencedTables = Array.from(referencedTables)
         .some((tableName) => (importedTablesData[tableName]?.length ?? 0) > 0);
-      const preferServerSideSource = migrationLoadMode === 'full' && !hasImportedReferencedTables;
+
+      // Always upload the latest source snapshot from the current UI state.
+      // Reusing backend-side source tables in full mode can serve stale data
+      // from a previous session (for example, older 12-row materials sets).
+      const preferServerSideSource = false;
 
       // Upload each referenced store in partitions to avoid huge browser memory spikes.
       let uploadedCount = 0;
@@ -5572,7 +5699,7 @@ const DataMigration: React.FC = () => {
       } else {
         log(`Mode: ${migrationLoadMode}. Upload chunk size: ${PARTITION_UPLOAD_SIZE} records/request`);
         if (migrationLoadMode === 'full' && hasImportedReferencedTables) {
-          log('Imported source tables are present, so frontend upload remains enabled for those mappings.');
+          log('Imported source tables are present and will be uploaded for referenced mappings.');
         }
       }
 
@@ -5605,9 +5732,7 @@ const DataMigration: React.FC = () => {
               const pageItems = page.items || [];
               if (pageItems.length === 0) break;
 
-              const pageToUpload = migrationLoadMode === 'delta'
-                ? pageItems.filter(shouldIncludeForDeltaMigration)
-                : pageItems;
+              const pageToUpload = pageItems;
 
               if (pageToUpload.length > 0) {
                 const nowIso = new Date().toISOString();
@@ -5667,9 +5792,9 @@ const DataMigration: React.FC = () => {
             data = importedTablesData[tableName];
           }
 
-          const recordsToUpload = migrationLoadMode === 'delta'
-            ? data.filter(shouldIncludeForDeltaMigration)
-            : data;
+          // Always upload full master data. Delta filtering is only meaningful for process data
+          // where LastDataMigrationAt tracks operational row migration state.
+          const recordsToUpload = data;
 
           if (recordsToUpload.length > 0) {
             const totalParts = Math.ceil(recordsToUpload.length / PARTITION_UPLOAD_SIZE);
@@ -5733,7 +5858,7 @@ const DataMigration: React.FC = () => {
       log('Starting server-side migration processing...');
       await migrationApi.executeMigration(
         sessionId,
-        tableMappings,
+        mappingsForExecution,
         maxSplitFileSizeMB,
         separateMasterProcessFiles,
         sourceIncludeTimestampSuffix,
