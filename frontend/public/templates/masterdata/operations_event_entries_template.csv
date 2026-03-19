@@ -5,11 +5,13 @@ OEE-T-003,OER-T-003,Downtime,Oven stopped due to gas supply loss
 OEE-T-004,OER-T-004,Scrap,Burned bread scrapped
 OEE-T-005,OER-T-005,Scrap,Incorrect labels discarded
 OEE-T-006,OER-T-006,Downtime,Production stopped due to expired material
-OEE-T-007,OER-T-006,Scrap,Expired yeast scrapped
-OEE-T-008,OER-T-007,Delay,Delayed production start
-OEE-T-009,OER-T-008,Production,Start of Mixing
-OEE-T-010,OER-T-009,Production,End of Mixing
-OEE-T-011,OER-T-010,Production,Start of baking
-OEE-T-012,OER-T-011,Production,End of baking
-OEE-T-013,OER-T-012,Production,Start of packing
-OEE-T-014,OER-T-013,Production,End of packing
+OEE-T-007,OER-T-007,Scrap,Expired yeast scrapped
+OEE-T-008,OER-T-008,Delay,Delayed production start
+OEE-T-009,OER-T-009,Production,Start of Mixing
+OEE-T-010,OER-T-010,Production,End of Mixing
+OEE-T-011,OER-T-011,Production,Start of baking
+OEE-T-012,OER-T-012,Production,End of baking
+OEE-T-013,OER-T-013,Production,Start of packing
+OEE-T-014,OER-T-014,Production,End of packing
+OEE-T-015,OER-T-015,MaintenanceExecution,Start Maintenance
+OEE-T-016,OER-T-016,MaintenanceExecution,End Maintenance

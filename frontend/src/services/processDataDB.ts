@@ -270,6 +270,7 @@ export interface OperationsEventEntryRecord extends BaseRecord {
   effectiveTime: string;
   segmentResponseId: string;
   equipmentId: string;
+  informationObjectType?: string;
 }
 
 export interface OperationsEventPropertyRecord extends BaseRecord {

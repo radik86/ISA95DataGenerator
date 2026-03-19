@@ -197,6 +197,7 @@ interface OperationsEvent {
 
 interface OperationsEventRecord {
   id: string;
+  operationsEventId: string;
   operationsEventDefinitionId: string;
   severity: string;
   status: string;
@@ -215,6 +216,7 @@ interface OperationsEventEntry {
   effectiveTime: string;
   segmentResponseId: string;
   equipmentId: string;
+  informationObjectType?: string;
 }
 
 interface SegmentData {
@@ -438,6 +440,137 @@ const ProcessDataGenerator: React.FC = () => {
       setSnackbar({ open: true, message, severity });
     };
 
+    const sanitizeOperationsEventArtifactKey = (value: string | undefined | null): string => {
+      const normalized = (value || '')
+        .toString()
+        .trim()
+        .replace(/[^A-Za-z0-9-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      return normalized || 'UNKNOWN';
+    };
+
+    const appendRelatedOperationsEventArtifacts = ({
+      opsEvent,
+      eventDef,
+      baseRecordId,
+      effectiveTime,
+      segmentResponse,
+      relatedEquipmentActuals,
+      generatedOperationsEventRecords,
+      generatedOperationsEventEntries,
+      dedupeByEntityId = false,
+    }: {
+      opsEvent: OperationsEvent;
+      eventDef: any;
+      baseRecordId: string;
+      effectiveTime: string;
+      segmentResponse?: SegmentResponse;
+      relatedEquipmentActuals: SegmentEquipmentActual[];
+      generatedOperationsEventRecords: OperationsEventRecord[];
+      generatedOperationsEventEntries: OperationsEventEntry[];
+      dedupeByEntityId?: boolean;
+    }) => {
+      if (!segmentResponse) {
+        return;
+      }
+
+      const processSegmentName = processSegments.find(
+        (processSegment) => processSegment.id === segmentResponse.processSegmentId,
+      )?.name || segmentResponse.processSegmentId || 'segment';
+
+      const createRelatedRecordAndEntry = ({
+        scope,
+        key,
+        description,
+        segmentResponseId,
+        equipmentId,
+        entryOffsetMinutes,
+      }: {
+        scope: 'SEG' | 'EQ';
+        key: string;
+        description: string;
+        segmentResponseId: string;
+        equipmentId: string;
+        entryOffsetMinutes: number;
+      }) => {
+        const artifactKey = sanitizeOperationsEventArtifactKey(key);
+        const preferredId = (key || '').toString().trim() || artifactKey;
+
+        if (dedupeByEntityId) {
+          const hasRecord = generatedOperationsEventRecords.some((record) => record.id === preferredId);
+          const hasEntry = generatedOperationsEventEntries.some((entry) => entry.id === preferredId);
+          if (hasRecord || hasEntry) {
+            return;
+          }
+        }
+
+        let recordId = preferredId;
+        let duplicateIndex = 2;
+
+        while (generatedOperationsEventRecords.some((record) => record.id === recordId)) {
+          recordId = `${preferredId}-${String(duplicateIndex).padStart(2, '0')}`;
+          duplicateIndex += 1;
+        }
+
+        const entryTimestamp = new Date(effectiveTime.replace(' ', 'T') + 'Z');
+        entryTimestamp.setUTCMinutes(entryTimestamp.getUTCMinutes() + entryOffsetMinutes);
+
+        generatedOperationsEventRecords.push({
+          id: recordId,
+          operationsEventId: opsEvent.id,
+          operationsEventDefinitionId: opsEvent.operationsEventDefinitionId,
+          severity: eventDef?.severity || 'Medium',
+          status: 'Closed',
+          comments: description,
+          effectiveTime,
+          segmentResponseId,
+          equipmentId,
+          eventType: opsEvent.eventType || 'Alarm',
+        });
+
+        let entryId = preferredId;
+        let entryDuplicateIndex = 2;
+
+        while (generatedOperationsEventEntries.some((entry) => entry.id === entryId)) {
+          entryId = `${preferredId}-${String(entryDuplicateIndex).padStart(2, '0')}`;
+          entryDuplicateIndex += 1;
+        }
+
+        generatedOperationsEventEntries.push({
+          id: entryId,
+          operationsEventRecordId: recordId,
+          entryType: opsEvent.operationsType || 'Production',
+          description,
+          effectiveTime: toDbDateTime(entryTimestamp),
+          segmentResponseId,
+          equipmentId,
+          informationObjectType: scope === 'SEG' ? 'SegmentResponse' : 'Equipment',
+        });
+      };
+
+      createRelatedRecordAndEntry({
+        scope: 'SEG',
+        key: segmentResponse.id,
+        description: `Segment response ${segmentResponse.id} for ${processSegmentName}`,
+        segmentResponseId: segmentResponse.id,
+        equipmentId: segmentResponse.equipmentId || relatedEquipmentActuals[0]?.equipmentId || opsEvent.equipmentId,
+        entryOffsetMinutes: 1,
+      });
+
+      relatedEquipmentActuals.forEach((equipmentActual, index) => {
+        createRelatedRecordAndEntry({
+          scope: 'EQ',
+          key: equipmentActual.equipmentId,
+          description: `Equipment actual ${equipmentActual.equipmentId} for segment response ${equipmentActual.segmentResponseId}`,
+          segmentResponseId: equipmentActual.segmentResponseId,
+          equipmentId: equipmentActual.equipmentId,
+          entryOffsetMinutes: index + 2,
+        });
+      });
+    };
+
   const loadSavedOperationsRequests = async () => {
     try {
       const requests = await processDataApi.getAll('operationsRequests');
@@ -468,6 +601,10 @@ const ProcessDataGenerator: React.FC = () => {
       setMaintenanceMaterialActuals([]);
       setMaintenanceEquipmentActuals([]);
       setMaintenancePersonnelActuals([]);
+      setOperationsEvents([]);
+      setOperationsEventRecords([]);
+      setOperationsEventEntries([]);
+      setOperationsEventProperties([]);
       setMaintenanceActualTimestamp(null);
       setMaintenancePlanReference(null);
       setMaintenanceSegReqReference([]);
@@ -475,12 +612,15 @@ const ProcessDataGenerator: React.FC = () => {
     }
 
     try {
-      const [allResponses, allSegmentResponses, allMaterialActuals, allEquipmentActuals, allPersonnelActuals, requestData] = await Promise.all([
+      const [allResponses, allSegmentResponses, allMaterialActuals, allEquipmentActuals, allPersonnelActuals, allOperationsEvents, allOperationsEventRecords, allOperationsEventEntries, requestData] = await Promise.all([
         processDataApi.getAll('operationsResponses'),
         processDataApi.getAll('segmentResponses'),
         processDataApi.getAll('segmentMaterialActuals'),
         processDataApi.getAll('segmentEquipmentActuals'),
         processDataApi.getAll('segmentPersonnelActuals'),
+        processDataApi.getAll('operationsEvents'),
+        processDataApi.getAll('operationsEventRecords'),
+        processDataApi.getAll('operationsEventEntries'),
         processDataApi.getOperationsRequestWithRequirements(maintenanceRequestId),
       ]);
 
@@ -502,6 +642,10 @@ const ProcessDataGenerator: React.FC = () => {
         setMaintenanceMaterialActuals([]);
         setMaintenanceEquipmentActuals([]);
         setMaintenancePersonnelActuals([]);
+        setOperationsEvents([]);
+        setOperationsEventRecords([]);
+        setOperationsEventEntries([]);
+        setOperationsEventProperties([]);
         setMaintenanceActualTimestamp(null);
       } else {
         const selectedResponse = matchingResponses[0];
@@ -514,12 +658,24 @@ const ProcessDataGenerator: React.FC = () => {
           .filter((ea) => segIds.has(ea.segmentResponseId));
         const persActuals = (allPersonnelActuals as any[])
           .filter((pa) => segIds.has(pa.segmentResponseId));
+        const opsEvents = (allOperationsEvents as any[])
+          .filter((opsEvent) => segIds.has(opsEvent.segmentResponseId));
+        const opsEventIds = new Set(opsEvents.map((opsEvent) => opsEvent.id));
+        const opsEventRecords = (allOperationsEventRecords as any[])
+          .filter((opsEventRecord) => opsEventIds.has(opsEventRecord.operationsEventId));
+        const opsEventRecordIds = new Set(opsEventRecords.map((opsEventRecord) => opsEventRecord.id));
+        const opsEventEntries = (allOperationsEventEntries as any[])
+          .filter((opsEventEntry) => opsEventRecordIds.has(opsEventEntry.operationsEventRecordId));
 
         setGeneratedMaintenanceResponse(selectedResponse);
         setMaintenanceSegmentResponses(segResponses);
         setMaintenanceMaterialActuals(matActuals);
         setMaintenanceEquipmentActuals(eqActuals);
         setMaintenancePersonnelActuals(persActuals);
+        setOperationsEvents(opsEvents);
+        setOperationsEventRecords(opsEventRecords);
+        setOperationsEventEntries(opsEventEntries);
+        setOperationsEventProperties([]);
         setMaintenanceActualTimestamp(new Date());
       }
 
@@ -1190,6 +1346,7 @@ const ProcessDataGenerator: React.FC = () => {
         const segReq = sortedSegReqs.find(sr => sr.id === segResp?.segmentRequirementId);
         const eqReqs = segmentEquipmentRequirements.filter(ser => ser.segmentRequirementId === segReq?.id);
         const selectedEquipment = eqReqs.length > 0 ? eqReqs[Math.floor(Math.random() * eqReqs.length)].equipmentId : equipment[0]?.id || 'EQUIP-001';
+        const relatedEquipmentActuals = generatedEqActuals.filter(ea => ea.segmentResponseId === opsEvent.segmentResponseId);
         
         // Create an operations event record for each event
         const recordId = `OER-${opsEvent.id.replace('OPS-EVENT-', '')}`;
@@ -1237,6 +1394,7 @@ const ProcessDataGenerator: React.FC = () => {
               effectiveTime: entryTime.toISOString().slice(0, 19).replace('T', ' '),
               segmentResponseId: operationsEventRecord.segmentResponseId,
               equipmentId: operationsEventRecord.equipmentId,
+              informationObjectType: 'SegmentResponse',
             };
             generatedOperationsEventEntries.push(operationsEventEntry);
           }
@@ -1256,10 +1414,23 @@ const ProcessDataGenerator: React.FC = () => {
             effectiveTime: entryTime.toISOString().slice(0, 19).replace('T', ' '),
             segmentResponseId: operationsEventRecord.segmentResponseId,
             equipmentId: operationsEventRecord.equipmentId,
+            informationObjectType: 'SegmentResponse',
           };
           generatedOperationsEventEntries.push(operationsEventEntry);
           entryCount = 1;
         }
+
+        appendRelatedOperationsEventArtifacts({
+          opsEvent,
+          eventDef,
+          baseRecordId: recordId,
+          effectiveTime: opsEvent.effectiveTimestamp,
+          segmentResponse: segResp,
+          relatedEquipmentActuals,
+          generatedOperationsEventRecords,
+          generatedOperationsEventEntries,
+          dedupeByEntityId: true,
+        });
         
         console.log(`[Operations Event Records] Created record ${recordId} with ${entryCount} entries (from templates)`);
       }
@@ -2016,17 +2187,140 @@ const ProcessDataGenerator: React.FC = () => {
         operationsType: 'Maintenance' as const,
       })).filter((p) => !!p.segmentResponseId);
 
+      const generatedMaintenanceOperationsEvents: OperationsEvent[] = [];
+      const generatedMaintenanceOperationsEventRecords: OperationsEventRecord[] = [];
+      const generatedMaintenanceOperationsEventEntries: OperationsEventEntry[] = [];
+
+      for (const segResp of segResponses) {
+        const segmentAssignments = operationEventDefSegmentAssignments.filter(
+          (assignment) => assignment.processSegmentId === segResp.processSegmentId,
+        );
+
+        if (segmentAssignments.length === 0) {
+          continue;
+        }
+
+        const mandatoryAssignments = segmentAssignments.filter(
+          (assignment) =>
+            assignment.isMandatory === true ||
+            assignment.isMandatory === 'TRUE' ||
+            assignment.isMandatory === 'true' ||
+            assignment.isMandatory === 'True',
+        );
+
+        const selectedAssignments = mandatoryAssignments.length > 0 ? mandatoryAssignments : segmentAssignments;
+        const segStart = new Date(segResp.actualStartDateTime.replace(' ', 'T') + 'Z');
+        const segEnd = new Date(segResp.actualEndDateTime.replace(' ', 'T') + 'Z');
+        const durationMs = Math.max(segEnd.getTime() - segStart.getTime(), 0);
+        const relatedEquipmentActuals = eqActuals.filter((equipmentActual) => equipmentActual.segmentResponseId === segResp.id);
+        const equipmentId = relatedEquipmentActuals[0]?.equipmentId || segResp.equipmentId || '';
+        const hierarchyScopeRecord = hierarchyScopes.find((hierarchyScope) => hierarchyScope.equipmentID === equipmentId);
+
+        for (const assignment of selectedAssignments) {
+          const eventDef = operationEventDefinitions.find(
+            (definition) => definition.id === assignment.operationsEventDefinitionId,
+          );
+
+          const startOrEnd = (assignment.startOrEndEvent || 'Start').toLowerCase();
+          const eventTime = startOrEnd === 'end'
+            ? new Date(segEnd.getTime() - Math.floor(durationMs * 0.1 * Math.random()))
+            : new Date(segStart.getTime() + Math.floor(durationMs * 0.1 * Math.random()));
+
+          const opsEvent: OperationsEvent = {
+            id: `OPS-EVENT-${segResp.id}-${assignment.operationsEventDefinitionId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+            segmentResponseId: segResp.id,
+            operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+            effectiveTimestamp: toDbDateTime(eventTime),
+            notes: `${eventDef?.description || 'Maintenance event'} - ${(assignment.notes || '').toString()}`,
+            eventType: eventDef?.eventType || 'Alarm',
+            equipmentId,
+            hierarchyScope: hierarchyScopeRecord?.id || '',
+            operationsType: 'Maintenance',
+          };
+          generatedMaintenanceOperationsEvents.push(opsEvent);
+
+          const recordId = `OER-${opsEvent.id.replace('OPS-EVENT-', '')}`;
+          generatedMaintenanceOperationsEventRecords.push({
+            id: recordId,
+            operationsEventId: opsEvent.id,
+            operationsEventDefinitionId: opsEvent.operationsEventDefinitionId,
+            severity: eventDef?.severity || 'Medium',
+            status: 'Closed',
+            comments: `Maintenance event occurred at ${opsEvent.effectiveTimestamp} - ${opsEvent.notes}`,
+            effectiveTime: opsEvent.effectiveTimestamp,
+            segmentResponseId: segResp.id,
+            equipmentId,
+            eventType: opsEvent.eventType || 'Alarm',
+          });
+
+          const recordTemplates = operationsEventRecordsTemplates.filter(
+            (template) => template.OperationsEventDefinitionID === opsEvent.operationsEventDefinitionId,
+          );
+
+          let entryCount = 0;
+          for (const recordTemplate of recordTemplates) {
+            const entryTemplates = operationsEventEntriesTemplates.filter(
+              (template) => template.OperationsEventRecordID === recordTemplate.OperationsEventRecordID,
+            );
+
+            for (const entryTemplate of entryTemplates) {
+              entryCount += 1;
+              const entryTime = new Date(eventTime.getTime() + entryCount * 5 * 60000);
+              generatedMaintenanceOperationsEventEntries.push({
+                id: `OEE-${recordId.replace('OER-', '')}-${String(entryCount).padStart(2, '0')}`,
+                operationsEventRecordId: recordId,
+                entryType: entryTemplate.EntryType || 'Maintenance',
+                description: entryTemplate.Description || `Entry for ${eventDef?.eventCode || 'maintenance event'}`,
+                effectiveTime: toDbDateTime(entryTime),
+                segmentResponseId: segResp.id,
+                equipmentId,
+                informationObjectType: 'SegmentResponse',
+              });
+            }
+          }
+
+          if (entryCount === 0) {
+            generatedMaintenanceOperationsEventEntries.push({
+              id: `OEE-${recordId.replace('OER-', '')}-01`,
+              operationsEventRecordId: recordId,
+              entryType: 'Maintenance',
+              description: `Entry for ${eventDef?.eventCode || 'maintenance event'}`,
+              effectiveTime: toDbDateTime(new Date(eventTime.getTime() + 5 * 60000)),
+              segmentResponseId: segResp.id,
+              equipmentId,
+              informationObjectType: 'SegmentResponse',
+            });
+          }
+
+          appendRelatedOperationsEventArtifacts({
+            opsEvent,
+            eventDef,
+            baseRecordId: recordId,
+            effectiveTime: opsEvent.effectiveTimestamp,
+            segmentResponse: segResp,
+            relatedEquipmentActuals,
+            generatedOperationsEventRecords: generatedMaintenanceOperationsEventRecords,
+            generatedOperationsEventEntries: generatedMaintenanceOperationsEventEntries,
+            dedupeByEntityId: true,
+          });
+        }
+      }
+
       setGeneratedMaintenanceResponse(response);
       setMaintenanceSegmentResponses(segResponses);
       setMaintenanceMaterialActuals(matActuals);
       setMaintenanceEquipmentActuals(eqActuals);
       setMaintenancePersonnelActuals(persActuals);
+      setOperationsEvents(generatedMaintenanceOperationsEvents);
+      setOperationsEventRecords(generatedMaintenanceOperationsEventRecords);
+      setOperationsEventEntries(generatedMaintenanceOperationsEventEntries);
+      setOperationsEventProperties([]);
       setMaintenanceActualTimestamp(timestamp);
       setMaintenancePlanReference(orData.operationsRequest);
       setMaintenanceSegReqReference(orData.segmentRequirements || []);
 
       setLoading(false);
-      showSnackbar(`Maintenance actual generated: ${segResponses.length} segment responses`, 'success');
+      showSnackbar(`Maintenance actual generated: ${segResponses.length} segment responses, ${generatedMaintenanceOperationsEvents.length} operations events, ${generatedMaintenanceOperationsEventRecords.length} event records, ${generatedMaintenanceOperationsEventEntries.length} event entries`, 'success');
     } catch (error) {
       console.error('Failed to generate maintenance actual data:', error);
       showSnackbar('Failed to generate maintenance actual data', 'error');
@@ -2055,6 +2349,18 @@ const ProcessDataGenerator: React.FC = () => {
       if (maintenancePersonnelActuals.length > 0) {
         await processDataApi.upsertStoreRecords('segmentPersonnelActuals', maintenancePersonnelActuals);
       }
+      if (operationsEvents.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEvents', operationsEvents);
+      }
+      if (operationsEventRecords.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventRecords', operationsEventRecords);
+      }
+      if (operationsEventEntries.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventEntries', operationsEventEntries);
+      }
+      if (operationsEventProperties.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventProperties', operationsEventProperties);
+      }
       await loadStoredActualData();
       setLoading(false);
       showSnackbar('Maintenance actual data saved to database successfully', 'success');
@@ -2080,6 +2386,10 @@ const ProcessDataGenerator: React.FC = () => {
     setMaintenanceMaterialActuals([]);
     setMaintenanceEquipmentActuals([]);
     setMaintenancePersonnelActuals([]);
+    setOperationsEvents([]);
+    setOperationsEventRecords([]);
+    setOperationsEventEntries([]);
+    setOperationsEventProperties([]);
     setMaintenanceActualTimestamp(null);
     setMaintenancePlanReference(null);
     setMaintenanceSegReqReference([]);
@@ -3222,6 +3532,7 @@ const ProcessDataGenerator: React.FC = () => {
         const recordId = `OER-${eventId.replace('OPS-EVENT-', '')}`;
         generatedOperationsEventRecords.push({
           id: recordId,
+          operationsEventId: eventId,
           operationsEventDefinitionId: assignment.operationsEventDefinitionId,
           severity: eventDef?.severity || 'Medium',
           status: 'Closed',
@@ -3240,6 +3551,29 @@ const ProcessDataGenerator: React.FC = () => {
           effectiveTime: toDbDateTime(new Date(eventTime.getTime() + 5 * 60 * 1000)),
           segmentResponseId: segResp.id,
           equipmentId: eqId,
+          informationObjectType: 'SegmentResponse',
+        });
+
+        appendRelatedOperationsEventArtifacts({
+          opsEvent: {
+            id: eventId,
+            segmentResponseId: segResp.id,
+            operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+            effectiveTimestamp: toDbDateTime(eventTime),
+            notes: `${eventDef?.description || 'Event'} - ${(assignment.notes || '').toString()}`,
+            eventType: eventDef?.eventType || 'Alarm',
+            equipmentId: eqId,
+            hierarchyScope: hierarchyScopeRecord?.id || '',
+            operationsType: 'Production',
+          },
+          eventDef,
+          baseRecordId: recordId,
+          effectiveTime: toDbDateTime(eventTime),
+          segmentResponse: segResp,
+          relatedEquipmentActuals: generatedEqActuals.filter((equipmentActual) => equipmentActual.segmentResponseId === segResp.id),
+          generatedOperationsEventRecords,
+          generatedOperationsEventEntries,
+          dedupeByEntityId: true,
         });
 
         const propAssignments = operationEventDefinitionPropertyAssignments.filter(
@@ -6926,7 +7260,7 @@ const ProcessDataGenerator: React.FC = () => {
           {maintenanceActiveTab === 1 && (
             <Box>
               <Alert severity="info" sx={{ mb: 3 }}>
-                Generate maintenance actual data from a saved maintenance order. It creates operations request execution data with segment, material, and equipment actuals.
+                Generate maintenance actual data from a saved maintenance order. It creates operations request execution data with segment, material, equipment, and operations event actuals.
               </Alert>
 
               {savedMaintenanceRequests.length > 0 && (
@@ -7019,6 +7353,9 @@ const ProcessDataGenerator: React.FC = () => {
                             <Chip label={`${maintenanceMaterialActuals.length} Materials`} size="small" color="warning" />
                             <Chip label={`${maintenanceEquipmentActuals.length} Equipment`} size="small" color="info" />
                             <Chip label={`${maintenancePersonnelActuals.length} Personnel`} size="small" color="secondary" />
+                            <Chip label={`${operationsEvents.length} Events`} size="small" color="error" />
+                            <Chip label={`${operationsEventRecords.length} Event Records`} size="small" color="warning" />
+                            <Chip label={`${operationsEventEntries.length} Event Entries`} size="small" color="warning" />
                           </Box>
                           <Typography variant="caption" color="text.secondary" display="block">
                             Response time: {generatedMaintenanceResponse.actualStartDateTime} → {generatedMaintenanceResponse.actualEndDateTime}
@@ -7095,6 +7432,9 @@ const ProcessDataGenerator: React.FC = () => {
                           <Typography variant="body2" gutterBottom><strong>Material Actuals:</strong> {maintenanceMaterialActuals.length}</Typography>
                           <Typography variant="body2" gutterBottom><strong>Equipment Actuals:</strong> {maintenanceEquipmentActuals.length}</Typography>
                           <Typography variant="body2" gutterBottom><strong>Personnel Actuals:</strong> {maintenancePersonnelActuals.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Operations Events:</strong> {operationsEvents.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Event Records:</strong> {operationsEventRecords.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Event Entries:</strong> {operationsEventEntries.length}</Typography>
                         </Box>
                       )}
                     </CardContent>
@@ -7317,6 +7657,114 @@ const ProcessDataGenerator: React.FC = () => {
                       </Table>
                     </TableContainer>
                   </Paper>
+
+                  {operationsEvents.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white' }}>
+                        <Typography variant="subtitle1">Maintenance Operations Events</Typography>
+                      </Box>
+                      <TableContainer sx={{ maxHeight: 350 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Event ID</TableCell>
+                              <TableCell>Segment Response</TableCell>
+                              <TableCell>Equipment ID</TableCell>
+                              <TableCell>Hierarchy Scope</TableCell>
+                              <TableCell>Event Type</TableCell>
+                              <TableCell>Operations Type</TableCell>
+                              <TableCell>Effective Timestamp</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {operationsEvents.slice(0, PREVIEW_ROW_LIMIT).map((event) => (
+                              <TableRow key={event.id}>
+                                <TableCell>{event.id}</TableCell>
+                                <TableCell>{event.segmentResponseId}</TableCell>
+                                <TableCell>{event.equipmentId}</TableCell>
+                                <TableCell>{event.hierarchyScope || 'N/A'}</TableCell>
+                                <TableCell>{event.eventType || 'N/A'}</TableCell>
+                                <TableCell>{event.operationsType || 'N/A'}</TableCell>
+                                <TableCell>{event.effectiveTimestamp}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {operationsEventRecords.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.dark', color: 'white' }}>
+                        <Typography variant="subtitle1">Maintenance Operations Event Records</Typography>
+                      </Box>
+                      <TableContainer sx={{ maxHeight: 350 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Record ID</TableCell>
+                              <TableCell>Operations Event ID</TableCell>
+                              <TableCell>Segment Response</TableCell>
+                              <TableCell>Equipment ID</TableCell>
+                              <TableCell>Event Type</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Effective Time</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {operationsEventRecords.slice(0, PREVIEW_ROW_LIMIT).map((record) => (
+                              <TableRow key={record.id}>
+                                <TableCell>{record.id}</TableCell>
+                                <TableCell>{record.operationsEventId}</TableCell>
+                                <TableCell>{record.segmentResponseId}</TableCell>
+                                <TableCell>{record.equipmentId || 'N/A'}</TableCell>
+                                <TableCell>{record.eventType || 'N/A'}</TableCell>
+                                <TableCell>{record.status || 'N/A'}</TableCell>
+                                <TableCell>{record.effectiveTime}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {operationsEventEntries.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.light', color: 'black' }}>
+                        <Typography variant="subtitle1">Maintenance Operations Event Entries</Typography>
+                      </Box>
+                      <TableContainer sx={{ maxHeight: 350 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Entry ID</TableCell>
+                              <TableCell>Record ID</TableCell>
+                              <TableCell>Segment Response</TableCell>
+                              <TableCell>Equipment ID</TableCell>
+                              <TableCell>Information Object Type</TableCell>
+                              <TableCell>Entry Type</TableCell>
+                              <TableCell>Effective Time</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {operationsEventEntries.slice(0, PREVIEW_ROW_LIMIT).map((entry) => (
+                              <TableRow key={entry.id}>
+                                <TableCell>{entry.id}</TableCell>
+                                <TableCell>{entry.operationsEventRecordId}</TableCell>
+                                <TableCell>{entry.segmentResponseId || 'N/A'}</TableCell>
+                                <TableCell>{entry.equipmentId || 'N/A'}</TableCell>
+                                <TableCell>{entry.informationObjectType || 'N/A'}</TableCell>
+                                <TableCell>{entry.entryType || 'N/A'}</TableCell>
+                                <TableCell>{entry.effectiveTime}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
 
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
                     <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => exportMaintenanceActualToCSV('all')}>
