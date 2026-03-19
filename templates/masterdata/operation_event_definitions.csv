@@ -31,3 +31,5 @@ OED-PROD-BAKE-START,Production,BAKEingStart,Start of BAKEing,FALSE,FALSE,Product
 OED-PROD-BAKE-END,Production,BAKEingEnd,End of BAKEing,FALSE,FALSE,Production,Event
 OED-PROD-PACK-START,Production,PACKingStart,Start of PACKing,FALSE,FALSE,Production,Event
 OED-PROD-PACK-END,Production,PACKingEnd,End of PACKing,FALSE,FALSE,Production,Event
+OED-MNT-START,MaintenanceExecution,MaintenanceExecStart,Start of Maintenance,FALSE,FALSE,MaintenanceExecution,Event
+OED-MNT-END,MaintenanceExecution,MaintenanceExecEnd,End of Maintenance,FALSE,FALSE,MaintenanceExecution,Event

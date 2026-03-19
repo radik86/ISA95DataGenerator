@@ -12,3 +12,5 @@ OER-T-010,OED-PROD-BAKE-START,High,Closed,Start of baking
 OER-T-011,OED-PROD-BAKE-END,High,Closed,End of baking
 OER-T-012,OED-PROD-PACK-START,High,Closed,Start of packing
 OER-T-013,OED-PROD-PACK-END,High,Closed,End of packing
+OER-T-014,OED-MNT-START,High,Closed,Start Maintenance
+OER-T-015,OED-MNT-END,High,Closed,End Maintenance
