@@ -15,3 +15,7 @@ LUBE-OIL,Gear oil,MAINTENANCE,Maintenance,l,Lubrication Gear oil
 PACK-LABEL-ROLL,Label roll,MAINTENANCE,Maintenance,l,Label roll
 MIX-BEARING,Mixer bearing,MAINTENANCE,Maintenance,EA,Mixer bearing
 Paper,Paper,PACKMATERIAL,PackMaterial,EA,Paper for packaging
+Gashose,Gas hose/line,MAINTENANCE,Maintenance,EA,Gas hose line
+TempSensor,Oven Temperature Sensor,MAINTENANCE,Maintenance,EA,Oven Temperature Sensor
+DriveBelt,Drive Belt,MAINTENANCE,Maintenance,EA,Drive Belt
+MotorSensor,Motor Speed Sensor,MAINTENANCE,Maintenance,EA,Motor Speed Sensor

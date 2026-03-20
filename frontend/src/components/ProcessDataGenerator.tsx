@@ -427,6 +427,27 @@ const ProcessDataGenerator: React.FC = () => {
     const [maintenancePlanReference, setMaintenancePlanReference] = useState<OperationsRequest | null>(null);
     const [maintenanceSegReqReference, setMaintenanceSegReqReference] = useState<SegmentRequirement[]>([]);
 
+    // Unplanned maintenance state
+    const [unplannedStoredEvents, setUnplannedStoredEvents] = useState<any[]>([]);
+    const [unplannedEventsLoading, setUnplannedEventsLoading] = useState(false);
+    const [unplannedEventFilter, setUnplannedEventFilter] = useState({ operationsType: '', operationsEventType: '', search: '' });
+    const [selectedUnplannedEventId, setSelectedUnplannedEventId] = useState('');
+    const [unplannedSegmentId, setUnplannedSegmentId] = useState('');
+    const [unplannedEquipmentId, setUnplannedEquipmentId] = useState('');
+    const [unplannedMaterialIds, setUnplannedMaterialIds] = useState<string[]>([]);
+    const [unplannedPersonnelIds, setUnplannedPersonnelIds] = useState<string[]>([]);
+    const [unplannedStartDateTime, setUnplannedStartDateTime] = useState('');
+    const [unplannedEndDateTime, setUnplannedEndDateTime] = useState('');
+    const [generatedUnplannedResponse, setGeneratedUnplannedResponse] = useState<OperationsResponse | null>(null);
+    const [generatedUnplannedSegmentResponse, setGeneratedUnplannedSegmentResponse] = useState<SegmentResponse | null>(null);
+    const [unplannedMaterialActuals, setUnplannedMaterialActuals] = useState<SegmentMaterialActual[]>([]);
+    const [unplannedEquipmentActuals, setUnplannedEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
+    const [unplannedPersonnelActuals, setUnplannedPersonnelActuals] = useState<SegmentPersonnelActual[]>([]);
+    const [unplannedOpsEvents, setUnplannedOpsEvents] = useState<OperationsEvent[]>([]);
+    const [unplannedOpsEventRecords, setUnplannedOpsEventRecords] = useState<OperationsEventRecord[]>([]);
+    const [unplannedOpsEventEntries, setUnplannedOpsEventEntries] = useState<OperationsEventEntry[]>([]);
+    const [unplannedTimestamp, setUnplannedTimestamp] = useState<Date | null>(null);
+
     const filteredSavedMaintenanceRequests = savedMaintenanceRequests.filter((req) =>
       !maintenancePlanDataFilter ||
       req.id?.toLowerCase().includes(maintenancePlanDataFilter.toLowerCase()) ||
@@ -2393,6 +2414,338 @@ const ProcessDataGenerator: React.FC = () => {
     setMaintenanceActualTimestamp(null);
     setMaintenancePlanReference(null);
     setMaintenanceSegReqReference([]);
+  };
+
+  // ── Unplanned Maintenance ──────────────────────────────────────────────────
+
+  const loadUnplannedStoredEvents = async () => {
+    setUnplannedEventsLoading(true);
+    try {
+      const events = await processDataApi.getAll('operationsEvents');
+      setUnplannedStoredEvents(events as any[]);
+    } catch (error) {
+      console.error('Failed to load operations events for unplanned maintenance tab:', error);
+      showSnackbar('Failed to load operations events', 'error');
+    } finally {
+      setUnplannedEventsLoading(false);
+    }
+  };
+
+  const generateUnplannedMaintenanceData = async () => {
+    if (!selectedUnplannedEventId) {
+      showSnackbar('Please select an operations event first', 'error');
+      return;
+    }
+    if (!unplannedSegmentId) {
+      showSnackbar('Please select a process segment', 'error');
+      return;
+    }
+    if (!unplannedEquipmentId) {
+      showSnackbar('Please select equipment', 'error');
+      return;
+    }
+    if (!unplannedStartDateTime || !unplannedEndDateTime) {
+      showSnackbar('Please specify start and end date/time', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const selectedEvent = unplannedStoredEvents.find((e) => e.id === selectedUnplannedEventId);
+      if (!selectedEvent) {
+        showSnackbar('Selected operations event not found', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const timestamp = new Date();
+      const stamp = timestamp.toISOString().slice(0, 19).replace(/[-:T]/g, '');
+      const respId = `UNPL-RESP-${stamp}`;
+      const segRespId = `UNPL-SRESP-${respId}-001`;
+
+      const plantId = selectedEvent.hierarchyScope || '';
+
+      // Operations Response
+      const unplannedResponse: OperationsResponse = {
+        id: respId,
+        operationsRequestId: '',
+        description: `Unplanned maintenance execution triggered by event ${selectedEvent.id}`,
+        plantId,
+        productionLineId: '',
+        actualStartDateTime: unplannedStartDateTime,
+        actualEndDateTime: unplannedEndDateTime,
+        actualQuantity: 1,
+        quantityUoM: 'EA',
+        status: 'Completed',
+        operationsType: 'Maintenance',
+      };
+
+      // Segment Response
+      const segmentResponse: SegmentResponse = {
+        id: segRespId,
+        segmentRequirementId: '',
+        operationsResponseId: respId,
+        processSegmentId: unplannedSegmentId,
+        equipmentId: unplannedEquipmentId,
+        actualStartDateTime: unplannedStartDateTime,
+        actualEndDateTime: unplannedEndDateTime,
+        actualQuantity: 1,
+        quantityUoM: 'EA',
+        status: 'Completed',
+        operationsType: 'Maintenance',
+      };
+
+      // Material Actuals
+      const matActuals: SegmentMaterialActual[] = unplannedMaterialIds.map((materialId, index) => ({
+        id: `UNPL-MACT-${respId}-${String(index + 1).padStart(2, '0')}`,
+        segmentResponseId: segRespId,
+        materialId,
+        materialLotId: `UNPL-LOT-${stamp}-${String(index + 1).padStart(2, '0')}`,
+        actualQty: 1,
+        qtyUoM: 'EA',
+        direction: 'CONSUME' as const,
+        operationsType: 'Maintenance' as const,
+      }));
+
+      // Equipment Actual
+      const eqActuals: SegmentEquipmentActual[] = [{
+        id: `UNPL-EACT-${respId}-01`,
+        segmentResponseId: segRespId,
+        equipmentId: unplannedEquipmentId,
+        actualQuantity: 1,
+        actualStartDateTime: unplannedStartDateTime,
+        actualEndDateTime: unplannedEndDateTime,
+        unitOfMeasure: 'Machine',
+        operationsType: 'Maintenance' as const,
+      }];
+
+      // Personnel Actuals
+      const persActuals: SegmentPersonnelActual[] = unplannedPersonnelIds.map((employeeId, index) => ({
+        id: `UNPL-PACT-${respId}-${String(index + 1).padStart(2, '0')}`,
+        segmentResponseId: segRespId,
+        employeeId,
+        personClassId: employees.find((emp) => emp.id === employeeId)?.personClassId || '',
+        actualQuantity: 1,
+        quantityUnitOfMeasure: 'Person',
+        personnelUse: 'MaintenanceWork',
+        actualStartDateTime: unplannedStartDateTime,
+        actualEndDateTime: unplannedEndDateTime,
+        operationsType: 'Maintenance' as const,
+      }));
+
+      const genOpsEvents: OperationsEvent[] = [];
+      const genOpsEventRecords: OperationsEventRecord[] = [];
+      const genOpsEventEntries: OperationsEventEntry[] = [];
+
+      // For the SELECTED existing operations event: add a new record and entry linked to the new segment response
+      const existingEventDef = operationEventDefinitions.find(
+        (def) => def.id === selectedEvent.operationsEventDefinitionId,
+      );
+      genOpsEventRecords.push({
+        id: segRespId,
+        operationsEventId: selectedEvent.id,
+        operationsEventDefinitionId: selectedEvent.operationsEventDefinitionId || '',
+        severity: existingEventDef?.severity || 'Medium',
+        status: 'Closed',
+        comments: `Unplanned maintenance segment response ${segRespId} linked to this event`,
+        effectiveTime: unplannedStartDateTime,
+        segmentResponseId: segRespId,
+        equipmentId: unplannedEquipmentId,
+        eventType: selectedEvent.eventType || 'Alarm',
+      });
+      genOpsEventEntries.push({
+        id: segRespId,
+        operationsEventRecordId: segRespId,
+        entryType: 'Maintenance',
+        description: `Unplanned maintenance segment response ${segRespId} – ${processSegments.find((ps) => ps.id === unplannedSegmentId)?.name || unplannedSegmentId}`,
+        effectiveTime: unplannedStartDateTime,
+        segmentResponseId: segRespId,
+        equipmentId: unplannedEquipmentId,
+        informationObjectType: 'SegmentResponse',
+      });
+
+      // For the NEW segment response: create new OpsEvent + records + entries from event definition assignments
+      const segmentAssignments = operationEventDefSegmentAssignments.filter(
+        (assignment) => assignment.processSegmentId === unplannedSegmentId,
+      );
+
+      const selectedAssignments = segmentAssignments.filter(
+        (a) =>
+          a.isMandatory === true ||
+          a.isMandatory === 'TRUE' ||
+          a.isMandatory === 'true' ||
+          a.isMandatory === 'True',
+      );
+      const assignmentsToProcess = selectedAssignments.length > 0 ? selectedAssignments : segmentAssignments;
+
+      const hierarchyScopeRecord = hierarchyScopes.find((hs) => hs.equipmentID === unplannedEquipmentId);
+      const startDt = new Date(unplannedStartDateTime.replace(' ', 'T'));
+      const endDt = new Date(unplannedEndDateTime.replace(' ', 'T'));
+      const durationMs = Math.max(endDt.getTime() - startDt.getTime(), 0);
+
+      for (const assignment of assignmentsToProcess) {
+        const eventDef = operationEventDefinitions.find(
+          (def) => def.id === assignment.operationsEventDefinitionId,
+        );
+
+        const startOrEnd = (assignment.startOrEndEvent || 'Start').toLowerCase();
+        const eventTime = startOrEnd === 'end'
+          ? new Date(endDt.getTime() - Math.floor(durationMs * 0.1 * Math.random()))
+          : new Date(startDt.getTime() + Math.floor(durationMs * 0.1 * Math.random()));
+
+        const newOpsEvent: OperationsEvent = {
+          id: `OPS-EVENT-${segRespId}-${assignment.operationsEventDefinitionId}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+          segmentResponseId: segRespId,
+          operationsEventDefinitionId: assignment.operationsEventDefinitionId,
+          effectiveTimestamp: toDbDateTime(eventTime),
+          notes: `${eventDef?.description || 'Unplanned maintenance event'} - ${(assignment.notes || '').toString()}`,
+          eventType: eventDef?.eventType || 'Alarm',
+          equipmentId: unplannedEquipmentId,
+          hierarchyScope: hierarchyScopeRecord?.id || '',
+          operationsType: 'Maintenance',
+        };
+        genOpsEvents.push(newOpsEvent);
+
+        const recordId = `OER-${newOpsEvent.id.replace('OPS-EVENT-', '')}`;
+        genOpsEventRecords.push({
+          id: recordId,
+          operationsEventId: newOpsEvent.id,
+          operationsEventDefinitionId: newOpsEvent.operationsEventDefinitionId,
+          severity: eventDef?.severity || 'Medium',
+          status: 'Closed',
+          comments: `Unplanned maintenance event at ${newOpsEvent.effectiveTimestamp}`,
+          effectiveTime: newOpsEvent.effectiveTimestamp,
+          segmentResponseId: segRespId,
+          equipmentId: unplannedEquipmentId,
+          eventType: newOpsEvent.eventType || 'Alarm',
+        });
+
+        const recordTemplates = operationsEventRecordsTemplates.filter(
+          (t) => t.OperationsEventDefinitionID === newOpsEvent.operationsEventDefinitionId,
+        );
+        let entryCount = 0;
+        for (const recordTemplate of recordTemplates) {
+          const entryTemplates = operationsEventEntriesTemplates.filter(
+            (t) => t.OperationsEventRecordID === recordTemplate.OperationsEventRecordID,
+          );
+          for (const entryTemplate of entryTemplates) {
+            entryCount += 1;
+            const entryTime = new Date(eventTime.getTime() + entryCount * 5 * 60000);
+            genOpsEventEntries.push({
+              id: `OEE-${recordId.replace('OER-', '')}-${String(entryCount).padStart(2, '0')}`,
+              operationsEventRecordId: recordId,
+              entryType: entryTemplate.EntryType || 'Maintenance',
+              description: entryTemplate.Description || `Entry for ${eventDef?.eventCode || 'unplanned maintenance event'}`,
+              effectiveTime: toDbDateTime(entryTime),
+              segmentResponseId: segRespId,
+              equipmentId: unplannedEquipmentId,
+              informationObjectType: 'SegmentResponse',
+            });
+          }
+        }
+        if (entryCount === 0) {
+          genOpsEventEntries.push({
+            id: `OEE-${recordId.replace('OER-', '')}-01`,
+            operationsEventRecordId: recordId,
+            entryType: 'Maintenance',
+            description: `Entry for ${eventDef?.eventCode || 'unplanned maintenance event'}`,
+            effectiveTime: toDbDateTime(new Date(eventTime.getTime() + 5 * 60000)),
+            segmentResponseId: segRespId,
+            equipmentId: unplannedEquipmentId,
+            informationObjectType: 'SegmentResponse',
+          });
+        }
+
+        appendRelatedOperationsEventArtifacts({
+          opsEvent: newOpsEvent,
+          eventDef,
+          baseRecordId: recordId,
+          effectiveTime: newOpsEvent.effectiveTimestamp,
+          segmentResponse: segmentResponse,
+          relatedEquipmentActuals: eqActuals,
+          generatedOperationsEventRecords: genOpsEventRecords,
+          generatedOperationsEventEntries: genOpsEventEntries,
+          dedupeByEntityId: true,
+        });
+      }
+
+      setGeneratedUnplannedResponse(unplannedResponse);
+      setGeneratedUnplannedSegmentResponse(segmentResponse);
+      setUnplannedMaterialActuals(matActuals);
+      setUnplannedEquipmentActuals(eqActuals);
+      setUnplannedPersonnelActuals(persActuals);
+      setUnplannedOpsEvents(genOpsEvents);
+      setUnplannedOpsEventRecords(genOpsEventRecords);
+      setUnplannedOpsEventEntries(genOpsEventEntries);
+      setUnplannedTimestamp(timestamp);
+
+      setLoading(false);
+      showSnackbar(
+        `Unplanned maintenance generated: 1 segment response, ${matActuals.length} material actuals, ${eqActuals.length} equipment actuals, ${persActuals.length} personnel actuals, ${genOpsEvents.length} ops events, ${genOpsEventRecords.length} records, ${genOpsEventEntries.length} entries`,
+        'success',
+      );
+    } catch (error: any) {
+      console.error('Failed to generate unplanned maintenance data:', error);
+      showSnackbar(`Failed to generate unplanned maintenance data: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
+  };
+
+  const saveUnplannedMaintenanceToDatabase = async () => {
+    if (!generatedUnplannedResponse || !generatedUnplannedSegmentResponse) {
+      showSnackbar('No unplanned maintenance data to save', 'error');
+      return;
+    }
+    try {
+      setLoading(true);
+      await processDataApi.upsertStoreRecords('operationsResponses', [generatedUnplannedResponse]);
+      await processDataApi.upsertStoreRecords('segmentResponses', [generatedUnplannedSegmentResponse]);
+      if (unplannedMaterialActuals.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentMaterialActuals', unplannedMaterialActuals);
+      }
+      if (unplannedEquipmentActuals.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentEquipmentActuals', unplannedEquipmentActuals);
+      }
+      if (unplannedPersonnelActuals.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentPersonnelActuals', unplannedPersonnelActuals);
+      }
+      if (unplannedOpsEvents.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEvents', unplannedOpsEvents);
+      }
+      if (unplannedOpsEventRecords.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventRecords', unplannedOpsEventRecords);
+      }
+      if (unplannedOpsEventEntries.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventEntries', unplannedOpsEventEntries);
+      }
+      await loadStoredActualData();
+      setLoading(false);
+      showSnackbar('Unplanned maintenance data saved to database successfully', 'success');
+    } catch (error: any) {
+      console.error('Failed to save unplanned maintenance data:', error);
+      showSnackbar(`Failed to save unplanned maintenance data: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
+  };
+
+  const resetUnplannedMaintenance = () => {
+    setSelectedUnplannedEventId('');
+    setUnplannedSegmentId('');
+    setUnplannedEquipmentId('');
+    setUnplannedMaterialIds([]);
+    setUnplannedPersonnelIds([]);
+    setUnplannedStartDateTime('');
+    setUnplannedEndDateTime('');
+    setGeneratedUnplannedResponse(null);
+    setGeneratedUnplannedSegmentResponse(null);
+    setUnplannedMaterialActuals([]);
+    setUnplannedEquipmentActuals([]);
+    setUnplannedPersonnelActuals([]);
+    setUnplannedOpsEvents([]);
+    setUnplannedOpsEventRecords([]);
+    setUnplannedOpsEventEntries([]);
+    setUnplannedTimestamp(null);
   };
 
   const checkOperationsRequestData = async () => {
@@ -4710,7 +5063,7 @@ const ProcessDataGenerator: React.FC = () => {
             onClick={
               mainTab === 0
                 ? (activeTab === 0 ? resetForm : resetActualData)
-                : (maintenanceActiveTab === 0 ? resetMaintenancePlan : resetMaintenanceActual)
+                : (maintenanceActiveTab === 0 ? resetMaintenancePlan : maintenanceActiveTab === 1 ? resetMaintenanceActual : resetUnplannedMaintenance)
             }
             sx={{ mr: 1 }}
           >
@@ -4723,12 +5076,12 @@ const ProcessDataGenerator: React.FC = () => {
             onClick={
               mainTab === 0
                 ? (activeTab === 0 ? saveToDatabase : saveActualToDatabase)
-                : (maintenanceActiveTab === 0 ? saveMaintenancePlanToDatabase : saveMaintenanceActualToDatabase)
+                : (maintenanceActiveTab === 0 ? saveMaintenancePlanToDatabase : maintenanceActiveTab === 1 ? saveMaintenanceActualToDatabase : saveUnplannedMaintenanceToDatabase)
             }
             disabled={
               mainTab === 0
                 ? (activeTab === 0 ? segmentRequirements.length === 0 : segmentResponses.length === 0)
-                : (maintenanceActiveTab === 0 ? maintenanceSegmentRequirements.length === 0 : maintenanceSegmentResponses.length === 0)
+                : (maintenanceActiveTab === 0 ? maintenanceSegmentRequirements.length === 0 : maintenanceActiveTab === 1 ? maintenanceSegmentResponses.length === 0 : !generatedUnplannedSegmentResponse)
             }
             sx={{ mr: 1 }}
           >
@@ -6819,6 +7172,7 @@ const ProcessDataGenerator: React.FC = () => {
           <Tabs value={maintenanceActiveTab} onChange={(e, newValue) => setMaintenanceActiveTab(newValue)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
             <Tab label="Maintenance Plan" />
             <Tab label="Maintenance Actual" />
+            <Tab label="⚡ Unplanned" />
           </Tabs>
 
           {maintenanceActiveTab === 0 && (
@@ -7771,6 +8125,593 @@ const ProcessDataGenerator: React.FC = () => {
                       Export All Maintenance Actual CSV
                     </Button>
                   </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {/* Unplanned Maintenance Tab */}
+          {maintenanceActiveTab === 2 && (
+            <Box>
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                Generate unplanned maintenance data by selecting an existing operations event, a process segment, equipment, materials, and personnel. This creates an Operations Response, Segment Response, and all associated actuals and event records — no maintenance order (plan) is required.
+              </Alert>
+
+              {/* Event Filter + Load */}
+              <Paper sx={{ p: 2, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>🔍 Filter &amp; Select Operations Event</Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Operations Type</InputLabel>
+                      <Select
+                        value={unplannedEventFilter.operationsType}
+                        label="Operations Type"
+                        onChange={(e) => setUnplannedEventFilter((f) => ({ ...f, operationsType: e.target.value }))}
+                      >
+                        <MenuItem value="">All</MenuItem>
+                        <MenuItem value="Production">Production</MenuItem>
+                        <MenuItem value="Maintenance">Maintenance</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Event Type</InputLabel>
+                      <Select
+                        value={unplannedEventFilter.operationsEventType}
+                        label="Event Type"
+                        onChange={(e) => setUnplannedEventFilter((f) => ({ ...f, operationsEventType: e.target.value }))}
+                      >
+                        <MenuItem value="">All</MenuItem>
+                        {[...new Set(unplannedStoredEvents.map((e) => e.eventType).filter(Boolean))].map((t) => (
+                          <MenuItem key={t} value={t}>{t}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Search by ID or Description"
+                      placeholder="Type to filter..."
+                      value={unplannedEventFilter.search}
+                      onChange={(e) => setUnplannedEventFilter((f) => ({ ...f, search: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 2 }}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<RefreshIcon />}
+                      onClick={loadUnplannedStoredEvents}
+                      disabled={unplannedEventsLoading}
+                    >
+                      {unplannedEventsLoading ? 'Loading…' : 'Load Events'}
+                    </Button>
+                  </Grid>
+                </Grid>
+
+                {unplannedStoredEvents.length === 0 ? (
+                  <Alert severity="info">Click "Load Events" to fetch operations events from the database.</Alert>
+                ) : (
+                  (() => {
+                    const filteredEvents = unplannedStoredEvents.filter((evt) => {
+                      if (unplannedEventFilter.operationsType && evt.operationsType !== unplannedEventFilter.operationsType) return false;
+                      if (unplannedEventFilter.operationsEventType && evt.eventType !== unplannedEventFilter.operationsEventType) return false;
+                      if (unplannedEventFilter.search) {
+                        const s = unplannedEventFilter.search.toLowerCase();
+                        if (!evt.id?.toLowerCase().includes(s) && !evt.notes?.toLowerCase().includes(s)) return false;
+                      }
+                      return true;
+                    });
+                    return (
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {filteredEvents.length} event(s) matching filters (of {unplannedStoredEvents.length} total)
+                        </Typography>
+                        <Box sx={{ maxHeight: 280, overflowY: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                          {filteredEvents.slice(0, 200).map((evt) => {
+                            const isSelected = evt.id === selectedUnplannedEventId;
+                            return (
+                              <Box
+                                key={evt.id}
+                                onClick={() => {
+                                  setSelectedUnplannedEventId(evt.id);
+                                  // Pre-fill datetimes from event
+                                  if (evt.effectiveTimestamp) {
+                                    const ts = evt.effectiveTimestamp.replace(' ', 'T');
+                                    setUnplannedStartDateTime(evt.effectiveTimestamp);
+                                    const endDt = new Date(new Date(ts).getTime() + 2 * 60 * 60 * 1000);
+                                    setUnplannedEndDateTime(toDbDateTime(endDt));
+                                  }
+                                }}
+                                sx={{
+                                  p: 1.5,
+                                  cursor: 'pointer',
+                                  bgcolor: isSelected ? 'warning.lighter' : 'background.paper',
+                                  borderBottom: 1,
+                                  borderColor: 'divider',
+                                  border: isSelected ? 2 : undefined,
+                                  borderColor: isSelected ? 'warning.main' : 'divider',
+                                  '&:hover': { bgcolor: 'action.hover' },
+                                }}
+                              >
+                                <Typography variant="caption" display="block">
+                                  <strong>{evt.id}</strong>
+                                  {evt.operationsType && <Chip label={evt.operationsType} size="small" sx={{ ml: 1 }} color={evt.operationsType === 'Maintenance' ? 'warning' : 'primary'} />}
+                                  {evt.eventType && <Chip label={evt.eventType} size="small" sx={{ ml: 0.5 }} variant="outlined" />}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {evt.notes || '(no description)'} | Equipment: {evt.equipmentId || 'N/A'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Timestamp: {evt.effectiveTimestamp}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    );
+                  })()
+                )}
+              </Paper>
+
+              {/* Form */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>⚙️ Maintenance Parameters</Typography>
+                      <Divider sx={{ mb: 2 }} />
+
+                      {selectedUnplannedEventId && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                          Selected event: <strong>{selectedUnplannedEventId}</strong>
+                        </Alert>
+                      )}
+
+                      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                        <InputLabel>Process Segment</InputLabel>
+                        <Select
+                          value={unplannedSegmentId}
+                          label="Process Segment"
+                          onChange={(e) => setUnplannedSegmentId(e.target.value)}
+                        >
+                          <MenuItem value=""><em>Select segment…</em></MenuItem>
+                          {processSegments.map((ps) => (
+                            <MenuItem key={ps.id} value={ps.id}>
+                              {ps.name || ps.id}
+                              {ps.operationsType && ` (${ps.operationsType})`}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                        <InputLabel>Equipment</InputLabel>
+                        <Select
+                          value={unplannedEquipmentId}
+                          label="Equipment"
+                          onChange={(e) => setUnplannedEquipmentId(e.target.value)}
+                        >
+                          <MenuItem value=""><em>Select equipment…</em></MenuItem>
+                          {equipment.map((eq) => (
+                            <MenuItem key={eq.id} value={eq.id}>
+                              {eq.name || eq.description || eq.id}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                        <InputLabel>Materials Required</InputLabel>
+                        <Select
+                          multiple
+                          value={unplannedMaterialIds}
+                          label="Materials Required"
+                          onChange={(e) => setUnplannedMaterialIds(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[])}
+                          renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                              {(selected as string[]).map((id) => {
+                                const mat = materials.find((m) => m.id === id);
+                                return <Chip key={id} label={mat?.name || id} size="small" />;
+                              })}
+                            </Box>
+                          )}
+                        >
+                          {materials.map((mat) => (
+                            <MenuItem key={mat.id} value={mat.id}>{mat.name || mat.id}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                        <InputLabel>Personnel Required</InputLabel>
+                        <Select
+                          multiple
+                          value={unplannedPersonnelIds}
+                          label="Personnel Required"
+                          onChange={(e) => setUnplannedPersonnelIds(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[])}
+                          renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                              {(selected as string[]).map((id) => {
+                                const emp = employees.find((e) => e.id === id);
+                                return <Chip key={id} label={emp?.employeeName || id} size="small" />;
+                              })}
+                            </Box>
+                          )}
+                        >
+                          {employees.map((emp) => (
+                            <MenuItem key={emp.id} value={emp.id}>{emp.employeeName || emp.id}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Start Date/Time"
+                        type="datetime-local"
+                        value={unplannedStartDateTime ? unplannedStartDateTime.replace(' ', 'T').slice(0, 16) : ''}
+                        onChange={(e) => setUnplannedStartDateTime(e.target.value.replace('T', ' ') + ':00')}
+                        InputLabelProps={{ shrink: true }}
+                        helperText="Pre-filled from selected event"
+                        sx={{ mb: 2 }}
+                      />
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="End Date/Time"
+                        type="datetime-local"
+                        value={unplannedEndDateTime ? unplannedEndDateTime.replace(' ', 'T').slice(0, 16) : ''}
+                        onChange={(e) => setUnplannedEndDateTime(e.target.value.replace('T', ' ') + ':00')}
+                        InputLabelProps={{ shrink: true }}
+                        helperText="Defaults to +2h from event timestamp"
+                        sx={{ mb: 2 }}
+                      />
+
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="warning"
+                        startIcon={<GenerateIcon />}
+                        onClick={generateUnplannedMaintenanceData}
+                        disabled={!selectedUnplannedEventId || !unplannedSegmentId || !unplannedEquipmentId}
+                      >
+                        Generate Unplanned Maintenance
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>📊 Generation Summary</Typography>
+                      <Divider sx={{ mb: 2 }} />
+                      {!generatedUnplannedResponse ? (
+                        <Alert severity="info">
+                          Fill in the form on the left and click "Generate Unplanned Maintenance" to preview data.
+                        </Alert>
+                      ) : (
+                        <Box>
+                          {unplannedTimestamp && (
+                            <Typography variant="body2" gutterBottom>
+                              <strong>Generated:</strong> {unplannedTimestamp.toLocaleString()}
+                            </Typography>
+                          )}
+                          <Typography variant="body2" gutterBottom><strong>Operations Response:</strong> {generatedUnplannedResponse.id}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Segment Response:</strong> {generatedUnplannedSegmentResponse?.id}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Material Actuals:</strong> {unplannedMaterialActuals.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Equipment Actuals:</strong> {unplannedEquipmentActuals.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Personnel Actuals:</strong> {unplannedPersonnelActuals.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Ops Events (for seg. response):</strong> {unplannedOpsEvents.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Event Records:</strong> {unplannedOpsEventRecords.length}</Typography>
+                          <Typography variant="body2" gutterBottom><strong>Event Entries:</strong> {unplannedOpsEventEntries.length}</Typography>
+                          <Divider sx={{ my: 1 }} />
+                          <Typography variant="caption" color="text.secondary">
+                            Includes record &amp; entry on selected event <strong>{selectedUnplannedEventId}</strong> linking to the new segment response.
+                          </Typography>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Result tables */}
+              {generatedUnplannedResponse && (
+                <Box sx={{ mt: 2 }}>
+                  {/* Operations Response */}
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white' }}>
+                      <Typography variant="subtitle1">Unplanned Operations Response</Typography>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>{generatedUnplannedResponse.id}</TableCell>
+                            <TableCell>{generatedUnplannedResponse.actualStartDateTime}</TableCell>
+                            <TableCell>{generatedUnplannedResponse.actualEndDateTime}</TableCell>
+                            <TableCell>{generatedUnplannedResponse.operationsType}</TableCell>
+                            <TableCell><Chip label={generatedUnplannedResponse.status} size="small" color="success" /></TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  {/* Segment Response */}
+                  {generatedUnplannedSegmentResponse && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.dark', color: 'white' }}>
+                        <Typography variant="subtitle1">Unplanned Segment Response</Typography>
+                      </Box>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>ID</TableCell>
+                              <TableCell>Process Segment</TableCell>
+                              <TableCell>Equipment</TableCell>
+                              <TableCell>Start</TableCell>
+                              <TableCell>End</TableCell>
+                              <TableCell>Operations Type</TableCell>
+                              <TableCell>Status</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell>{generatedUnplannedSegmentResponse.id}</TableCell>
+                              <TableCell>{processSegments.find((ps) => ps.id === generatedUnplannedSegmentResponse.processSegmentId)?.name || generatedUnplannedSegmentResponse.processSegmentId}</TableCell>
+                              <TableCell>{generatedUnplannedSegmentResponse.equipmentId}</TableCell>
+                              <TableCell>{generatedUnplannedSegmentResponse.actualStartDateTime}</TableCell>
+                              <TableCell>{generatedUnplannedSegmentResponse.actualEndDateTime}</TableCell>
+                              <TableCell>{generatedUnplannedSegmentResponse.operationsType}</TableCell>
+                              <TableCell><Chip label={generatedUnplannedSegmentResponse.status} size="small" color="success" /></TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {/* Material Actuals */}
+                  {unplannedMaterialActuals.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'success.dark', color: 'white' }}>
+                        <Typography variant="subtitle1">Material Actuals</Typography>
+                      </Box>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>ID</TableCell>
+                              <TableCell>Material</TableCell>
+                              <TableCell>Lot</TableCell>
+                              <TableCell>Qty</TableCell>
+                              <TableCell>Direction</TableCell>
+                              <TableCell>Operations Type</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {unplannedMaterialActuals.map((ma) => {
+                              const mat = materials.find((m) => m.id === ma.materialId);
+                              return (
+                                <TableRow key={ma.id}>
+                                  <TableCell>{ma.id}</TableCell>
+                                  <TableCell>{mat?.name || ma.materialId}</TableCell>
+                                  <TableCell>{ma.materialLotId}</TableCell>
+                                  <TableCell>{ma.actualQty} {ma.qtyUoM}</TableCell>
+                                  <TableCell>{ma.direction}</TableCell>
+                                  <TableCell>{ma.operationsType}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {/* Equipment Actuals */}
+                  <Paper sx={{ mb: 2 }}>
+                    <Box sx={{ p: 2, bgcolor: 'info.dark', color: 'white' }}>
+                      <Typography variant="subtitle1">Equipment Actuals</Typography>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>ID</TableCell>
+                            <TableCell>Equipment</TableCell>
+                            <TableCell>Qty</TableCell>
+                            <TableCell>Start</TableCell>
+                            <TableCell>End</TableCell>
+                            <TableCell>Operations Type</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {unplannedEquipmentActuals.map((ea) => (
+                            <TableRow key={ea.id}>
+                              <TableCell>{ea.id}</TableCell>
+                              <TableCell>{ea.equipmentId}</TableCell>
+                              <TableCell>{ea.actualQuantity} {ea.unitOfMeasure}</TableCell>
+                              <TableCell>{ea.actualStartDateTime}</TableCell>
+                              <TableCell>{ea.actualEndDateTime}</TableCell>
+                              <TableCell>{ea.operationsType}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+
+                  {/* Personnel Actuals */}
+                  {unplannedPersonnelActuals.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'secondary.dark', color: 'white' }}>
+                        <Typography variant="subtitle1">Personnel Actuals</Typography>
+                      </Box>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>ID</TableCell>
+                              <TableCell>Employee</TableCell>
+                              <TableCell>Qty</TableCell>
+                              <TableCell>Use</TableCell>
+                              <TableCell>Start</TableCell>
+                              <TableCell>End</TableCell>
+                              <TableCell>Operations Type</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {unplannedPersonnelActuals.map((pa) => {
+                              const emp = employees.find((e) => e.id === pa.employeeId);
+                              return (
+                                <TableRow key={pa.id}>
+                                  <TableCell>{pa.id}</TableCell>
+                                  <TableCell>{emp?.employeeName || pa.employeeId || 'N/A'}</TableCell>
+                                  <TableCell>{pa.actualQuantity} {pa.quantityUnitOfMeasure}</TableCell>
+                                  <TableCell>{pa.personnelUse}</TableCell>
+                                  <TableCell>{pa.actualStartDateTime}</TableCell>
+                                  <TableCell>{pa.actualEndDateTime}</TableCell>
+                                  <TableCell>{pa.operationsType}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {/* Operations Events */}
+                  {unplannedOpsEvents.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white' }}>
+                        <Typography variant="subtitle1">Operations Events (New – for Segment Response)</Typography>
+                      </Box>
+                      <TableContainer sx={{ maxHeight: 300 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Event ID</TableCell>
+                              <TableCell>Segment Response</TableCell>
+                              <TableCell>Equipment</TableCell>
+                              <TableCell>Event Type</TableCell>
+                              <TableCell>Operations Type</TableCell>
+                              <TableCell>Effective Timestamp</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {unplannedOpsEvents.slice(0, PREVIEW_ROW_LIMIT).map((evt) => (
+                              <TableRow key={evt.id}>
+                                <TableCell>{evt.id}</TableCell>
+                                <TableCell>{evt.segmentResponseId}</TableCell>
+                                <TableCell>{evt.equipmentId}</TableCell>
+                                <TableCell>{evt.eventType}</TableCell>
+                                <TableCell>{evt.operationsType}</TableCell>
+                                <TableCell>{evt.effectiveTimestamp}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {/* Operations Event Records */}
+                  {unplannedOpsEventRecords.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.dark', color: 'white' }}>
+                        <Typography variant="subtitle1">Operations Event Records</Typography>
+                      </Box>
+                      <Alert severity="info" sx={{ m: 1 }}>
+                        The record with ID = <strong>{generatedUnplannedSegmentResponse?.id}</strong> is linked to the <em>selected existing event</em> <strong>{selectedUnplannedEventId}</strong>. All other records belong to the newly created operations events.
+                      </Alert>
+                      <TableContainer sx={{ maxHeight: 300 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Record ID</TableCell>
+                              <TableCell>Operations Event ID</TableCell>
+                              <TableCell>Segment Response</TableCell>
+                              <TableCell>Equipment</TableCell>
+                              <TableCell>Event Type</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Effective Time</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {unplannedOpsEventRecords.slice(0, PREVIEW_ROW_LIMIT).map((rec) => (
+                              <TableRow key={rec.id} sx={{ bgcolor: rec.operationsEventId === selectedUnplannedEventId ? 'warning.lighter' : undefined }}>
+                                <TableCell>{rec.id}</TableCell>
+                                <TableCell>{rec.operationsEventId}</TableCell>
+                                <TableCell>{rec.segmentResponseId}</TableCell>
+                                <TableCell>{rec.equipmentId}</TableCell>
+                                <TableCell>{rec.eventType}</TableCell>
+                                <TableCell>{rec.status}</TableCell>
+                                <TableCell>{rec.effectiveTime}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
+
+                  {/* Operations Event Entries */}
+                  {unplannedOpsEventEntries.length > 0 && (
+                    <Paper sx={{ mb: 2 }}>
+                      <Box sx={{ p: 2, bgcolor: 'warning.light', color: 'black' }}>
+                        <Typography variant="subtitle1">Operations Event Entries</Typography>
+                      </Box>
+                      <TableContainer sx={{ maxHeight: 300 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Entry ID</TableCell>
+                              <TableCell>Record ID</TableCell>
+                              <TableCell>Segment Response</TableCell>
+                              <TableCell>Equipment</TableCell>
+                              <TableCell>Information Object Type</TableCell>
+                              <TableCell>Entry Type</TableCell>
+                              <TableCell>Effective Time</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {unplannedOpsEventEntries.slice(0, PREVIEW_ROW_LIMIT).map((entry) => (
+                              <TableRow key={entry.id}>
+                                <TableCell>{entry.id}</TableCell>
+                                <TableCell>{entry.operationsEventRecordId}</TableCell>
+                                <TableCell>{entry.segmentResponseId}</TableCell>
+                                <TableCell>{entry.equipmentId}</TableCell>
+                                <TableCell>{entry.informationObjectType || 'N/A'}</TableCell>
+                                <TableCell>{entry.entryType}</TableCell>
+                                <TableCell>{entry.effectiveTime}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  )}
                 </Box>
               )}
             </Box>
