@@ -447,6 +447,16 @@ const ProcessDataGenerator: React.FC = () => {
     const [unplannedOpsEventRecords, setUnplannedOpsEventRecords] = useState<OperationsEventRecord[]>([]);
     const [unplannedOpsEventEntries, setUnplannedOpsEventEntries] = useState<OperationsEventEntry[]>([]);
     const [unplannedTimestamp, setUnplannedTimestamp] = useState<Date | null>(null);
+    const [storedUnplannedDataLoading, setStoredUnplannedDataLoading] = useState(false);
+    const [storedUnplannedResponses, setStoredUnplannedResponses] = useState<OperationsResponse[]>([]);
+    const [storedUnplannedSegmentResponses, setStoredUnplannedSegmentResponses] = useState<SegmentResponse[]>([]);
+    const [storedUnplannedMaterialActuals, setStoredUnplannedMaterialActuals] = useState<SegmentMaterialActual[]>([]);
+    const [storedUnplannedEquipmentActuals, setStoredUnplannedEquipmentActuals] = useState<SegmentEquipmentActual[]>([]);
+    const [storedUnplannedPersonnelActuals, setStoredUnplannedPersonnelActuals] = useState<SegmentPersonnelActual[]>([]);
+    const [storedUnplannedOpsEvents, setStoredUnplannedOpsEvents] = useState<OperationsEvent[]>([]);
+    const [storedUnplannedOpsEventRecords, setStoredUnplannedOpsEventRecords] = useState<OperationsEventRecord[]>([]);
+    const [storedUnplannedOpsEventEntries, setStoredUnplannedOpsEventEntries] = useState<OperationsEventEntry[]>([]);
+    const [selectedStoredUnplannedResponseId, setSelectedStoredUnplannedResponseId] = useState('');
 
     const filteredSavedMaintenanceRequests = savedMaintenanceRequests.filter((req) =>
       !maintenancePlanDataFilter ||
@@ -742,6 +752,9 @@ const ProcessDataGenerator: React.FC = () => {
   const loadMasterData = async () => {
     try {
       setLoading(true);
+      const backfillGeneratedAt = toDbDateTime(new Date());
+      const backfillRunId = `BF-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+      const backfillMarker = `[BACKFILL_OER_OEE:${backfillRunId}|${backfillGeneratedAt}]`;
       const [mat, eq, ps, bom, eu, le, pl, p, eprop, epa, ecpa, oed, oedsa, oedp, oedpa, oert, oeet, shft, crw, sca, hs, mBoms, personCls, emp] = await Promise.all([
         masterDataApi.getAll('materials'),
         masterDataApi.getAll('equipment'),
@@ -846,6 +859,12 @@ const ProcessDataGenerator: React.FC = () => {
   useEffect(() => {
     loadMaintenanceActualDataForRequest(selectedMaintenanceRequestId);
   }, [selectedMaintenanceRequestId]);
+
+  useEffect(() => {
+    if (mainTab === 1 && maintenanceActiveTab === 2) {
+      loadStoredUnplannedMaintenanceData();
+    }
+  }, [mainTab, maintenanceActiveTab]);
 
   const generateActualData = async () => {
     if (!selectedOperationsRequestId || !actualProductQuantity) {
@@ -2431,6 +2450,87 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
+  const loadStoredUnplannedMaintenanceData = async () => {
+    setStoredUnplannedDataLoading(true);
+    try {
+      const [allResponsesRaw, allSegmentResponsesRaw, allMaterialActualsRaw, allEquipmentActualsRaw, allPersonnelActualsRaw, allOpsEventsRaw, allOpsEventRecordsRaw, allOpsEventEntriesRaw] = await Promise.all([
+        processDataApi.getAll('operationsResponses'),
+        processDataApi.getAll('segmentResponses'),
+        processDataApi.getAll('segmentMaterialActuals'),
+        processDataApi.getAll('segmentEquipmentActuals'),
+        processDataApi.getAll('segmentPersonnelActuals'),
+        processDataApi.getAll('operationsEvents'),
+        processDataApi.getAll('operationsEventRecords'),
+        processDataApi.getAll('operationsEventEntries'),
+      ]);
+
+      const allResponses = (allResponsesRaw || []) as OperationsResponse[];
+      const allSegmentResponses = (allSegmentResponsesRaw || []) as SegmentResponse[];
+      const allMaterialActuals = (allMaterialActualsRaw || []) as SegmentMaterialActual[];
+      const allEquipmentActuals = (allEquipmentActualsRaw || []) as SegmentEquipmentActual[];
+      const allPersonnelActuals = (allPersonnelActualsRaw || []) as SegmentPersonnelActual[];
+      const allOpsEvents = (allOpsEventsRaw || []) as OperationsEvent[];
+      const allOpsEventRecords = (allOpsEventRecordsRaw || []) as OperationsEventRecord[];
+      const allOpsEventEntries = (allOpsEventEntriesRaw || []) as OperationsEventEntry[];
+
+      const unplannedResponses = allResponses
+        .filter((response) => {
+          const operationsType = (response.operationsType || '').toString().toLowerCase();
+          const responseId = (response.id || '').toString();
+          const description = (response.description || '').toString().toLowerCase();
+          return operationsType === 'maintenance' && (
+            responseId.startsWith('UNPL-RESP-') ||
+            description.includes('unplanned maintenance')
+          );
+        })
+        .sort((a, b) => {
+          const aTs = Date.parse(a.actualStartDateTime || a.actualEndDateTime || '') || 0;
+          const bTs = Date.parse(b.actualStartDateTime || b.actualEndDateTime || '') || 0;
+          return bTs - aTs;
+        });
+
+      const responseIds = new Set(unplannedResponses.map((response) => response.id));
+      const unplannedSegmentResponses = allSegmentResponses.filter((segmentResponse) => responseIds.has(segmentResponse.operationsResponseId));
+      const segmentIds = new Set(unplannedSegmentResponses.map((segmentResponse) => segmentResponse.id));
+
+      const unplannedMaterialActuals = allMaterialActuals.filter((materialActual) => segmentIds.has(materialActual.segmentResponseId));
+      const unplannedEquipmentActuals = allEquipmentActuals.filter((equipmentActual) => segmentIds.has(equipmentActual.segmentResponseId));
+      const unplannedPersonnelActuals = allPersonnelActuals.filter((personnelActual) => segmentIds.has(personnelActual.segmentResponseId));
+      const unplannedOpsEvents = allOpsEvents.filter((opsEvent) => segmentIds.has(opsEvent.segmentResponseId));
+      const opsEventIds = new Set(unplannedOpsEvents.map((opsEvent) => opsEvent.id));
+
+      const unplannedOpsEventRecords = allOpsEventRecords.filter(
+        (record) => segmentIds.has(record.segmentResponseId) || opsEventIds.has(record.operationsEventId),
+      );
+      const opsEventRecordIds = new Set(unplannedOpsEventRecords.map((record) => record.id));
+
+      const unplannedOpsEventEntries = allOpsEventEntries.filter(
+        (entry) => segmentIds.has(entry.segmentResponseId) || opsEventRecordIds.has(entry.operationsEventRecordId),
+      );
+
+      setStoredUnplannedResponses(unplannedResponses);
+      setStoredUnplannedSegmentResponses(unplannedSegmentResponses);
+      setStoredUnplannedMaterialActuals(unplannedMaterialActuals);
+      setStoredUnplannedEquipmentActuals(unplannedEquipmentActuals);
+      setStoredUnplannedPersonnelActuals(unplannedPersonnelActuals);
+      setStoredUnplannedOpsEvents(unplannedOpsEvents);
+      setStoredUnplannedOpsEventRecords(unplannedOpsEventRecords);
+      setStoredUnplannedOpsEventEntries(unplannedOpsEventEntries);
+
+      setSelectedStoredUnplannedResponseId((prevId) => {
+        if (prevId && unplannedResponses.some((response) => response.id === prevId)) {
+          return prevId;
+        }
+        return unplannedResponses[0]?.id || '';
+      });
+    } catch (error) {
+      console.error('Failed to load stored unplanned maintenance data:', error);
+      showSnackbar('Failed to load stored unplanned maintenance data', 'error');
+    } finally {
+      setStoredUnplannedDataLoading(false);
+    }
+  };
+
   const generateUnplannedMaintenanceData = async () => {
     if (!selectedUnplannedEventId) {
       showSnackbar('Please select an operations event first', 'error');
@@ -2720,6 +2820,7 @@ const ProcessDataGenerator: React.FC = () => {
         await processDataApi.upsertStoreRecords('operationsEventEntries', unplannedOpsEventEntries);
       }
       await loadStoredActualData();
+      await loadStoredUnplannedMaintenanceData();
       setLoading(false);
       showSnackbar('Unplanned maintenance data saved to database successfully', 'success');
     } catch (error: any) {
@@ -2746,6 +2847,100 @@ const ProcessDataGenerator: React.FC = () => {
     setUnplannedOpsEventRecords([]);
     setUnplannedOpsEventEntries([]);
     setUnplannedTimestamp(null);
+  };
+
+  const backfillOperationsEventArtifactsForExistingData = async () => {
+    if (!window.confirm('Run one-time backfill for existing Operations Event Records/Entries (Production + Maintenance)? Existing records will not be modified.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const backfillGeneratedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const backfillRunId = `BF-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+      const backfillMarker = `[BACKFILL_OER_OEE:${backfillRunId}|${backfillGeneratedAt}]`;
+
+      const [allOperationsEventsRaw, allSegmentResponsesRaw, allEquipmentActualsRaw, allOperationsEventRecordsRaw, allOperationsEventEntriesRaw] = await Promise.all([
+        processDataApi.getAll('operationsEvents'),
+        processDataApi.getAll('segmentResponses'),
+        processDataApi.getAll('segmentEquipmentActuals'),
+        processDataApi.getAll('operationsEventRecords'),
+        processDataApi.getAll('operationsEventEntries'),
+      ]);
+
+      const allOperationsEvents = (allOperationsEventsRaw || []) as OperationsEvent[];
+      const allSegmentResponses = (allSegmentResponsesRaw || []) as SegmentResponse[];
+      const allEquipmentActuals = (allEquipmentActualsRaw || []) as SegmentEquipmentActual[];
+      const existingRecords = (allOperationsEventRecordsRaw || []) as OperationsEventRecord[];
+      const existingEntries = (allOperationsEventEntriesRaw || []) as OperationsEventEntry[];
+
+      const segmentResponseById = new Map(allSegmentResponses.map((segmentResponse) => [segmentResponse.id, segmentResponse]));
+      const workingRecords = [...existingRecords];
+      const workingEntries = [...existingEntries];
+
+      const existingRecordIds = new Set(existingRecords.map((record) => record.id));
+      const existingEntryIds = new Set(existingEntries.map((entry) => entry.id));
+
+      let processedEvents = 0;
+      let skippedEvents = 0;
+
+      for (const opsEvent of allOperationsEvents) {
+        const segmentResponse = segmentResponseById.get(opsEvent.segmentResponseId);
+        if (!segmentResponse) {
+          skippedEvents += 1;
+          continue;
+        }
+
+        const eventDef = operationEventDefinitions.find((definition) => definition.id === opsEvent.operationsEventDefinitionId);
+        const relatedEquipmentActuals = allEquipmentActuals.filter((equipmentActual) => equipmentActual.segmentResponseId === segmentResponse.id);
+
+        appendRelatedOperationsEventArtifacts({
+          opsEvent,
+          eventDef,
+          baseRecordId: `OER-${opsEvent.id.replace('OPS-EVENT-', '')}`,
+          effectiveTime: opsEvent.effectiveTimestamp,
+          segmentResponse,
+          relatedEquipmentActuals,
+          generatedOperationsEventRecords: workingRecords,
+          generatedOperationsEventEntries: workingEntries,
+          dedupeByEntityId: true,
+        });
+
+        processedEvents += 1;
+      }
+
+      const recordsToInsert = workingRecords
+        .filter((record) => !existingRecordIds.has(record.id))
+        .map((record) => ({
+          ...record,
+          comments: record.comments ? `${record.comments} ${backfillMarker}` : backfillMarker,
+        }));
+      const entriesToInsert = workingEntries
+        .filter((entry) => !existingEntryIds.has(entry.id))
+        .map((entry) => ({
+          ...entry,
+          description: entry.description ? `${entry.description} ${backfillMarker}` : backfillMarker,
+        }));
+
+      if (recordsToInsert.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventRecords', recordsToInsert);
+      }
+      if (entriesToInsert.length > 0) {
+        await processDataApi.upsertStoreRecords('operationsEventEntries', entriesToInsert);
+      }
+
+      await loadStoredActualData();
+      setLoading(false);
+      showSnackbar(
+        `Backfill completed (${backfillRunId}). Events processed: ${processedEvents}, skipped: ${skippedEvents}, new records: ${recordsToInsert.length}, new entries: ${entriesToInsert.length}.`,
+        'success',
+      );
+    } catch (error: any) {
+      console.error('Failed to backfill operations event artifacts:', error);
+      showSnackbar(`Failed to backfill operations event artifacts: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
   };
 
   const checkOperationsRequestData = async () => {
@@ -5056,6 +5251,16 @@ const ProcessDataGenerator: React.FC = () => {
             size="small"
           >
             Clear Actual
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<UploadIcon />}
+            onClick={backfillOperationsEventArtifactsForExistingData}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Backfill OER/OEE
           </Button>
           <Button
             variant="outlined"
@@ -8136,6 +8341,118 @@ const ProcessDataGenerator: React.FC = () => {
               <Alert severity="warning" sx={{ mb: 3 }}>
                 Generate unplanned maintenance data by selecting an existing operations event, a process segment, equipment, materials, and personnel. This creates an Operations Response, Segment Response, and all associated actuals and event records — no maintenance order (plan) is required.
               </Alert>
+
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'warning.lighter' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="h6">🗄️ Stored Unplanned Maintenance Data (DB)</Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<RefreshIcon />}
+                    onClick={loadStoredUnplannedMaintenanceData}
+                    disabled={storedUnplannedDataLoading}
+                  >
+                    {storedUnplannedDataLoading ? 'Loading…' : 'Refresh'}
+                  </Button>
+                </Box>
+                <Divider sx={{ mb: 2 }} />
+
+                {storedUnplannedResponses.length === 0 ? (
+                  <Alert severity="info">No stored unplanned maintenance data found in DB yet.</Alert>
+                ) : (
+                  <>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                      <Chip size="small" color="warning" label={`Responses: ${storedUnplannedResponses.length}`} />
+                      <Chip size="small" color="primary" label={`Segments: ${storedUnplannedSegmentResponses.length}`} />
+                      <Chip size="small" color="success" label={`Material Actuals: ${storedUnplannedMaterialActuals.length}`} />
+                      <Chip size="small" color="info" label={`Equipment Actuals: ${storedUnplannedEquipmentActuals.length}`} />
+                      <Chip size="small" color="secondary" label={`Personnel Actuals: ${storedUnplannedPersonnelActuals.length}`} />
+                      <Chip size="small" color="warning" variant="outlined" label={`Ops Events: ${storedUnplannedOpsEvents.length}`} />
+                      <Chip size="small" color="warning" variant="outlined" label={`Event Records: ${storedUnplannedOpsEventRecords.length}`} />
+                      <Chip size="small" color="warning" variant="outlined" label={`Event Entries: ${storedUnplannedOpsEventEntries.length}`} />
+                    </Box>
+
+                    <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                      <InputLabel>Stored Unplanned Response</InputLabel>
+                      <Select
+                        value={selectedStoredUnplannedResponseId}
+                        label="Stored Unplanned Response"
+                        onChange={(e) => setSelectedStoredUnplannedResponseId(e.target.value)}
+                      >
+                        {storedUnplannedResponses.map((response) => (
+                          <MenuItem key={response.id} value={response.id}>
+                            {response.id} - {response.description || 'Unplanned maintenance'}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    {(() => {
+                      const selectedResponse = storedUnplannedResponses.find((response) => response.id === selectedStoredUnplannedResponseId) || null;
+                      if (!selectedResponse) return null;
+
+                      const selectedSegmentResponses = storedUnplannedSegmentResponses.filter(
+                        (segmentResponse) => segmentResponse.operationsResponseId === selectedResponse.id,
+                      );
+                      const selectedSegmentIds = new Set(selectedSegmentResponses.map((segmentResponse) => segmentResponse.id));
+                      const selectedMaterialActuals = storedUnplannedMaterialActuals.filter((materialActual) => selectedSegmentIds.has(materialActual.segmentResponseId));
+                      const selectedEquipmentActuals = storedUnplannedEquipmentActuals.filter((equipmentActual) => selectedSegmentIds.has(equipmentActual.segmentResponseId));
+                      const selectedPersonnelActuals = storedUnplannedPersonnelActuals.filter((personnelActual) => selectedSegmentIds.has(personnelActual.segmentResponseId));
+                      const selectedOpsEvents = storedUnplannedOpsEvents.filter((opsEvent) => selectedSegmentIds.has(opsEvent.segmentResponseId));
+                      const selectedOpsEventIds = new Set(selectedOpsEvents.map((opsEvent) => opsEvent.id));
+                      const selectedOpsEventRecords = storedUnplannedOpsEventRecords.filter(
+                        (record) => selectedSegmentIds.has(record.segmentResponseId) || selectedOpsEventIds.has(record.operationsEventId),
+                      );
+                      const selectedOpsEventRecordIds = new Set(selectedOpsEventRecords.map((record) => record.id));
+                      const selectedOpsEventEntries = storedUnplannedOpsEventEntries.filter(
+                        (entry) => selectedSegmentIds.has(entry.segmentResponseId) || selectedOpsEventRecordIds.has(entry.operationsEventRecordId),
+                      );
+
+                      return (
+                        <Box>
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            <strong>{selectedResponse.id}</strong> | {selectedResponse.actualStartDateTime} → {selectedResponse.actualEndDateTime}
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                            <Chip size="small" label={`Segments: ${selectedSegmentResponses.length}`} />
+                            <Chip size="small" label={`Material: ${selectedMaterialActuals.length}`} />
+                            <Chip size="small" label={`Equipment: ${selectedEquipmentActuals.length}`} />
+                            <Chip size="small" label={`Personnel: ${selectedPersonnelActuals.length}`} />
+                            <Chip size="small" label={`Events: ${selectedOpsEvents.length}`} />
+                            <Chip size="small" label={`Records: ${selectedOpsEventRecords.length}`} />
+                            <Chip size="small" label={`Entries: ${selectedOpsEventEntries.length}`} />
+                          </Box>
+
+                          <TableContainer sx={{ maxHeight: 220 }}>
+                            <Table size="small" stickyHeader>
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>Segment Response</TableCell>
+                                  <TableCell>Process Segment</TableCell>
+                                  <TableCell>Equipment</TableCell>
+                                  <TableCell>Start</TableCell>
+                                  <TableCell>End</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {selectedSegmentResponses.slice(0, PREVIEW_ROW_LIMIT).map((segmentResponse) => (
+                                  <TableRow key={segmentResponse.id}>
+                                    <TableCell>{segmentResponse.id}</TableCell>
+                                    <TableCell>{processSegments.find((processSegment) => processSegment.id === segmentResponse.processSegmentId)?.name || segmentResponse.processSegmentId}</TableCell>
+                                    <TableCell>{segmentResponse.equipmentId || 'N/A'}</TableCell>
+                                    <TableCell>{segmentResponse.actualStartDateTime}</TableCell>
+                                    <TableCell>{segmentResponse.actualEndDateTime}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+                      );
+                    })()}
+                  </>
+                )}
+              </Paper>
 
               {/* Event Filter + Load */}
               <Paper sx={{ p: 2, mb: 3 }}>

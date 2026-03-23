@@ -1075,6 +1075,7 @@ const DataMigration: React.FC = () => {
             { name: 'effectiveTime', type: 'datetime', sample: operationsEventEntries?.[0]?.effectiveTime },
             { name: 'segmentResponseId', type: 'string', sample: operationsEventEntries?.[0]?.segmentResponseId },
             { name: 'equipmentId', type: 'string', sample: operationsEventEntries?.[0]?.equipmentId },
+            { name: 'informationObjectType', type: 'string', sample: operationsEventEntries?.[0]?.informationObjectType },
             { name: 'description', type: 'string', sample: operationsEventEntries?.[0]?.description },
           ],
         },
@@ -1908,7 +1909,7 @@ const DataMigration: React.FC = () => {
             let entity1SourceData = await getTableData(entity1Mapping.sourceTable);
             
             // Apply filters if they exist
-            const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled) || [];
+            const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled !== false) || [];
             if (enabledFilters.length > 0) {
               entity1SourceData = applyFilters(entity1SourceData, enabledFilters);
               console.log(`[Bridge Preview] Entity 1 from ${entity1Mapping.sourceTable}: after filters ${entity1SourceData.length} rows`);
@@ -1967,7 +1968,7 @@ const DataMigration: React.FC = () => {
             let entity2SourceData = await getTableData(entity2Mapping.sourceTable);
             
             // Apply filters if they exist
-            const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled) || [];
+            const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled !== false) || [];
             if (enabledFilters.length > 0) {
               entity2SourceData = applyFilters(entity2SourceData, enabledFilters);
               console.log(`[Bridge Preview] Entity 2 from ${entity2Mapping.sourceTable}: after filters ${entity2SourceData.length} rows`);
@@ -2042,7 +2043,16 @@ const DataMigration: React.FC = () => {
     }
 
     try {
-      const sourceData = await loadSourceData(selectedSourceTable);
+      let sourceData = await loadSourceData(selectedSourceTable);
+
+      const configuredSourceFilters =
+        editingBridgeIndex !== null
+          ? (tableMappings[editingBridgeIndex]?.filters?.filter((f) => f.enabled !== false) || [])
+          : [];
+      if (configuredSourceFilters.length > 0) {
+        sourceData = applyFilters(sourceData, configuredSourceFilters);
+      }
+
       const entity1 = isa95Entities.find(e => e.tableName === bridgeEntity1 || e.name === bridgeEntity1);
       const entity2 = isa95Entities.find(e => e.tableName === bridgeEntity2 || e.name === bridgeEntity2);
       
@@ -2066,7 +2076,7 @@ const DataMigration: React.FC = () => {
           let entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
           
           // Apply filters if they exist
-          const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled) || [];
+          const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled !== false) || [];
           if (enabledFilters.length > 0) {
             entity1SourceData = applyFilters(entity1SourceData, enabledFilters);
             console.log(`[Bridge Dialog Preview] Entity 1 from ${entity1Mapping.sourceTable}: after filters ${entity1SourceData.length} rows`);
@@ -2099,7 +2109,7 @@ const DataMigration: React.FC = () => {
           let entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
           
           // Apply filters if they exist
-          const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled) || [];
+          const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled !== false) || [];
           if (enabledFilters.length > 0) {
             entity2SourceData = applyFilters(entity2SourceData, enabledFilters);
             console.log(`[Bridge Dialog Preview] Entity 2 from ${entity2Mapping.sourceTable}: after filters ${entity2SourceData.length} rows`);
@@ -2242,11 +2252,11 @@ const DataMigration: React.FC = () => {
 
       let sourceData = await loadSourceData(mapping.sourceTable);
       
-      // Apply filters to bridge table source data if they exist
-      const enabledFilters = mapping.filters?.filter(f => f.enabled) || [];
-      if (enabledFilters.length > 0) {
-        sourceData = applyFilters(sourceData, enabledFilters);
-        console.log(`[Bridge Mapping Preview] Bridge table ${mapping.sourceTable}: after filters ${sourceData.length} rows`);
+      // Apply only source-table filters configured directly on this bridge mapping.
+      const configuredSourceFilters = mapping.filters?.filter((f) => f.enabled !== false) || [];
+      if (configuredSourceFilters.length > 0) {
+        sourceData = applyFilters(sourceData, configuredSourceFilters);
+        console.log(`[Bridge Mapping Preview] Bridge table ${mapping.sourceTable}: after configured filters ${sourceData.length} rows`);
       }
       
       const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
@@ -2279,7 +2289,7 @@ const DataMigration: React.FC = () => {
           let entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
           
           // Apply filters if they exist
-          const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled) || [];
+          const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled !== false) || [];
           if (enabledFilters.length > 0) {
             entity1SourceData = applyFilters(entity1SourceData, enabledFilters);
             console.log(`[Bridge Mapping Preview] Entity 1 from ${entity1Mapping.sourceTable}: after filters ${entity1SourceData.length} rows`);
@@ -2314,7 +2324,7 @@ const DataMigration: React.FC = () => {
           let entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
           
           // Apply filters if they exist
-          const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled) || [];
+          const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled !== false) || [];
           if (enabledFilters.length > 0) {
             entity2SourceData = applyFilters(entity2SourceData, enabledFilters);
             console.log(`[Bridge Mapping Preview] Entity 2 from ${entity2Mapping.sourceTable}: after filters ${entity2SourceData.length} rows`);
@@ -2478,9 +2488,10 @@ const DataMigration: React.FC = () => {
 
     return data.filter(record => {
       return filters.every(filter => {
-        if (!filter.enabled) return true;
+        if (filter.enabled === false) return true;
 
-        const value = record[filter.column];
+        const filterColumn = filter.column || (filter as any).field;
+        const value = record[filterColumn];
         const filterValue = filter.value;
 
         switch (filter.operator) {
@@ -3558,12 +3569,13 @@ const DataMigration: React.FC = () => {
       const getTableDataFunc = async (tableName: string, limit = 500): Promise<any[]> =>
         loadSourceData(tableName, { limit });
 
-      const sourceData = await getTableDataFunc(mapping.sourceTable, 1000);
+      // Use full source data for preview so filters are evaluated on the same dataset as migration.
+      const sourceData = await loadSourceData(mapping.sourceTable);
       
       // Apply filters if configured
       let filteredSourceData = sourceData;
       if (mapping.filters && mapping.filters.length > 0) {
-        const enabledFilters = mapping.filters.filter(f => f.enabled);
+        const enabledFilters = mapping.filters.filter(f => f.enabled !== false);
         if (enabledFilters.length > 0) {
           filteredSourceData = applyFilters(sourceData, enabledFilters);
         }
@@ -3594,7 +3606,12 @@ const DataMigration: React.FC = () => {
             // Entity 1 lookup
             if (entity1Mapping && mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
               try {
-                const entity1SourceData = await loadSourceData(entity1Mapping.sourceTable, { limit: 1000 });
+                let entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
+                const entity1EnabledFilters = entity1Mapping.filters?.filter((f: any) => f.enabled) || [];
+                if (entity1EnabledFilters.length > 0) {
+                  entity1SourceData = applyFilters(entity1SourceData, entity1EnabledFilters);
+                }
+
                 const entity1TransformedData = entity1SourceData.slice(0, 100).map((srcRecord: any) => {
                   const entityTransformed: any = {};
                   entity1Mapping.fieldMappings?.forEach((fm) => {
@@ -3631,7 +3648,12 @@ const DataMigration: React.FC = () => {
             // Entity 2 lookup
             if (entity2Mapping && mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
               try {
-                const entity2SourceData = await loadSourceData(entity2Mapping.sourceTable, { limit: 1000 });
+                let entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
+                const entity2EnabledFilters = entity2Mapping.filters?.filter((f: any) => f.enabled) || [];
+                if (entity2EnabledFilters.length > 0) {
+                  entity2SourceData = applyFilters(entity2SourceData, entity2EnabledFilters);
+                }
+
                 const entity2TransformedData = entity2SourceData.slice(0, 100).map((srcRecord: any) => {
                   const entityTransformed: any = {};
                   entity2Mapping.fieldMappings?.forEach((fm) => {
@@ -4632,19 +4654,13 @@ const DataMigration: React.FC = () => {
             });
           }
 
-          // Apply filters if configured
-          // NOTE: For bridge tables, these filters only affect which BRIDGE RECORDS are processed
-          // Entity lookups use filters from their own entity mappings (not bridge filters)
+          // Apply only source-table filters configured directly on this mapping.
           let filteredData = sourceData;
           if (mapping.filters && mapping.filters.length > 0) {
-            const enabledFilters = mapping.filters.filter(f => f.enabled);
+            const enabledFilters = mapping.filters.filter(f => f.enabled !== false);
             if (enabledFilters.length > 0) {
               filteredData = applyFilters(sourceData, enabledFilters);
               log(`Applied ${enabledFilters.length} filter(s): ${sourceData.length} → ${filteredData.length} records`);
-              if (mapping.isBridge) {
-                console.log(`[Bridge Filters] Filters applied to bridge source data only (entity lookups use their own filters):`, 
-                  enabledFilters.map(f => ({ field: f.field, operator: f.operator, value: f.value })));
-              }
             }
           }
           
