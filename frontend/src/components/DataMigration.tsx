@@ -1758,21 +1758,26 @@ const DataMigration: React.FC = () => {
       }
     ];
 
+    const existingBridgeMapping = editingBridgeIndex !== null ? tableMappings[editingBridgeIndex] : undefined;
+
     const newMapping: TableMapping = {
+      ...existingBridgeMapping,
       sourceTable: selectedSourceTable,
       targetEntity: bridgeName,
-      mappings: [],
+      mappings: existingBridgeMapping?.mappings || [],
       fieldMappings: fieldMappings,
-      enabled: true,
-      primaryKeyField: 'PrimaryKey',
+      enabled: existingBridgeMapping?.enabled ?? true,
+      primaryKeyField: existingBridgeMapping?.primaryKeyField || 'PrimaryKey',
+      primaryKeyRule: existingBridgeMapping?.primaryKeyRule,
+      filters: existingBridgeMapping?.filters || [],
       isBridge: true,
       bridgeEntity1: bridgeEntity1,
       bridgeEntity1Column: bridgeEntity1Column,
-      bridgeEntity1JoinFields: bridgeEntity1JoinFields.filter(f => f.bridgeField && f.entityField), // Only save non-empty join fields
+      bridgeEntity1JoinFields: bridgeEntity1JoinFields.filter(f => f.bridgeField && f.entityField),
       bridgeEntity1UsePKRule: bridgeEntity1UsePKRule,
       bridgeEntity2: bridgeEntity2,
       bridgeEntity2Column: bridgeEntity2Column,
-      bridgeEntity2JoinFields: bridgeEntity2JoinFields.filter(f => f.bridgeField && f.entityField), // Only save non-empty join fields
+      bridgeEntity2JoinFields: bridgeEntity2JoinFields.filter(f => f.bridgeField && f.entityField),
       bridgeEntity2UsePKRule: bridgeEntity2UsePKRule,
       relationshipType: relationshipType || 'related',
     };
@@ -2050,6 +2055,7 @@ const DataMigration: React.FC = () => {
           ? (tableMappings[editingBridgeIndex]?.filters?.filter((f) => f.enabled !== false) || [])
           : [];
       if (configuredSourceFilters.length > 0) {
+        logSourceFilterDiagnostics(`Bridge dialog preview: ${selectedSourceTable}`, sourceData, configuredSourceFilters);
         sourceData = applyFilters(sourceData, configuredSourceFilters);
       }
 
@@ -2073,14 +2079,11 @@ const DataMigration: React.FC = () => {
       
       if (entity1Mappings.length > 0 && bridgeEntity1JoinFields.filter(f => f.bridgeField && f.entityField).length > 0) {
         for (const entity1Mapping of entity1Mappings) {
-          let entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
-          
-          // Apply filters if they exist
-          const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled !== false) || [];
-          if (enabledFilters.length > 0) {
-            entity1SourceData = applyFilters(entity1SourceData, enabledFilters);
-            console.log(`[Bridge Dialog Preview] Entity 1 from ${entity1Mapping.sourceTable}: after filters ${entity1SourceData.length} rows`);
-          }
+          const entity1SourceData = await loadMappingSourceData(entity1Mapping, {
+            sharedSourceTable: selectedSourceTable,
+            sharedSourceRows: sourceData,
+            logContext: 'Bridge Dialog Preview',
+          });
           
           const transformed = entity1SourceData.map((srcRecord: any) => {
             const entityTransformed: any = {};
@@ -2106,14 +2109,11 @@ const DataMigration: React.FC = () => {
       
       if (entity2Mappings.length > 0 && bridgeEntity2JoinFields.filter(f => f.bridgeField && f.entityField).length > 0) {
         for (const entity2Mapping of entity2Mappings) {
-          let entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
-          
-          // Apply filters if they exist
-          const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled !== false) || [];
-          if (enabledFilters.length > 0) {
-            entity2SourceData = applyFilters(entity2SourceData, enabledFilters);
-            console.log(`[Bridge Dialog Preview] Entity 2 from ${entity2Mapping.sourceTable}: after filters ${entity2SourceData.length} rows`);
-          }
+          const entity2SourceData = await loadMappingSourceData(entity2Mapping, {
+            sharedSourceTable: selectedSourceTable,
+            sharedSourceRows: sourceData,
+            logContext: 'Bridge Dialog Preview',
+          });
           
           const transformed = entity2SourceData.map((srcRecord: any) => {
             const entityTransformed: any = {};
@@ -2255,8 +2255,40 @@ const DataMigration: React.FC = () => {
       // Apply only source-table filters configured directly on this bridge mapping.
       const configuredSourceFilters = mapping.filters?.filter((f) => f.enabled !== false) || [];
       if (configuredSourceFilters.length > 0) {
+        logSourceFilterDiagnostics(`Bridge mapping preview: ${mapping.sourceTable}`, sourceData, configuredSourceFilters);
         sourceData = applyFilters(sourceData, configuredSourceFilters);
         console.log(`[Bridge Mapping Preview] Bridge table ${mapping.sourceTable}: after configured filters ${sourceData.length} rows`);
+
+        // Strict audit for equals/not_equals filters to verify filtered dataset integrity.
+        configuredSourceFilters.forEach((filter) => {
+          const filterColumn = String(filter.column || (filter as any).field || '').trim();
+          const normalizedExpected = String(filter.value ?? '').trim().toLowerCase();
+          const valuesAfterFilter = sourceData
+            .map((row) => String(row?.[filterColumn] ?? '').trim())
+            .filter((v) => v !== '');
+
+          const distribution = valuesAfterFilter.reduce((acc: Record<string, number>, value: string) => {
+            acc[value] = (acc[value] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+
+          if (filter.operator === 'equals') {
+            const mismatches = sourceData.filter(
+              (row) => String(row?.[filterColumn] ?? '').trim().toLowerCase() !== normalizedExpected,
+            );
+            console.log('[Bridge Mapping Preview] Post-filter equals audit:', {
+              column: filterColumn,
+              expected: filter.value,
+              filteredRowCount: sourceData.length,
+              mismatchCount: mismatches.length,
+              distribution,
+              mismatchSamples: mismatches.slice(0, 5).map((row: any) => ({
+                id: row?.id,
+                [filterColumn]: row?.[filterColumn],
+              })),
+            });
+          }
+        });
       }
       
       const entity1 = isa95Entities.find(e => e.tableName === mapping.bridgeEntity1 || e.name === mapping.bridgeEntity1);
@@ -2286,14 +2318,11 @@ const DataMigration: React.FC = () => {
       
       if (entity1Mappings.length > 0 && validJoinFields1.length > 0) {
         for (const entity1Mapping of entity1Mappings) {
-          let entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
-          
-          // Apply filters if they exist
-          const enabledFilters = entity1Mapping.filters?.filter(f => f.enabled !== false) || [];
-          if (enabledFilters.length > 0) {
-            entity1SourceData = applyFilters(entity1SourceData, enabledFilters);
-            console.log(`[Bridge Mapping Preview] Entity 1 from ${entity1Mapping.sourceTable}: after filters ${entity1SourceData.length} rows`);
-          }
+          const entity1SourceData = await loadMappingSourceData(entity1Mapping, {
+            sharedSourceTable: mapping.sourceTable,
+            sharedSourceRows: sourceData,
+            logContext: 'Bridge Mapping Preview',
+          });
           
           console.log(`[Bridge Mapping Preview] Loading Entity 1 from: ${entity1Mapping.sourceTable}, rows: ${entity1SourceData.length}`);
           
@@ -2321,14 +2350,11 @@ const DataMigration: React.FC = () => {
       
       if (entity2Mappings.length > 0 && validJoinFields2.length > 0) {
         for (const entity2Mapping of entity2Mappings) {
-          let entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
-          
-          // Apply filters if they exist
-          const enabledFilters = entity2Mapping.filters?.filter(f => f.enabled !== false) || [];
-          if (enabledFilters.length > 0) {
-            entity2SourceData = applyFilters(entity2SourceData, enabledFilters);
-            console.log(`[Bridge Mapping Preview] Entity 2 from ${entity2Mapping.sourceTable}: after filters ${entity2SourceData.length} rows`);
-          }
+          const entity2SourceData = await loadMappingSourceData(entity2Mapping, {
+            sharedSourceTable: mapping.sourceTable,
+            sharedSourceRows: sourceData,
+            logContext: 'Bridge Mapping Preview',
+          });
           
           console.log(`[Bridge Mapping Preview] Loading Entity 2 from: ${entity2Mapping.sourceTable}, rows: ${entity2SourceData.length}`);
           
@@ -2477,8 +2503,34 @@ const DataMigration: React.FC = () => {
     handleUpdateFilter(mappingIndex, filterIndex, 'enabled', enabled);
   };
 
+  const getEnabledFilters = (filters?: TableFilter[]) =>
+    filters?.filter((filter) => filter.enabled !== false) || [];
+
   const applyFilters = (data: any[], filters: TableFilter[]): any[] => {
     if (!filters || filters.length === 0) return data;
+
+    const resolveRecordValue = (record: any, columnName: string): any => {
+      if (!record || !columnName) return undefined;
+
+      // Fast path: exact key match
+      if (columnName in record) {
+        return record[columnName];
+      }
+
+      // Compatibility path: case-insensitive / whitespace-tolerant key match
+      const normalizedTarget = columnName.trim().toLowerCase();
+      const matchedKey = Object.keys(record).find(
+        (key) => key.trim().toLowerCase() === normalizedTarget,
+      );
+      return matchedKey ? record[matchedKey] : undefined;
+    };
+
+    const normalizeComparable = (value: any): any => {
+      if (typeof value === 'string') {
+        return value.trim().toLowerCase();
+      }
+      return value;
+    };
 
     const parseDateValue = (raw: any): number | null => {
       if (raw === null || raw === undefined || raw === '') return null;
@@ -2490,14 +2542,20 @@ const DataMigration: React.FC = () => {
       return filters.every(filter => {
         if (filter.enabled === false) return true;
 
-        const filterColumn = filter.column || (filter as any).field;
-        const value = record[filterColumn];
+        const filterColumn = String(filter.column || (filter as any).field || '').trim();
+        const value = resolveRecordValue(record, filterColumn);
         const filterValue = filter.value;
 
         switch (filter.operator) {
           case 'equals':
+            if (typeof value === 'string' || typeof filterValue === 'string') {
+              return normalizeComparable(value) === normalizeComparable(filterValue);
+            }
             return value == filterValue;
           case 'not_equals':
+            if (typeof value === 'string' || typeof filterValue === 'string') {
+              return normalizeComparable(value) !== normalizeComparable(filterValue);
+            }
             return value != filterValue;
           case 'contains':
             return String(value).toLowerCase().includes(String(filterValue).toLowerCase());
@@ -2540,6 +2598,80 @@ const DataMigration: React.FC = () => {
         }
       });
     });
+  };
+
+  const logSourceFilterDiagnostics = (context: string, data: any[], filters: TableFilter[]) => {
+    if (!filters.length) return;
+
+    const diagnostics = filters.map((filter) => {
+      const filterColumn = String(filter.column || (filter as any).field || '').trim();
+      const distinctValues = Array.from(
+        new Set(
+          data
+            .map((record) => {
+              const exactValue = record?.[filterColumn];
+              if (exactValue !== undefined) return exactValue;
+
+              const normalizedTarget = filterColumn.toLowerCase();
+              const matchedKey = Object.keys(record || {}).find(
+                (key) => key.trim().toLowerCase() === normalizedTarget,
+              );
+              return matchedKey ? record[matchedKey] : undefined;
+            })
+            .filter((value) => value !== undefined),
+        ),
+      ).slice(0, 10);
+
+      return {
+        column: filterColumn,
+        operator: filter.operator,
+        value: filter.value,
+        enabled: filter.enabled,
+        distinctValues,
+      };
+    });
+
+    console.log(`[Source Filter Diagnostics] ${context}`, {
+      rowCount: data.length,
+      filters: diagnostics,
+      sampleRow: data[0],
+    });
+  };
+
+  const loadMappingSourceData = async (
+    relatedMapping: any,
+    options?: {
+      sharedSourceTable?: string;
+      sharedSourceRows?: any[];
+      logContext?: string;
+    },
+  ): Promise<any[]> => {
+    const useSharedSourceRows =
+      !!options?.sharedSourceRows &&
+      !!options.sharedSourceTable &&
+      relatedMapping.sourceTable === options.sharedSourceTable;
+
+    let rows = useSharedSourceRows
+      ? options!.sharedSourceRows!
+      : await loadSourceData(relatedMapping.sourceTable);
+
+    if (useSharedSourceRows && options?.logContext) {
+      console.log(
+        `[${options.logContext}] Reusing bridge-filtered rows for ${relatedMapping.sourceTable}: ${rows.length}`,
+      );
+    }
+
+    const enabledFilters = getEnabledFilters(relatedMapping.filters);
+    if (enabledFilters.length > 0) {
+      rows = applyFilters(rows, enabledFilters);
+      if (options?.logContext) {
+        console.log(
+          `[${options.logContext}] ${relatedMapping.sourceTable}: after filters ${rows.length} rows`,
+        );
+      }
+    }
+
+    return rows;
   };
 
   const handleUpdateMapping = (mappingIndex: number, columnIndex: number, field: keyof ColumnMapping, value: string) => {
@@ -3606,11 +3738,10 @@ const DataMigration: React.FC = () => {
             // Entity 1 lookup
             if (entity1Mapping && mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
               try {
-                let entity1SourceData = await loadSourceData(entity1Mapping.sourceTable);
-                const entity1EnabledFilters = entity1Mapping.filters?.filter((f: any) => f.enabled) || [];
-                if (entity1EnabledFilters.length > 0) {
-                  entity1SourceData = applyFilters(entity1SourceData, entity1EnabledFilters);
-                }
+                const entity1SourceData = await loadMappingSourceData(entity1Mapping, {
+                  sharedSourceTable: mapping.sourceTable,
+                  sharedSourceRows: filteredSourceData,
+                });
 
                 const entity1TransformedData = entity1SourceData.slice(0, 100).map((srcRecord: any) => {
                   const entityTransformed: any = {};
@@ -3648,11 +3779,10 @@ const DataMigration: React.FC = () => {
             // Entity 2 lookup
             if (entity2Mapping && mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
               try {
-                let entity2SourceData = await loadSourceData(entity2Mapping.sourceTable);
-                const entity2EnabledFilters = entity2Mapping.filters?.filter((f: any) => f.enabled) || [];
-                if (entity2EnabledFilters.length > 0) {
-                  entity2SourceData = applyFilters(entity2SourceData, entity2EnabledFilters);
-                }
+                const entity2SourceData = await loadMappingSourceData(entity2Mapping, {
+                  sharedSourceTable: mapping.sourceTable,
+                  sharedSourceRows: filteredSourceData,
+                });
 
                 const entity2TransformedData = entity2SourceData.slice(0, 100).map((srcRecord: any) => {
                   const entityTransformed: any = {};
@@ -4458,8 +4588,15 @@ const DataMigration: React.FC = () => {
 
       // Helper function to load and transform entity data with caching
       // Handles MULTIPLE mappings for same target entity (e.g., equipment + equipment_child -> Equipment)
-      const getTransformedEntityData = async (targetEntity: string): Promise<any[]> => {
-        const combinedCacheKey = `COMBINED_${targetEntity}`;
+      const getTransformedEntityData = async (
+        targetEntity: string,
+        options?: {
+          sharedSourceTable?: string;
+          sharedSourceRows?: any[];
+          cacheKeySuffix?: string;
+        },
+      ): Promise<any[]> => {
+        const combinedCacheKey = `COMBINED_${targetEntity}_${options?.cacheKeySuffix || 'default'}`;
         
         if (entityDataCache.has(combinedCacheKey)) {
           console.log(`[Cache Hit] Using cached combined data for ${targetEntity}`);
@@ -4483,17 +4620,11 @@ const DataMigration: React.FC = () => {
         const allTransformedData: any[] = [];
         
         for (const entityMapping of entityMappings) {
-          let entitySourceData = await loadSourceData(entityMapping.sourceTable);
-          
-          // CRITICAL: Apply filters from entity mapping to match filtered entity data
-          if (entityMapping.filters && entityMapping.filters.length > 0) {
-            const enabledFilters = entityMapping.filters.filter((f: any) => f.enabled);
-            if (enabledFilters.length > 0) {
-              const originalCount = entitySourceData.length;
-              entitySourceData = applyFilters(entitySourceData, enabledFilters);
-              console.log(`[Bridge Entity Filters] ${entityMapping.sourceTable}->${targetEntity}: Applied ${enabledFilters.length} filter(s): ${originalCount} → ${entitySourceData.length} records`);
-            }
-          }
+          const entitySourceData = await loadMappingSourceData(entityMapping, {
+            sharedSourceTable: options?.sharedSourceTable,
+            sharedSourceRows: options?.sharedSourceRows,
+            logContext: 'Bridge Entity Filters',
+          });
           
           // Apply field mappings to get transformed entity data
           const entityTransformedData = entitySourceData.map((srcRecord: any) => {
@@ -4659,6 +4790,7 @@ const DataMigration: React.FC = () => {
           if (mapping.filters && mapping.filters.length > 0) {
             const enabledFilters = mapping.filters.filter(f => f.enabled !== false);
             if (enabledFilters.length > 0) {
+              logSourceFilterDiagnostics(`Migration execution: ${mapping.sourceTable}`, sourceData, enabledFilters);
               filteredData = applyFilters(sourceData, enabledFilters);
               log(`Applied ${enabledFilters.length} filter(s): ${sourceData.length} → ${filteredData.length} records`);
             }
@@ -4797,7 +4929,11 @@ const DataMigration: React.FC = () => {
               if (mapping.bridgeEntity1JoinFields && mapping.bridgeEntity1JoinFields.length > 0) {
                 try {
                   // Get cached/transformed entity1 data (combines ALL mappings for this entity)
-                  const entity1TransformedData = await getTransformedEntityData(mapping.bridgeEntity1);
+                  const entity1TransformedData = await getTransformedEntityData(mapping.bridgeEntity1, {
+                    sharedSourceTable: mapping.sourceTable,
+                    sharedSourceRows: filteredData,
+                    cacheKeySuffix: `${mapping.sourceTable}:${JSON.stringify(mapping.filters || [])}`,
+                  });
                   
                   // Get or create indexed lookup for fast joins
                   const entity1IndexKey = `${mapping.bridgeEntity1}_index`;
@@ -4855,7 +4991,11 @@ const DataMigration: React.FC = () => {
               if (mapping.bridgeEntity2JoinFields && mapping.bridgeEntity2JoinFields.length > 0) {
                 try {
                   // Get cached/transformed entity2 data (combines ALL mappings for this entity)
-                  const entity2TransformedData = await getTransformedEntityData(mapping.bridgeEntity2);
+                  const entity2TransformedData = await getTransformedEntityData(mapping.bridgeEntity2, {
+                    sharedSourceTable: mapping.sourceTable,
+                    sharedSourceRows: filteredData,
+                    cacheKeySuffix: `${mapping.sourceTable}:${JSON.stringify(mapping.filters || [])}`,
+                  });
                   
                   // Get or create indexed lookup for fast joins
                   const entity2IndexKey = `${mapping.bridgeEntity2}_index`;

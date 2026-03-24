@@ -482,6 +482,24 @@ const ProcessDataGenerator: React.FC = () => {
       return normalized || 'UNKNOWN';
     };
 
+    const createPrefixedUuid = (prefix: 'OER' | 'OEE'): string => `${prefix}-${crypto.randomUUID()}`;
+
+    const createUniqueRecordId = (records: OperationsEventRecord[]): string => {
+      let candidate = createPrefixedUuid('OER');
+      while (records.some((record) => record.id === candidate)) {
+        candidate = createPrefixedUuid('OER');
+      }
+      return candidate;
+    };
+
+    const createUniqueEntryId = (entries: OperationsEventEntry[]): string => {
+      let candidate = createPrefixedUuid('OEE');
+      while (entries.some((entry) => entry.id === candidate)) {
+        candidate = createPrefixedUuid('OEE');
+      }
+      return candidate;
+    };
+
     const appendRelatedOperationsEventArtifacts = ({
       opsEvent,
       eventDef,
@@ -527,23 +545,24 @@ const ProcessDataGenerator: React.FC = () => {
         entryOffsetMinutes: number;
       }) => {
         const artifactKey = sanitizeOperationsEventArtifactKey(key);
-        const preferredId = (key || '').toString().trim() || artifactKey;
 
         if (dedupeByEntityId) {
-          const hasRecord = generatedOperationsEventRecords.some((record) => record.id === preferredId);
-          const hasEntry = generatedOperationsEventEntries.some((entry) => entry.id === preferredId);
+          const hasRecord = generatedOperationsEventRecords.some((record) =>
+            record.operationsEventId === opsEvent.id &&
+            record.segmentResponseId === segmentResponseId &&
+            record.equipmentId === equipmentId,
+          );
+          const hasEntry = generatedOperationsEventEntries.some((entry) =>
+            entry.segmentResponseId === segmentResponseId &&
+            entry.equipmentId === equipmentId &&
+            entry.informationObjectType === (scope === 'SEG' ? 'SegmentResponse' : 'Equipment'),
+          );
           if (hasRecord || hasEntry) {
             return;
           }
         }
 
-        let recordId = preferredId;
-        let duplicateIndex = 2;
-
-        while (generatedOperationsEventRecords.some((record) => record.id === recordId)) {
-          recordId = `${preferredId}-${String(duplicateIndex).padStart(2, '0')}`;
-          duplicateIndex += 1;
-        }
+        const recordId = createUniqueRecordId(generatedOperationsEventRecords);
 
         const entryTimestamp = new Date(effectiveTime.replace(' ', 'T') + 'Z');
         entryTimestamp.setUTCMinutes(entryTimestamp.getUTCMinutes() + entryOffsetMinutes);
@@ -561,13 +580,7 @@ const ProcessDataGenerator: React.FC = () => {
           eventType: opsEvent.eventType || 'Alarm',
         });
 
-        let entryId = preferredId;
-        let entryDuplicateIndex = 2;
-
-        while (generatedOperationsEventEntries.some((entry) => entry.id === entryId)) {
-          entryId = `${preferredId}-${String(entryDuplicateIndex).padStart(2, '0')}`;
-          entryDuplicateIndex += 1;
-        }
+        const entryId = createUniqueEntryId(generatedOperationsEventEntries);
 
         generatedOperationsEventEntries.push({
           id: entryId,
@@ -1389,7 +1402,7 @@ const ProcessDataGenerator: React.FC = () => {
         const relatedEquipmentActuals = generatedEqActuals.filter(ea => ea.segmentResponseId === opsEvent.segmentResponseId);
         
         // Create an operations event record for each event
-        const recordId = `OER-${opsEvent.id.replace('OPS-EVENT-', '')}`;
+        const recordId = createUniqueRecordId(generatedOperationsEventRecords);
         const operationsEventRecord: OperationsEventRecord = {
           id: recordId,
           operationsEventId: opsEvent.id,
@@ -1420,7 +1433,7 @@ const ProcessDataGenerator: React.FC = () => {
           for (let i = 0; i < entryTemplates.length; i++) {
             const template = entryTemplates[i];
             entryCount++;
-            const entryId = `OEE-${recordId.replace('OER-', '')}-${String(entryCount).padStart(2, '0')}`;
+            const entryId = createUniqueEntryId(generatedOperationsEventEntries);
             
             // Add a few minutes to the event time for each entry
             const eventTime = new Date(opsEvent.effectiveTimestamp.replace(' ', 'T') + 'Z');
@@ -1442,7 +1455,7 @@ const ProcessDataGenerator: React.FC = () => {
         
         // If no templates found, create a default entry
         if (entryCount === 0) {
-          const entryId = `OEE-${recordId.replace('OER-', '')}-01`;
+          const entryId = createUniqueEntryId(generatedOperationsEventEntries);
           const eventTime = new Date(opsEvent.effectiveTimestamp.replace(' ', 'T') + 'Z');
           const entryTime = new Date(eventTime.getTime() + 5 * 60000);
           
@@ -2279,7 +2292,7 @@ const ProcessDataGenerator: React.FC = () => {
           };
           generatedMaintenanceOperationsEvents.push(opsEvent);
 
-          const recordId = `OER-${opsEvent.id.replace('OPS-EVENT-', '')}`;
+          const recordId = createUniqueRecordId(generatedMaintenanceOperationsEventRecords);
           generatedMaintenanceOperationsEventRecords.push({
             id: recordId,
             operationsEventId: opsEvent.id,
@@ -2307,7 +2320,7 @@ const ProcessDataGenerator: React.FC = () => {
               entryCount += 1;
               const entryTime = new Date(eventTime.getTime() + entryCount * 5 * 60000);
               generatedMaintenanceOperationsEventEntries.push({
-                id: `OEE-${recordId.replace('OER-', '')}-${String(entryCount).padStart(2, '0')}`,
+                id: createUniqueEntryId(generatedMaintenanceOperationsEventEntries),
                 operationsEventRecordId: recordId,
                 entryType: entryTemplate.EntryType || 'Maintenance',
                 description: entryTemplate.Description || `Entry for ${eventDef?.eventCode || 'maintenance event'}`,
@@ -2321,7 +2334,7 @@ const ProcessDataGenerator: React.FC = () => {
 
           if (entryCount === 0) {
             generatedMaintenanceOperationsEventEntries.push({
-              id: `OEE-${recordId.replace('OER-', '')}-01`,
+              id: createUniqueEntryId(generatedMaintenanceOperationsEventEntries),
               operationsEventRecordId: recordId,
               entryType: 'Maintenance',
               description: `Entry for ${eventDef?.eventCode || 'maintenance event'}`,
@@ -2707,7 +2720,7 @@ const ProcessDataGenerator: React.FC = () => {
         };
         genOpsEvents.push(newOpsEvent);
 
-        const recordId = `OER-${newOpsEvent.id.replace('OPS-EVENT-', '')}`;
+        const recordId = createUniqueRecordId(genOpsEventRecords);
         genOpsEventRecords.push({
           id: recordId,
           operationsEventId: newOpsEvent.id,
@@ -2733,7 +2746,7 @@ const ProcessDataGenerator: React.FC = () => {
             entryCount += 1;
             const entryTime = new Date(eventTime.getTime() + entryCount * 5 * 60000);
             genOpsEventEntries.push({
-              id: `OEE-${recordId.replace('OER-', '')}-${String(entryCount).padStart(2, '0')}`,
+              id: createUniqueEntryId(genOpsEventEntries),
               operationsEventRecordId: recordId,
               entryType: entryTemplate.EntryType || 'Maintenance',
               description: entryTemplate.Description || `Entry for ${eventDef?.eventCode || 'unplanned maintenance event'}`,
@@ -2746,7 +2759,7 @@ const ProcessDataGenerator: React.FC = () => {
         }
         if (entryCount === 0) {
           genOpsEventEntries.push({
-            id: `OEE-${recordId.replace('OER-', '')}-01`,
+            id: createUniqueEntryId(genOpsEventEntries),
             operationsEventRecordId: recordId,
             entryType: 'Maintenance',
             description: `Entry for ${eventDef?.eventCode || 'unplanned maintenance event'}`,
@@ -4077,7 +4090,7 @@ const ProcessDataGenerator: React.FC = () => {
           operationsType: 'Production',
         });
 
-        const recordId = `OER-${eventId.replace('OPS-EVENT-', '')}`;
+        const recordId = createUniqueRecordId(generatedOperationsEventRecords);
         generatedOperationsEventRecords.push({
           id: recordId,
           operationsEventId: eventId,
@@ -4092,7 +4105,7 @@ const ProcessDataGenerator: React.FC = () => {
         });
 
         generatedOperationsEventEntries.push({
-          id: `OEE-${recordId.replace('OER-', '')}-01`,
+          id: createUniqueEntryId(generatedOperationsEventEntries),
           operationsEventRecordId: recordId,
           entryType: 'Production',
           description: `Entry for ${eventId}`,
