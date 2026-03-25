@@ -25,6 +25,7 @@ namespace ISA95DataGenerator.Infrastructure.Services;
 /// </summary>
 public class MigrationProcessorV2Service
 {
+    private const string GenericRowIdField = "__GenericDataStoreRowId";
     private readonly MigrationDbContext _dbContext;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MigrationProcessorV2Service> _logger;
@@ -202,6 +203,7 @@ public class MigrationProcessorV2Service
     public async Task ExecuteAsync(
         Guid sessionId,
         List<TableMappingDto> mappings,
+        string? loadMode = "delta",
         int? maxFileSizeMb = null,
         bool separateMasterProcessFiles = false,
         bool sourceIncludeTimestampSuffix = false,
@@ -241,8 +243,16 @@ public class MigrationProcessorV2Service
 
             Log("Starting backend migration execution...");
 
+            var normalizedLoadMode = string.Equals(loadMode, "full", StringComparison.OrdinalIgnoreCase)
+                ? "full"
+                : "delta";
+
+            Log($"Load mode: {normalizedLoadMode} (backend-managed)");
+
             // 1. Initialize lazy source-store provider (loads stores only when requested)
-            var sourceStoreProvider = new SourceStoreProvider(this, sessionId);
+            var sourceStoreProvider = new SourceStoreProvider(this, sessionId, normalizedLoadMode);
+
+            var migratedGenericRowIds = new HashSet<long>();
 
             // 2. Sort mappings: non-bridge first (smallest first), bridge last
             var enabledMappings = mappings.Where(m => m.Enabled).ToList();
@@ -381,24 +391,25 @@ public class MigrationProcessorV2Service
                             streamTargetDir,
                             maxFileSizeBytes,
                             Log,
-                            async (currentFilteredCount) =>
+                            async (currentSourceRowCount) =>
                             {
                                 if ((DateTime.UtcNow - lastPeriodicSessionSaveAt).TotalSeconds < MINIMAL_PERSISTENCE_SAVE_SECONDS)
                                     return;
 
-                                session.ProcessedRecords = processedTotal + currentFilteredCount;
+                                session.ProcessedRecords = processedTotal + currentSourceRowCount;
                                 session.ProgressPercentage = totalRecords > 0
-                                    ? (int)(((processedTotal + currentFilteredCount) * 100.0) / totalRecords)
+                                    ? (int)(((processedTotal + currentSourceRowCount) * 100.0) / totalRecords)
                                     : 0;
 
                                 if (minimalPersistenceMode)
-                                    Log($"  Heartbeat: processed {currentFilteredCount} source rows for {mapping.TargetEntity}");
+                                    Log($"  Heartbeat: scanned {currentSourceRowCount} source rows for {mapping.TargetEntity}");
 
                                 await SaveSession(session, logMessages, ct);
                                 lastPeriodicSessionSaveAt = DateTime.UtcNow;
                             },
                             streamCacheFields,
                             streamCacheTarget,
+                            migratedGenericRowIds,
                             ct);
 
                         outputFiles.AddRange(streamResult.Files);
@@ -422,7 +433,7 @@ public class MigrationProcessorV2Service
                         if (streamCacheFields != null)
                             Log($"  Cached {streamCacheFields.Count} fields for bridge lookups");
 
-                        processedTotal += streamResult.FilteredSourceCount;
+                        processedTotal += streamResult.SourceRowsRead;
                         session.ProcessedRecords = processedTotal;
                         session.ProgressPercentage = totalRecords > 0
                             ? (int)((processedTotal * 100.0) / totalRecords)
@@ -458,6 +469,8 @@ public class MigrationProcessorV2Service
                     if (filteredData.Count != sourceData.Count)
                         Log($"  Filtered: {sourceData.Count} → {filteredData.Count} records");
 
+                    CollectMigratedGenericRowIds(filteredData, migratedGenericRowIds);
+
                     var entityOutputName = FormatEntityNameForOutput(mapping.TargetEntity);
                     var targetDir = mapping.IsBridge
                         ? mappingSubDir
@@ -488,7 +501,7 @@ public class MigrationProcessorV2Service
                     summary.ExportedRows += recordCount;
                     summary.FileCount += written.Count;
 
-                    processedTotal += filteredData.Count;
+                    processedTotal += sourceData.Count;
                     session.ProcessedRecords = processedTotal;
                     session.ProgressPercentage = totalRecords > 0
                         ? (int)((processedTotal * 100.0) / totalRecords)
@@ -516,11 +529,69 @@ public class MigrationProcessorV2Service
             entityDataCache.Clear();
             sourceStoreProvider.Clear();
 
+            session.Status = "Finalizing";
+            Log("Finalizing migration outputs...");
+            session.ProcessedRecords = totalRecords;
+            session.ProgressPercentage = totalRecords > 0 ? 99 : 100;
+            await SaveSession(session, logMessages, ct);
+
+            var includedGenericStoreNames = sortedMappings
+                .Select(m => m.SourceTable)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(sourceTable => GenericStoreMap.TryGetValue(sourceTable, out var storeName) ? storeName : null)
+                .Where(storeName => !string.IsNullOrWhiteSpace(storeName))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Cast<string>()
+                .ToList();
+
+            if (string.Equals(normalizedLoadMode, "full", StringComparison.OrdinalIgnoreCase) && includedGenericStoreNames.Count > 0)
+            {
+                Log($"Stamping LastDataMigrationAt for full load using one set-based update across {includedGenericStoreNames.Count} included store(s)...");
+                await SaveSession(session, logMessages, ct);
+
+                var stamped = await StampLastDataMigrationAtForFullLoadAsync(
+                    includedGenericStoreNames,
+                    DateTime.UtcNow,
+                    ct);
+
+                Log($"Stamped LastDataMigrationAt for {stamped} GenericDataStores row(s) in full-load mode");
+                await SaveSession(session, logMessages, ct);
+            }
+            else if (migratedGenericRowIds.Count > 0)
+            {
+                Log($"Stamping LastDataMigrationAt for {migratedGenericRowIds.Count} GenericDataStores row(s)...");
+                await SaveSession(session, logMessages, ct);
+                var stamped = await StampLastDataMigrationAtAsync(
+                    migratedGenericRowIds,
+                    DateTime.UtcNow,
+                    async (batchNumber, totalBatches) =>
+                    {
+                        // Keep finalization progress visible without flooding writes.
+                        if (batchNumber == 1 || batchNumber % 25 == 0 || batchNumber == totalBatches)
+                        {
+                            Log($"  ... stamping progress: batch {batchNumber}/{totalBatches}");
+                            session.ProgressPercentage = totalRecords > 0 ? 99 : 100;
+                            await SaveSession(session, logMessages, ct);
+                        }
+                    },
+                    ct);
+                Log($"Stamped LastDataMigrationAt for {stamped} GenericDataStores row(s)");
+                await SaveSession(session, logMessages, ct);
+            }
+            else
+            {
+                Log("No GenericDataStores rows required LastDataMigrationAt stamping");
+                await SaveSession(session, logMessages, ct);
+            }
+
             // 6. Create ZIP
+            Log("Creating ZIP archive...");
+            await SaveSession(session, logMessages, ct);
             var zipFileName = $"migration_{sessionId:N}_{DateTime.UtcNow:yyyyMMddHHmmss}.zip";
             var zipFilePath = Path.Combine(outputPath, zipFileName);
             ZipFile.CreateFromDirectory(sessionOutputDir, zipFilePath);
             outputFiles.Insert(0, zipFilePath); // ZIP first
+            Log($"ZIP archive created: {Path.GetFileName(zipFilePath)}");
 
             // 7. Update session
             session.Status = failCount > 0 ? "CompletedWithErrors" : "Completed";
@@ -721,7 +792,7 @@ public class MigrationProcessorV2Service
         _ => el.GetRawText() // arrays, objects → keep as string for now
     };
 
-    private async Task<int> GetStoreRecordCountAsync(Guid sessionId, string sourceTable, CancellationToken ct)
+    private async Task<int> GetStoreRecordCountAsync(Guid sessionId, string sourceTable, string loadMode, CancellationToken ct)
     {
         var uploadedRows = await _dbContext.Set<MigrationSourceData>()
             .AsNoTracking()
@@ -736,10 +807,17 @@ public class MigrationProcessorV2Service
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return 0;
 
-        var genericCount = await _dbContext.GenericDataStores
+        var genericQuery = _dbContext.GenericDataStores
             .AsNoTracking()
-            .Where(r => r.StoreName == genericStoreName)
-            .CountAsync(ct);
+            .Where(r => r.StoreName == genericStoreName);
+
+        if (string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase) &&
+            ProcessSourceTables.Contains(sourceTable))
+        {
+            genericQuery = genericQuery.Where(r => !r.LastDataMigrationAt.HasValue || r.UpdatedAt > r.LastDataMigrationAt.Value);
+        }
+
+        var genericCount = await genericQuery.CountAsync(ct);
 
         if (genericCount > 0)
             return genericCount;
@@ -779,7 +857,7 @@ public class MigrationProcessorV2Service
         }
     }
 
-    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, CancellationToken ct)
+    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, string loadMode, CancellationToken ct)
     {
         var result = new List<Dictionary<string, object?>>();
 
@@ -845,7 +923,12 @@ public class MigrationProcessorV2Service
             var qualifiedTable = string.IsNullOrEmpty(schema)
                 ? $"\"{tableName}\""
                 : $"\"{schema}\".\"{tableName}\"";
-            cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+            var isDeltaProcessStore = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase) &&
+                ProcessSourceTables.Contains(sourceTable);
+
+            cmd.CommandText = isDeltaProcessStore
+                ? $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName AND (\"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\") ORDER BY \"Id\""
+                : $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
 
             using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
 
@@ -853,12 +936,14 @@ public class MigrationProcessorV2Service
             {
                 try
                 {
-                    var rowJson = reader.GetString(0);
+                    var genericRowId = reader.GetInt64(0);
+                    var rowJson = reader.GetString(1);
                     var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rowJson);
                     if (doc == null) continue;
                     var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
                     foreach (var kv in doc)
                         dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    dict[GenericRowIdField] = genericRowId;
                     result.Add(dict);
                 }
                 catch
@@ -968,6 +1053,7 @@ public class MigrationProcessorV2Service
     private async IAsyncEnumerable<Dictionary<string, object?>> StreamStoreDataAsync(
         Guid sessionId,
         string sourceTable,
+        string loadMode,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var uploadedStores = _dbContext.Set<MigrationSourceData>()
@@ -1042,13 +1128,19 @@ public class MigrationProcessorV2Service
                 var qualifiedTable = string.IsNullOrEmpty(schema)
                     ? $"\"{tableName}\""
                     : $"\"{schema}\".\"{tableName}\"";
-                cmd.CommandText = $"SELECT \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
+                var isDeltaProcessStore = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase) &&
+                    ProcessSourceTables.Contains(sourceTable);
+
+                cmd.CommandText = isDeltaProcessStore
+                    ? $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName AND (\"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\") ORDER BY \"Id\""
+                    : $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
 
                 using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
 
                 while (await reader.ReadAsync(ct))
                 {
-                    var rowJson = reader.GetString(0);
+                    var genericRowId = reader.GetInt64(0);
+                    var rowJson = reader.GetString(1);
 
                     Dictionary<string, JsonElement>? doc;
                     try
@@ -1066,6 +1158,7 @@ public class MigrationProcessorV2Service
                     var dict = new Dictionary<string, object?>(doc.Count, StringComparer.OrdinalIgnoreCase);
                     foreach (var kv in doc)
                         dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    dict[GenericRowIdField] = genericRowId;
                     AddComputedFieldsForRecord(sourceTable, dict);
                     yield return dict;
                 }
@@ -1096,13 +1189,15 @@ public class MigrationProcessorV2Service
     {
         private readonly MigrationProcessorV2Service _owner;
         private readonly Guid _sessionId;
+        private readonly string _loadMode;
         private readonly Dictionary<string, List<Dictionary<string, object?>>> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> _countCache = new(StringComparer.OrdinalIgnoreCase);
 
-        public SourceStoreProvider(MigrationProcessorV2Service owner, Guid sessionId)
+        public SourceStoreProvider(MigrationProcessorV2Service owner, Guid sessionId, string loadMode)
         {
             _owner = owner;
             _sessionId = sessionId;
+            _loadMode = loadMode;
         }
 
         public async Task<int> GetStoreCountAsync(string sourceTable, CancellationToken ct)
@@ -1110,7 +1205,7 @@ public class MigrationProcessorV2Service
             if (_countCache.TryGetValue(sourceTable, out var count))
                 return count;
 
-            count = await _owner.GetStoreRecordCountAsync(_sessionId, sourceTable, ct);
+            count = await _owner.GetStoreRecordCountAsync(_sessionId, sourceTable, _loadMode, ct);
             _countCache[sourceTable] = count;
             return count;
         }
@@ -1120,7 +1215,7 @@ public class MigrationProcessorV2Service
             if (_cache.TryGetValue(sourceTable, out var cached))
                 return cached;
 
-            var loaded = await _owner.LoadStoreDataAsync(_sessionId, sourceTable, ct);
+            var loaded = await _owner.LoadStoreDataAsync(_sessionId, sourceTable, _loadMode, ct);
             _cache[sourceTable] = loaded;
             _countCache[sourceTable] = loaded.Count;
             return loaded;
@@ -1128,7 +1223,7 @@ public class MigrationProcessorV2Service
 
         public IAsyncEnumerable<Dictionary<string, object?>> StreamStoreAsync(string sourceTable, CancellationToken ct)
         {
-            return _owner.StreamStoreDataAsync(_sessionId, sourceTable, ct);
+            return _owner.StreamStoreDataAsync(_sessionId, sourceTable, _loadMode, ct);
         }
 
         public void ReleaseStore(string sourceTable)
@@ -1243,6 +1338,78 @@ public class MigrationProcessorV2Service
         }
 
         return true;
+    }
+
+    private static void CollectMigratedGenericRowIds(IEnumerable<Dictionary<string, object?>> records, HashSet<long> migratedGenericRowIds)
+    {
+        foreach (var record in records)
+            CollectMigratedGenericRowIds(record, migratedGenericRowIds);
+    }
+
+    private static void CollectMigratedGenericRowIds(Dictionary<string, object?> record, HashSet<long> migratedGenericRowIds)
+    {
+        if (!record.TryGetValue(GenericRowIdField, out var raw) || raw == null)
+            return;
+
+        if (raw is long id)
+        {
+            migratedGenericRowIds.Add(id);
+            return;
+        }
+
+        if (long.TryParse(raw.ToString(), out var parsed))
+            migratedGenericRowIds.Add(parsed);
+    }
+
+    private async Task<int> StampLastDataMigrationAtAsync(
+        HashSet<long> rowIds,
+        DateTime stampTimeUtc,
+        Func<int, int, Task>? progressAsync,
+        CancellationToken ct)
+    {
+        if (rowIds.Count == 0) return 0;
+
+        const int batchSize = 1000;
+        var idList = rowIds.ToList();
+        var totalUpdated = 0;
+        var totalBatches = (int)Math.Ceiling(idList.Count / (double)batchSize);
+
+        for (var i = 0; i < idList.Count; i += batchSize)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var batch = idList.Skip(i).Take(batchSize).ToList();
+            var updatedInBatch = await _dbContext.GenericDataStores
+                .Where(g => batch.Contains(g.Id))
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(g => g.LastDataMigrationAt, stampTimeUtc),
+                    ct);
+
+            totalUpdated += updatedInBatch;
+
+            if (progressAsync != null)
+            {
+                var batchNumber = (i / batchSize) + 1;
+                await progressAsync(batchNumber, totalBatches);
+            }
+        }
+
+        return totalUpdated;
+    }
+
+    private Task<int> StampLastDataMigrationAtForFullLoadAsync(
+        IReadOnlyCollection<string> includedGenericStoreNames,
+        DateTime stampTimeUtc,
+        CancellationToken ct)
+    {
+        if (includedGenericStoreNames.Count == 0)
+            return Task.FromResult(0);
+
+        return _dbContext.GenericDataStores
+            .Where(g => includedGenericStoreNames.Contains(g.StoreName))
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(g => g.LastDataMigrationAt, stampTimeUtc),
+                ct);
     }
 
     // ────────────────────────────────────────────
@@ -1421,7 +1588,7 @@ public class MigrationProcessorV2Service
         return (files, totalRecords);
     }
 
-    private async Task<(List<string> Files, int RecordCount, int FilteredSourceCount)> StreamRegularMappingByStoreToCsvAsync(
+    private async Task<(List<string> Files, int RecordCount, int FilteredSourceCount, int SourceRowsRead)> StreamRegularMappingByStoreToCsvAsync(
         TableMappingDto mapping,
         SourceStoreProvider sourceStoreProvider,
         string entityDisplayName,
@@ -1431,6 +1598,7 @@ public class MigrationProcessorV2Service
         Func<int, Task>? onProgressAsync,
         HashSet<string>? bridgeCacheFields,
         List<Dictionary<string, object?>>? bridgeCacheTarget,
+        HashSet<long> migratedGenericRowIds,
         CancellationToken ct)
     {
         var lookupTables = await PreLoadLookupTablesAsync(mapping, sourceStoreProvider, ct);
@@ -1453,6 +1621,7 @@ public class MigrationProcessorV2Service
         int pkSequenceCounter = GetSequenceStart(mapping.PrimaryKeyRule);
         int totalRecords = 0;
         int filteredSourceCount = 0;
+        int sourceRowsRead = 0;
         var startedAt = DateTime.UtcNow;
         var lastProgressSaveAt = DateTime.UtcNow;
 
@@ -1471,8 +1640,22 @@ public class MigrationProcessorV2Service
         {
             await foreach (var record in sourceStoreProvider.StreamStoreAsync(mapping.SourceTable, ct))
             {
+                sourceRowsRead++;
+
                 if (enabledFilters.Count > 0 && !MatchesFilters(record, enabledFilters))
+                {
+                    if (onProgressAsync != null &&
+                        (sourceRowsRead % SESSION_PROGRESS_SAVE_INTERVAL == 0 ||
+                         (DateTime.UtcNow - lastProgressSaveAt).TotalSeconds >= SESSION_PROGRESS_SAVE_SECONDS))
+                    {
+                        await onProgressAsync(sourceRowsRead);
+                        lastProgressSaveAt = DateTime.UtcNow;
+                    }
+
                     continue;
+                }
+
+                CollectMigratedGenericRowIds(record, migratedGenericRowIds);
 
                 filteredSourceCount++;
 
@@ -1565,10 +1748,10 @@ public class MigrationProcessorV2Service
                 }
 
                 if (onProgressAsync != null &&
-                    (filteredSourceCount % SESSION_PROGRESS_SAVE_INTERVAL == 0 ||
+                    (sourceRowsRead % SESSION_PROGRESS_SAVE_INTERVAL == 0 ||
                      (DateTime.UtcNow - lastProgressSaveAt).TotalSeconds >= SESSION_PROGRESS_SAVE_SECONDS))
                 {
-                    await onProgressAsync(filteredSourceCount);
+                    await onProgressAsync(sourceRowsRead);
                     lastProgressSaveAt = DateTime.UtcNow;
                 }
 
@@ -1582,7 +1765,7 @@ public class MigrationProcessorV2Service
             await writer.DisposeAsync();
         }
 
-        return (files, totalRecords, filteredSourceCount);
+        return (files, totalRecords, filteredSourceCount, sourceRowsRead);
     }
 
     // ────────────────────────────────────────────

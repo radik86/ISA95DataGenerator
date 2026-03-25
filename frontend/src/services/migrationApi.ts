@@ -113,6 +113,7 @@ export const migrationApi = {
   async executeMigration(
     sessionId: string,
     mappings: any[],
+    loadMode: 'full' | 'delta',
     maxFileSizeMb?: number,
     separateMasterProcessFiles?: boolean,
     sourceIncludeTimestampSuffix?: boolean,
@@ -125,6 +126,7 @@ export const migrationApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mappings,
+        loadMode,
         maxFileSizeMb,
         separateMasterProcessFiles,
         sourceIncludeTimestampSuffix,

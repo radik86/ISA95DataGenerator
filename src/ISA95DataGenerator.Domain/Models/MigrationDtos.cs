@@ -22,6 +22,7 @@ public class UploadStoreDataRequest
 public class ExecuteMigrationRequest
 {
     public List<TableMappingDto> Mappings { get; set; } = new();
+    public string LoadMode { get; set; } = "delta";
     public int? MaxFileSizeMb { get; set; }
     public bool SeparateMasterProcessFiles { get; set; }
     public bool SourceIncludeTimestampSuffix { get; set; }

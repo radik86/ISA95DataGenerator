@@ -5803,44 +5803,16 @@ const DataMigration: React.FC = () => {
         }
       }
 
-      // Build execution mappings.
-      // In delta mode, keep full source tables available for lookups/joins,
-      // but filter output rows at mapping execution time.
-      const mappingsForExecution = migrationLoadMode === 'delta'
-        ? tableMappings.map((m) => {
-            const hasDeltaFilter = (m.filters || []).some((f: any) =>
-              (f.column || '').toLowerCase() === 'lastdatamigrationat' &&
-              ['is_null', 'delta_pending'].includes((f.operator || '').toLowerCase()) &&
-              f.enabled !== false
-            );
-
-            if (hasDeltaFilter) {
-              return m;
-            }
-
-            return {
-              ...m,
-              filters: [
-                ...(m.filters || []),
-                {
-                  column: 'LastDataMigrationAt',
-                  operator: 'delta_pending',
-                  enabled: true,
-                },
-              ],
-            };
-          })
-        : tableMappings;
+      // Backend is responsible for full vs delta semantics based on DB columns.
+      const mappingsForExecution = tableMappings;
 
       log(`${referencedTables.size} source table(s) needed`);
 
       const hasImportedReferencedTables = Array.from(referencedTables)
         .some((tableName) => (importedTablesData[tableName]?.length ?? 0) > 0);
 
-      // Always upload the latest source snapshot from the current UI state.
-      // Reusing backend-side source tables in full mode can serve stale data
-      // from a previous session (for example, older 12-row materials sets).
-      const preferServerSideSource = false;
+      // Backend-managed delta/full mode reads directly from GenericDataStores.
+      const preferServerSideSource = true;
 
       // Upload each referenced store in partitions to avoid huge browser memory spikes.
       let uploadedCount = 0;
@@ -5858,13 +5830,6 @@ const DataMigration: React.FC = () => {
           log('Imported source tables are present and will be uploaded for referenced mappings.');
         }
       }
-
-      const shouldIncludeForDeltaMigration = (record: any): boolean => {
-        const lastMigrationAt = record?.LastDataMigrationAt ?? record?.lastDataMigrationAt;
-        if (lastMigrationAt === null || lastMigrationAt === undefined) return true;
-        if (typeof lastMigrationAt === 'string' && lastMigrationAt.trim() === '') return true;
-        return false;
-      };
 
       for (const tableName of referencedTables) {
         if (preferServerSideSource) break;
@@ -6015,6 +5980,7 @@ const DataMigration: React.FC = () => {
       await migrationApi.executeMigration(
         sessionId,
         mappingsForExecution,
+        migrationLoadMode,
         maxSplitFileSizeMB,
         separateMasterProcessFiles,
         sourceIncludeTimestampSuffix,
@@ -6057,7 +6023,7 @@ const DataMigration: React.FC = () => {
             completed = true;
 
             if (uploadedStoreNames.size > 0) {
-              log(`INFO: Skipped LastDataMigrationAt bulk restamp for ${uploadedStoreNames.size} store(s) to prevent browser memory spikes`);
+              log(`INFO: Uploaded ${uploadedStoreNames.size} store(s) before migration execution`);
             }
 
             if (status.status === 'CompletedWithErrors') {
@@ -6069,16 +6035,28 @@ const DataMigration: React.FC = () => {
             }
           } else if (status.status === 'Failed') {
             completed = true;
-            throw new Error(status.errorMessage || 'Migration failed on server');
+            const failedMessage = status.errorMessage || 'Migration failed on server';
+            throw new Error(`Migration failed: ${failedMessage}`);
           } else if (status.status === 'Cancelled') {
             completed = true;
             log('Migration was cancelled');
             showSnackbar('Migration cancelled', 'info');
           }
         } catch (pollErr: any) {
-          // If just a network blip, continue polling
-          if (pollErr.message?.includes('Migration failed')) throw pollErr;
-          console.warn('Poll error, retrying...', pollErr);
+          const pollMessage = String(pollErr?.message || pollErr || '');
+          // Treat any explicit migration/cancellation error as terminal and bubble it up.
+          if (/migration failed|cancelled/i.test(pollMessage)) {
+            throw pollErr;
+          }
+
+          // Transient polling/network issue: keep retrying.
+          if (/status check failed|failed to fetch|networkerror|timeout/i.test(pollMessage)) {
+            console.warn('Poll error, retrying...', pollErr);
+            continue;
+          }
+
+          // Unknown poll error should not be swallowed indefinitely.
+          throw pollErr;
         }
       }
 
@@ -7939,7 +7917,7 @@ const DataMigration: React.FC = () => {
                 </Select>
               </FormControl>
               <Typography variant="caption" color="text.secondary">
-                Delta uploads only rows where `LastDataMigrationAt` is empty or null.
+                Delta is backend-managed: rows are selected by `GenericDataStores.LastDataMigrationAt` vs `UpdatedAt`.
               </Typography>
             </Box>
             <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>

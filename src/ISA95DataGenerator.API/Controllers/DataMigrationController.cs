@@ -509,6 +509,10 @@ public class DataMigrationController : ControllerBase
         if (request.Mappings == null || request.Mappings.Count == 0)
             return BadRequest("No mappings provided");
 
+        request.LoadMode = string.Equals(request.LoadMode, "full", StringComparison.OrdinalIgnoreCase)
+            ? "full"
+            : "delta";
+
         // Verify source data exists unless backend is instructed to read directly from server-side stores.
         if (!request.PreferServerSideSource)
         {
@@ -533,6 +537,7 @@ public class DataMigrationController : ControllerBase
                 await processor.ExecuteAsync(
                     sessionId,
                     request.Mappings,
+                    request.LoadMode,
                     request.MaxFileSizeMb,
                     request.SeparateMasterProcessFiles,
                     request.SourceIncludeTimestampSuffix,
