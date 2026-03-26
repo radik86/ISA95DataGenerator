@@ -208,6 +208,7 @@ public class MigrationProcessorV2Service
         bool separateMasterProcessFiles = false,
         bool sourceIncludeTimestampSuffix = false,
         bool sourceSplitFiles = false,
+        bool preferServerSideSource = false,
         bool minimalPersistenceMode = true,
         CancellationToken ct = default)
     {
@@ -248,9 +249,10 @@ public class MigrationProcessorV2Service
                 : "delta";
 
             Log($"Load mode: {normalizedLoadMode} (backend-managed)");
+            Log($"Source mode: {(preferServerSideSource ? "server-side only (ignoring uploaded session source data)" : "uploaded session data can override server-side stores")}");
 
             // 1. Initialize lazy source-store provider (loads stores only when requested)
-            var sourceStoreProvider = new SourceStoreProvider(this, sessionId, normalizedLoadMode);
+            var sourceStoreProvider = new SourceStoreProvider(this, sessionId, normalizedLoadMode, preferServerSideSource);
 
             var migratedGenericRowIds = new HashSet<long>();
 
@@ -781,9 +783,41 @@ public class MigrationProcessorV2Service
         return result;
     }
 
+    // Formats that the frontend (toDbDateTime) and SQL Server may produce
+    private static readonly string[] _dateTimeFormats =
+    [
+        "yyyy-MM-dd HH:mm:ss",       // toDbDateTime: space separator, no ms, no Z
+        "yyyy-MM-dd HH:mm:ss.fff",   // toDbDateTime with ms
+        "yyyy-MM-ddTHH:mm:ss",       // ISO without ms
+        "yyyy-MM-ddTHH:mm:ss.fff",   // ISO with ms
+        "yyyy-MM-ddTHH:mm:ssZ",
+        "yyyy-MM-ddTHH:mm:ss.fffZ",
+        // US locale variants (M/d/yyyy) that SQL Server / .NET may serialise
+        "M/d/yyyy H:mm",
+        "M/d/yyyy H:mm:ss",
+        "M/d/yyyy HH:mm",
+        "M/d/yyyy HH:mm:ss",
+        "M/d/yyyy h:mm tt",
+        "M/d/yyyy h:mm:ss tt",
+        "M/d/yyyy hh:mm tt",
+        "M/d/yyyy hh:mm:ss tt",
+    ];
+
+    private static object? ParseJsonString(JsonElement el)
+    {
+        if (el.TryGetDateTimeOffset(out var dto)) return dto.UtcDateTime;
+        if (el.TryGetDateTime(out var dt)) return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+        var raw = el.GetString();
+        if (raw != null && DateTime.TryParseExact(raw, _dateTimeFormats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
+            return parsed;
+        return raw;
+    }
+
     private static object? ConvertJsonElement(JsonElement el) => el.ValueKind switch
     {
-        JsonValueKind.String => el.GetString(),
+        JsonValueKind.String => ParseJsonString(el),
         JsonValueKind.Number => el.TryGetInt64(out var l) ? l : el.GetDouble(),
         JsonValueKind.True => true,
         JsonValueKind.False => false,
@@ -792,20 +826,33 @@ public class MigrationProcessorV2Service
         _ => el.GetRawText() // arrays, objects → keep as string for now
     };
 
-    private async Task<int> GetStoreRecordCountAsync(Guid sessionId, string sourceTable, string loadMode, CancellationToken ct)
+    private async Task<int> GetStoreRecordCountAsync(Guid sessionId, string sourceTable, string loadMode, bool preferServerSideSource, CancellationToken ct)
     {
-        var uploadedRows = await _dbContext.Set<MigrationSourceData>()
-            .AsNoTracking()
-            .Where(s => s.MigrationSessionId == sessionId &&
-                        (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
-            .Select(s => (int?)s.RecordCount)
-            .ToListAsync(ct);
+        if (!preferServerSideSource)
+        {
+            var uploadedRows = await _dbContext.Set<MigrationSourceData>()
+                .AsNoTracking()
+                .Where(s => s.MigrationSessionId == sessionId &&
+                            (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
+                .Select(s => (int?)s.RecordCount)
+                .ToListAsync(ct);
 
-        if (uploadedRows.Count > 0)
-            return uploadedRows.Sum(x => x ?? 0);
+            if (uploadedRows.Count > 0)
+                return uploadedRows.Sum(x => x ?? 0);
+        }
 
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return 0;
+
+        // ── For master-data sources the dedicated EF table is the source of truth.
+        //    Query it first so that any stale/partial GenericDataStores rows cannot shadow real data.
+        if (!ProcessSourceTables.Contains(sourceTable) &&
+            DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
+        {
+            var dedicatedCount = await CountFromDedicatedTableAsync(masterEntityClrType, ct);
+            if (dedicatedCount > 0)
+                return dedicatedCount;
+        }
 
         var genericQuery = _dbContext.GenericDataStores
             .AsNoTracking()
@@ -822,7 +869,7 @@ public class MigrationProcessorV2Service
         if (genericCount > 0)
             return genericCount;
 
-        // ── Third fallback: dedicated EF master data table ──
+        // ── Last fallback: dedicated EF master data table (process-data sources reach here) ──
         if (!DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
             return 0;
 
@@ -857,48 +904,63 @@ public class MigrationProcessorV2Service
         }
     }
 
-    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, string loadMode, CancellationToken ct)
+    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, string loadMode, bool preferServerSideSource, CancellationToken ct)
     {
         var result = new List<Dictionary<string, object?>>();
 
-        var uploadedStores = await _dbContext.Set<MigrationSourceData>()
-            .AsNoTracking()
-            .Where(s => s.MigrationSessionId == sessionId &&
-                        (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
-            .OrderBy(s => s.StoreName)
-            .ToListAsync(ct);
-
-        if (uploadedStores.Count > 0)
+        if (!preferServerSideSource)
         {
-            foreach (var store in uploadedStores)
+            var uploadedStores = await _dbContext.Set<MigrationSourceData>()
+                .AsNoTracking()
+                .Where(s => s.MigrationSessionId == sessionId &&
+                            (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
+                .OrderBy(s => s.StoreName)
+                .ToListAsync(ct);
+
+            if (uploadedStores.Count > 0)
             {
-                try
+                foreach (var store in uploadedStores)
                 {
-                    var records = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(store.DataJson);
-                    if (records == null) continue;
-
-                    var converted = records.Select(r =>
+                    try
                     {
-                        var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var kv in r)
-                            dict[kv.Key] = ConvertJsonElement(kv.Value);
-                        return dict;
-                    });
+                        var records = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(store.DataJson);
+                        if (records == null) continue;
 
-                    result.AddRange(converted);
+                        var converted = records.Select(r =>
+                        {
+                            var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var kv in r)
+                                dict[kv.Key] = ConvertJsonElement(kv.Value);
+                            return dict;
+                        });
+
+                        result.AddRange(converted);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to deserialize uploaded store {StoreName}", store.StoreName);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to deserialize uploaded store {StoreName}", store.StoreName);
-                }
+
+                AddComputedFieldsForStore(sourceTable, result);
+                return result;
             }
-
-            AddComputedFieldsForStore(sourceTable, result);
-            return result;
         }
 
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return result;
+
+        // ── For master-data sources query the dedicated EF table first (source of truth).
+        if (!ProcessSourceTables.Contains(sourceTable) &&
+            DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
+        {
+            var dedicatedRows = await LoadFromDedicatedTableAsync(masterEntityClrType, ct);
+            if (dedicatedRows.Count > 0)
+            {
+                AddComputedFieldsForStore(sourceTable, dedicatedRows);
+                return dedicatedRows;
+            }
+        }
 
         // ── Raw DbDataReader path — avoids EF materialization of full entity objects ──
         var conn = _dbContext.Database.GetDbConnection();
@@ -966,6 +1028,35 @@ public class MigrationProcessorV2Service
 
         AddComputedFieldsForStore(sourceTable, result);
         return result;
+    }
+
+    private async Task<int> CountFromDedicatedTableAsync(Type entityClrType, CancellationToken ct)
+    {
+        var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
+        if (dedicatedEntityType == null) return 0;
+        var dedTable = dedicatedEntityType.GetTableName();
+        if (string.IsNullOrEmpty(dedTable)) return 0;
+        var dedSchema = dedicatedEntityType.GetSchema();
+        var qualifiedTable = string.IsNullOrEmpty(dedSchema)
+            ? $"\"{dedTable}\""
+            : $"\"{dedSchema}\".\"{dedTable}\"";
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConn = conn.State != ConnectionState.Open;
+        if (ownConn) await conn.OpenAsync(ct);
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+            cmd.CommandText = $"SELECT COUNT(*) FROM {qualifiedTable}";
+            var countObj = await cmd.ExecuteScalarAsync(ct);
+            return Convert.ToInt32(countObj);
+        }
+        finally
+        {
+            if (ownConn && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
     }
 
     /// <summary>
@@ -1054,39 +1145,43 @@ public class MigrationProcessorV2Service
         Guid sessionId,
         string sourceTable,
         string loadMode,
+        bool preferServerSideSource,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        var uploadedStores = _dbContext.Set<MigrationSourceData>()
-            .AsNoTracking()
-            .Where(s => s.MigrationSessionId == sessionId &&
-                        (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
-            .OrderBy(s => s.StoreName)
-            .Select(s => s.DataJson)
-            .AsAsyncEnumerable();
-
         var hasUploaded = false;
-        await foreach (var dataJson in uploadedStores.WithCancellation(ct))
+        if (!preferServerSideSource)
         {
-            hasUploaded = true;
-            List<Dictionary<string, JsonElement>>? records;
-            try
-            {
-                records = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(dataJson);
-            }
-            catch
-            {
-                continue;
-            }
+            var uploadedStores = _dbContext.Set<MigrationSourceData>()
+                .AsNoTracking()
+                .Where(s => s.MigrationSessionId == sessionId &&
+                            (s.StoreName == sourceTable || s.StoreName.StartsWith(sourceTable + "__part_")))
+                .OrderBy(s => s.StoreName)
+                .Select(s => s.DataJson)
+                .AsAsyncEnumerable();
 
-            if (records == null) continue;
-
-            foreach (var r in records)
+            await foreach (var dataJson in uploadedStores.WithCancellation(ct))
             {
-                var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                foreach (var kv in r)
-                    dict[kv.Key] = ConvertJsonElement(kv.Value);
-                AddComputedFieldsForRecord(sourceTable, dict);
-                yield return dict;
+                hasUploaded = true;
+                List<Dictionary<string, JsonElement>>? records;
+                try
+                {
+                    records = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(dataJson);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (records == null) continue;
+
+                foreach (var r in records)
+                {
+                    var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var kv in r)
+                        dict[kv.Key] = ConvertJsonElement(kv.Value);
+                    AddComputedFieldsForRecord(sourceTable, dict);
+                    yield return dict;
+                }
             }
         }
 
@@ -1097,6 +1192,24 @@ public class MigrationProcessorV2Service
         {
             // No GenericStoreMap entry — skip directly to dedicated table fallback
             genericStoreName = null;
+        }
+
+        // ── For master-data sources the dedicated EF table is the source of truth.
+        //    Yield from it first so stale/partial GenericDataStores rows never shadow real data.
+        if (!ProcessSourceTables.Contains(sourceTable) &&
+            genericStoreName != null &&
+            DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
+        {
+            var dedicatedRows = await LoadFromDedicatedTableAsync(masterEntityClrType, ct);
+            if (dedicatedRows.Count > 0)
+            {
+                foreach (var row in dedicatedRows)
+                {
+                    AddComputedFieldsForRecord(sourceTable, row);
+                    yield return row;
+                }
+                yield break; // authoritative source used, skip GenericDataStores
+            }
         }
 
         var hasGenericData = false;
@@ -1190,14 +1303,16 @@ public class MigrationProcessorV2Service
         private readonly MigrationProcessorV2Service _owner;
         private readonly Guid _sessionId;
         private readonly string _loadMode;
+        private readonly bool _preferServerSideSource;
         private readonly Dictionary<string, List<Dictionary<string, object?>>> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> _countCache = new(StringComparer.OrdinalIgnoreCase);
 
-        public SourceStoreProvider(MigrationProcessorV2Service owner, Guid sessionId, string loadMode)
+        public SourceStoreProvider(MigrationProcessorV2Service owner, Guid sessionId, string loadMode, bool preferServerSideSource)
         {
             _owner = owner;
             _sessionId = sessionId;
             _loadMode = loadMode;
+            _preferServerSideSource = preferServerSideSource;
         }
 
         public async Task<int> GetStoreCountAsync(string sourceTable, CancellationToken ct)
@@ -1205,7 +1320,7 @@ public class MigrationProcessorV2Service
             if (_countCache.TryGetValue(sourceTable, out var count))
                 return count;
 
-            count = await _owner.GetStoreRecordCountAsync(_sessionId, sourceTable, _loadMode, ct);
+            count = await _owner.GetStoreRecordCountAsync(_sessionId, sourceTable, _loadMode, _preferServerSideSource, ct);
             _countCache[sourceTable] = count;
             return count;
         }
@@ -1215,7 +1330,7 @@ public class MigrationProcessorV2Service
             if (_cache.TryGetValue(sourceTable, out var cached))
                 return cached;
 
-            var loaded = await _owner.LoadStoreDataAsync(_sessionId, sourceTable, _loadMode, ct);
+            var loaded = await _owner.LoadStoreDataAsync(_sessionId, sourceTable, _loadMode, _preferServerSideSource, ct);
             _cache[sourceTable] = loaded;
             _countCache[sourceTable] = loaded.Count;
             return loaded;
@@ -1223,7 +1338,7 @@ public class MigrationProcessorV2Service
 
         public IAsyncEnumerable<Dictionary<string, object?>> StreamStoreAsync(string sourceTable, CancellationToken ct)
         {
-            return _owner.StreamStoreDataAsync(_sessionId, sourceTable, _loadMode, ct);
+            return _owner.StreamStoreDataAsync(_sessionId, sourceTable, _loadMode, _preferServerSideSource, ct);
         }
 
         public void ReleaseStore(string sourceTable)
@@ -2770,8 +2885,26 @@ public class MigrationProcessorV2Service
             return FormatSourceTimestamp(val);
         }
 
-        if (val is DateTime dt) return dt.ToString("O"); // ISO 8601
-        if (val is DateTimeOffset dto) return dto.ToString("O");
+        if (val is DateTime dt)
+        {
+            var utcDt = dt.Kind == DateTimeKind.Local ? dt.ToUniversalTime() : dt; // treat Unspecified as UTC
+            return utcDt.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        }
+        if (val is DateTimeOffset dto)
+            return dto.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+
+        // Output-only normalization: if the raw string is parseable as a date/time, format it consistently for CSV.
+        if (val is string s && s.Length >= 6)
+        {
+            if (DateTime.TryParse(s, CultureInfo.GetCultureInfo("en-US"),
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsedUs) ||
+                DateTime.TryParse(s, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsedUs))
+            {
+                return parsedUs.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+            }
+        }
+
         return val.ToString() ?? "";
     }
 
@@ -2800,7 +2933,7 @@ public class MigrationProcessorV2Service
             }
         }
 
-        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.000'Z'", CultureInfo.InvariantCulture);
+        return utc.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
     }
 
     private static string FormatEntityNameForOutput(string? entityName)

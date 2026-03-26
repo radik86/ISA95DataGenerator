@@ -542,6 +542,7 @@ public class DataMigrationController : ControllerBase
                     request.SeparateMasterProcessFiles,
                     request.SourceIncludeTimestampSuffix,
                     request.SourceSplitFiles,
+                    request.PreferServerSideSource,
                     request.MinimalPersistenceMode);
             }
             catch (Exception ex)
