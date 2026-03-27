@@ -65,6 +65,10 @@ public class MetadataLoaderService : IMetadataLoaderService
                 }
             }
 
+            // Resolve relationship target names from entity @id -> entity.Name so we use
+            // the DTDL model name field rather than inferring names from IDs/file naming.
+            ResolveRelationshipTargetNames(entities);
+
             _cachedEntities = entities;
             _logger.LogInformation("Loaded {Count} entities from metadata", entities.Count);
             return _cachedEntities;
@@ -399,5 +403,28 @@ public class MetadataLoaderService : IMetadataLoaderService
             return nameWithVersion[0];
         }
         return id;
+    }
+
+    private static void ResolveRelationshipTargetNames(List<EntityDefinition> entities)
+    {
+        var byId = entities
+            .Where(e => !string.IsNullOrWhiteSpace(e.Id))
+            .GroupBy(e => e.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entity in entities)
+        {
+            foreach (var relationship in entity.Relationships)
+            {
+                if (string.IsNullOrWhiteSpace(relationship.TargetEntityId))
+                    continue;
+
+                if (byId.TryGetValue(relationship.TargetEntityId, out var target) &&
+                    !string.IsNullOrWhiteSpace(target.Name))
+                {
+                    relationship.TargetEntityName = target.Name;
+                }
+            }
+        }
     }
 }

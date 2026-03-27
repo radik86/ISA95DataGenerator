@@ -169,7 +169,9 @@ public class MigrationProcessorV2Service
         "capability", "capabilities", "definition", "definitions", "specification", "specifications",
         "parameter", "parameters", "class", "classes", "allocation", "reference", "resource", "scope",
         "hierarchy", "sublot", "lot", "source", "target", "evaluated", "from", "lang", "string", "set",
-        "job", "order", "list", "data", "type", "id", "pk"
+        "job", "order", "list", "data", "type", "id", "pk",
+        // Personnel / person terms (not in the original list — caused "Personnelrequirement" output)
+        "personnel", "person",
     };
 
     private static readonly string[] KnownIsa95TermsByLength = KnownIsa95Terms
