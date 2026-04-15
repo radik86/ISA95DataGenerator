@@ -173,7 +173,10 @@ interface SegmentPersonnelActual {
 interface EquipmentPropertyTracking {
   id: string;
   segmentResponseId: string;
+  plantId: string;
+  lineId: string;
   equipmentId: string;
+  parentEquipmentId?: string;
   equipmentPropertyId: string;
   equipmentPropertyName: string;
   equipmentClassId: string;
@@ -1778,7 +1781,7 @@ const ProcessDataGenerator: React.FC = () => {
               value = 'N/A';
             }
 
-            const trackingId = `PROP-TRACK-${eqActual.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`;
+            const trackingId = `PROP-TRACK-${plantId}-${lineId}-${eqActual.equipmentId}-${assignment.equipmentPropertyId}`;
 
             // Find equipment class from equipment
             const eqItem = equipment.find(e => e.id === eqActual.equipmentId);
@@ -1804,6 +1807,8 @@ const ProcessDataGenerator: React.FC = () => {
             const tracking: EquipmentPropertyTracking = {
               id: trackingId,
               segmentResponseId: eqActual.segmentResponseId,
+              plantId: plantId,
+              lineId: lineId,
               equipmentId: eqActual.equipmentId,
               equipmentPropertyId: assignment.equipmentPropertyId,
               equipmentPropertyName: property.name,
@@ -1895,7 +1900,7 @@ const ProcessDataGenerator: React.FC = () => {
                 value = 'N/A';
               }
 
-              const trackingId = `PROP-TRACK-${eqActual.id}-CHILD-${childEq.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`;
+              const trackingId = `PROP-TRACK-${plantId}-${lineId}-${eqActual.equipmentId}-CHILD-${childEq.id}-${assignment.equipmentPropertyId}`;
 
               // Find equipment class from child equipment
               const childEqItem = equipment.find(e => e.id === childEq.id);
@@ -1910,6 +1915,9 @@ const ProcessDataGenerator: React.FC = () => {
               const tracking: EquipmentPropertyTracking = {
                 id: trackingId,
                 segmentResponseId: eqActual.segmentResponseId,
+                plantId: plantId,
+                lineId: lineId,
+                parentEquipmentId: eqActual.equipmentId,
                 equipmentId: childEq.id,
                 equipmentPropertyId: assignment.equipmentPropertyId,
                 equipmentPropertyName: property.name,
@@ -4033,8 +4041,10 @@ const ProcessDataGenerator: React.FC = () => {
           }
 
           generatedPropertyTracking.push({
-            id: `PROP-TRACK-${eqActual.id}-${assignment.equipmentPropertyId}-${i.toString().padStart(4, '0')}`,
+            id: `PROP-TRACK-${operationsRequest.plantId}-${operationsRequest.lineId}-${eqActual.equipmentId}-${assignment.equipmentPropertyId}`,
             segmentResponseId: eqActual.segmentResponseId,
+            plantId: operationsRequest.plantId,
+            lineId: operationsRequest.lineId,
             equipmentId: eqActual.equipmentId,
             equipmentPropertyId: assignment.equipmentPropertyId,
             equipmentPropertyName: property.name,

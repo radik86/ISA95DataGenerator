@@ -177,7 +177,7 @@ public class GenericDataController : ControllerBase
     [HttpPost("{storeName}")]
     public async Task<ActionResult> Add(string storeName, [FromBody] JsonElement body)
     {
-        var recordId = ExtractId(body);
+        var recordId = ExtractRecordId(storeName, body);
         if (recordId == null)
             return BadRequest("Record must have an 'id' property");
 
@@ -283,7 +283,7 @@ public class GenericDataController : ControllerBase
 
         foreach (var item in body.EnumerateArray())
         {
-            var recordId = ExtractId(item);
+            var recordId = ExtractRecordId(storeName, item);
             if (string.IsNullOrWhiteSpace(recordId)) continue;
 
             incoming.Add((recordId, NormalizeRecordJson(storeName, item)));
@@ -357,7 +357,7 @@ public class GenericDataController : ControllerBase
 
         foreach (var item in body.EnumerateArray())
         {
-            var recordId = ExtractId(item);
+            var recordId = ExtractRecordId(storeName, item);
             if (recordId == null) continue;
 
             _dbContext.GenericDataStores.Add(new GenericDataStore
@@ -403,7 +403,7 @@ public class GenericDataController : ControllerBase
 
                 foreach (var item in records.EnumerateArray())
                 {
-                    var recordId = ExtractId(item);
+                    var recordId = ExtractRecordId(storeName, item);
                     if (string.IsNullOrWhiteSpace(recordId)) continue;
 
                     incoming.Add((recordId, NormalizeRecordJson(storeName, item)));
@@ -648,6 +648,45 @@ public class GenericDataController : ControllerBase
             };
         }
         return null;
+    }
+
+    private static string? ExtractRecordId(string storeName, JsonElement element)
+    {
+        var id = ExtractId(element);
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+
+        if (!storeName.Equals("equipmentPropertyTracking", StringComparison.Ordinal))
+            return id;
+
+        var tsSuffix = ExtractTimestampSuffix(element);
+        if (string.IsNullOrWhiteSpace(tsSuffix))
+            return id;
+
+        // Accept already-suffixed ids to keep backward compatibility.
+        if (id.EndsWith("-" + tsSuffix, StringComparison.Ordinal))
+            return id;
+
+        return $"{id}-{tsSuffix}";
+    }
+
+    private static string? ExtractTimestampSuffix(JsonElement element)
+    {
+        if (!element.TryGetProperty("createdTimestamp", out var tsProp))
+            return null;
+
+        string? raw = tsProp.ValueKind switch
+        {
+            JsonValueKind.String => tsProp.GetString(),
+            JsonValueKind.Number => tsProp.GetRawText(),
+            _ => tsProp.GetRawText(),
+        };
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var compact = new string(raw.Where(char.IsDigit).ToArray());
+        return compact.Length >= 14 ? compact[..14] : null;
     }
 
     /// <summary>
