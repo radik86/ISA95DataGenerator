@@ -1538,7 +1538,7 @@ public class MigrationProcessorV2Service
 
         foreach (var m in mappings.Where(m => m.IsBridge))
         {
-            void TrackEntity(string? entity, List<BridgeJoinFieldDto>? joinFields)
+            void EnsureEntity(string? entity)
             {
                 if (string.IsNullOrEmpty(entity)) return;
                 if (!requirements.TryGetValue(entity, out var fields))
@@ -1546,6 +1546,13 @@ public class MigrationProcessorV2Service
                     fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PrimaryKey" };
                     requirements[entity] = fields;
                 }
+            }
+
+            void TrackEntity(string? entity, List<BridgeJoinFieldDto>? joinFields)
+            {
+                if (string.IsNullOrEmpty(entity)) return;
+                EnsureEntity(entity);
+                var fields = requirements[entity];
                 if (joinFields != null)
                     foreach (var jf in joinFields)
                         fields.Add(jf.EntityField);
@@ -1553,6 +1560,29 @@ public class MigrationProcessorV2Service
 
             TrackEntity(m.BridgeEntity1, m.BridgeEntity1JoinFields);
             TrackEntity(m.BridgeEntity2, m.BridgeEntity2JoinFields);
+
+            foreach (var fm in m.FieldMappings)
+            {
+                if (!fm.Generate) continue;
+                if (string.IsNullOrWhiteSpace(fm.SourceEntity)) continue;
+                if (string.IsNullOrWhiteSpace(fm.SourceColumn)) continue;
+
+                var sourceEntity = fm.SourceEntity.Trim();
+                var sourceColumn = fm.SourceColumn.Trim();
+
+                if (sourceEntity.Equals("Entity1", StringComparison.OrdinalIgnoreCase) ||
+                    sourceEntity.Equals(m.BridgeEntity1, StringComparison.OrdinalIgnoreCase))
+                {
+                    EnsureEntity(m.BridgeEntity1);
+                    requirements[m.BridgeEntity1!].Add(sourceColumn);
+                }
+                else if (sourceEntity.Equals("Entity2", StringComparison.OrdinalIgnoreCase) ||
+                         sourceEntity.Equals(m.BridgeEntity2, StringComparison.OrdinalIgnoreCase))
+                {
+                    EnsureEntity(m.BridgeEntity2);
+                    requirements[m.BridgeEntity2!].Add(sourceColumn);
+                }
+            }
         }
 
         return requirements;
@@ -2001,12 +2031,18 @@ public class MigrationProcessorV2Service
                 ["Relationship Type"] = mapping.RelationshipType ?? "related"
             };
 
+            Dictionary<string, object?>? entity1Record = null;
+            Dictionary<string, object?>? entity2Record = null;
+
             // Lookup entity 1 PK
             if (mapping.BridgeEntity1JoinFields is { Count: > 0 })
             {
                 var key = BuildLookupKey(record, mapping.BridgeEntity1JoinFields);
                 if (entity1Index.TryGetValue(key, out var e1))
+                {
+                    entity1Record = e1;
                     transformed["Source PrimaryKey"] = e1.GetValueOrDefault("PrimaryKey") ?? "";
+                }
             }
 
             // Lookup entity 2 PK
@@ -2014,7 +2050,49 @@ public class MigrationProcessorV2Service
             {
                 var key = BuildLookupKey(record, mapping.BridgeEntity2JoinFields);
                 if (entity2Index.TryGetValue(key, out var e2))
+                {
+                    entity2Record = e2;
                     transformed["Target PrimaryKey"] = e2.GetValueOrDefault("PrimaryKey") ?? "";
+                }
+            }
+
+            // Apply configured bridge field mappings (including sourceTimeStamp from entity caches)
+            foreach (var fm in mapping.FieldMappings)
+            {
+                if (!fm.Generate) continue;
+                if (transformed.ContainsKey(fm.FieldName)) continue;
+
+                var sourceRecord = record;
+                if (!string.IsNullOrWhiteSpace(fm.SourceEntity))
+                {
+                    var sourceEntity = fm.SourceEntity.Trim();
+
+                    if ((sourceEntity.Equals("Entity1", StringComparison.OrdinalIgnoreCase) ||
+                         sourceEntity.Equals(entity1Name, StringComparison.OrdinalIgnoreCase)) &&
+                        entity1Record != null)
+                    {
+                        sourceRecord = entity1Record;
+                    }
+                    else if ((sourceEntity.Equals("Entity2", StringComparison.OrdinalIgnoreCase) ||
+                              sourceEntity.Equals(entity2Name, StringComparison.OrdinalIgnoreCase)) &&
+                             entity2Record != null)
+                    {
+                        sourceRecord = entity2Record;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(fm.SourceColumn))
+                {
+                    transformed[fm.FieldName] = sourceRecord.GetValueOrDefault(fm.SourceColumn.Trim());
+                }
+                else if (fm.FieldRule != null)
+                {
+                    transformed[fm.FieldName] = ApplyFieldRule(fm.FieldRule, record, idx, transformed);
+                }
+                else
+                {
+                    transformed[fm.FieldName] = "";
+                }
             }
 
             // Generate PK for bridge record itself

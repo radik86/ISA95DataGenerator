@@ -106,6 +106,7 @@ interface FieldRuleConfig {
 interface FieldMapping {
   fieldName: string;
   sourceColumn?: string;
+  sourceEntity?: string;
   generate: boolean;
   fieldRule?: FieldRuleConfig;
 }
@@ -220,6 +221,8 @@ const PROCESS_STORE_MAP: Record<string, string> = {
   'operations_event_properties': 'operationsEventProperties',
   'segment_data': 'segmentData',
 };
+
+const BRIDGE_SOURCE_OPTION = '__BRIDGE_SOURCE__';
 
 const DataMigration: React.FC = () => {
   const hasLoadedMappingsRef = useRef(false);
@@ -411,6 +414,128 @@ const DataMigration: React.FC = () => {
   const [pkCompositeConcatGlobalPrefix, setPkCompositeConcatGlobalPrefix] = useState('');
   const [pkCompositeConcatGlobalSuffix, setPkCompositeConcatGlobalSuffix] = useState('');
 
+  const normalizeBridgeSourceEntityAlias = (mapping: TableMapping, sourceEntity?: string): string | undefined => {
+    if (!sourceEntity) return undefined;
+
+    const normalized = sourceEntity.trim();
+    if (!normalized) return undefined;
+
+    if (normalized.toLowerCase() === 'entity1') return mapping.bridgeEntity1;
+    if (normalized.toLowerCase() === 'entity2') return mapping.bridgeEntity2;
+    return normalized;
+  };
+
+  const ensureSourceTimeStampField = (mapping: TableMapping): TableMapping => {
+    const sourceTimestampIndex = mapping.fieldMappings.findIndex(
+      (fm) => fm.fieldName.toLowerCase() === 'sourcetimestamp'
+    );
+
+    if (!mapping.isBridge) {
+      if (sourceTimestampIndex >= 0) return mapping;
+      return {
+        ...mapping,
+        fieldMappings: [
+          ...mapping.fieldMappings,
+          {
+            fieldName: 'sourceTimeStamp',
+            sourceColumn: undefined,
+            generate: false,
+          },
+        ],
+      };
+    }
+
+    const defaultSourceEntity = mapping.bridgeEntity2;
+    const defaultField: FieldMapping = {
+      fieldName: 'sourceTimeStamp',
+      generate: true,
+      sourceColumn: 'sourceTimeStamp',
+      sourceEntity: defaultSourceEntity,
+    };
+
+    if (sourceTimestampIndex < 0) {
+      return {
+        ...mapping,
+        fieldMappings: [...mapping.fieldMappings, defaultField],
+      };
+    }
+
+    const existingField = mapping.fieldMappings[sourceTimestampIndex];
+    const normalizedSourceEntity = normalizeBridgeSourceEntityAlias(mapping, existingField.sourceEntity);
+    const isLegacyDisabledDefault =
+      existingField.generate === false &&
+      !existingField.fieldRule &&
+      !existingField.sourceColumn?.trim() &&
+      !normalizedSourceEntity;
+
+    const updatedField: FieldMapping = {
+      ...existingField,
+      fieldName: 'sourceTimeStamp',
+      generate: isLegacyDisabledDefault ? true : (existingField.generate ?? true),
+      sourceColumn: existingField.sourceColumn?.trim() || 'sourceTimeStamp',
+      sourceEntity: normalizedSourceEntity || defaultSourceEntity,
+    };
+
+    const updatedFieldMappings = [...mapping.fieldMappings];
+    updatedFieldMappings[sourceTimestampIndex] = updatedField;
+
+    return {
+      ...mapping,
+      fieldMappings: updatedFieldMappings,
+    };
+  };
+
+  const getBridgeTimestampSourceSelection = (mapping: TableMapping): string => {
+    const tsField = mapping.fieldMappings.find((fm) => fm.fieldName.toLowerCase() === 'sourcetimestamp');
+    const normalizedSourceEntity = normalizeBridgeSourceEntityAlias(mapping, tsField?.sourceEntity);
+
+    if (!normalizedSourceEntity) return BRIDGE_SOURCE_OPTION;
+    if (normalizedSourceEntity === mapping.sourceTable) return BRIDGE_SOURCE_OPTION;
+    if (normalizedSourceEntity === mapping.bridgeEntity1) return mapping.bridgeEntity1 || BRIDGE_SOURCE_OPTION;
+    if (normalizedSourceEntity === mapping.bridgeEntity2) return mapping.bridgeEntity2 || BRIDGE_SOURCE_OPTION;
+
+    return BRIDGE_SOURCE_OPTION;
+  };
+
+  const getEntityOutputColumns = (entityName?: string): string[] => {
+    if (!entityName) return [];
+
+    const columns = new Map<string, string>();
+    const entityMappings = tableMappings.filter((m) => !m.isBridge && m.targetEntity === entityName);
+
+    entityMappings.forEach((entityMapping) => {
+      entityMapping.fieldMappings.forEach((fm) => {
+        if (!fm.fieldName) return;
+        const key = fm.fieldName.trim().toLowerCase();
+        if (!key) return;
+
+        if (fm.generate || key === 'sourcetimestamp' || key === 'primarykey') {
+          columns.set(key, fm.fieldName.trim());
+        }
+      });
+
+      if (entityMapping.primaryKeyRule) {
+        columns.set('primarykey', 'PrimaryKey');
+      }
+    });
+
+    if (!columns.has('sourcetimestamp')) {
+      columns.set('sourcetimestamp', 'sourceTimeStamp');
+    }
+
+    return Array.from(columns.values()).sort((a, b) => a.localeCompare(b));
+  };
+
+  const getBridgeTimestampColumnOptions = (mapping: TableMapping, selectedSource: string): string[] => {
+    if (selectedSource === BRIDGE_SOURCE_OPTION) {
+      return (dataSource?.tables.find((t) => t.name === mapping.sourceTable)?.columns || [])
+        .map((c) => c.name)
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    return getEntityOutputColumns(selectedSource);
+  };
+
   // Load ISA95 entities from backend on mount
   useEffect(() => {
     const loadISA95Entities = async () => {
@@ -513,29 +638,7 @@ const DataMigration: React.FC = () => {
     try {
       const savedMappings = await migrationConfigApi.loadCurrentMappings();
       if (savedMappings.length > 0) {
-        // Ensure each mapping has sourceTimeStamp field if it doesn't already
-        const updatedMappings = savedMappings.map(mapping => {
-          const hasSourceTimestamp = mapping.fieldMappings.some(
-            fm => fm.fieldName === 'sourceTimeStamp'
-          );
-          
-          if (!hasSourceTimestamp) {
-            // Add sourceTimeStamp field to existing mappings
-            return {
-              ...mapping,
-              fieldMappings: [
-                ...mapping.fieldMappings,
-                {
-                  fieldName: 'sourceTimeStamp',
-                  sourceColumn: undefined,
-                  generate: false,
-                }
-              ]
-            };
-          }
-          
-          return mapping;
-        });
+        const updatedMappings = savedMappings.map(ensureSourceTimeStampField);
         
         setTableMappings(updatedMappings);
         setLoadedMappingsCount(updatedMappings.length);
@@ -1716,6 +1819,11 @@ const DataMigration: React.FC = () => {
 
     if (!entity1 || !entity2) return;
 
+    const existingBridgeMapping = editingBridgeIndex !== null ? tableMappings[editingBridgeIndex] : undefined;
+    const existingSourceTimestampField = existingBridgeMapping?.fieldMappings?.find(
+      (fm) => fm.fieldName.toLowerCase() === 'sourcetimestamp'
+    );
+
     // Create field mappings for bridge table with proper structure
     const fieldMappings: FieldMapping[] = [
       {
@@ -1753,12 +1861,13 @@ const DataMigration: React.FC = () => {
       },
       {
         fieldName: 'sourceTimeStamp',
-        sourceColumn: undefined,
-        generate: false,
+        sourceColumn: existingSourceTimestampField?.sourceColumn || 'sourceTimeStamp',
+        sourceEntity:
+          normalizeBridgeSourceEntityAlias(existingBridgeMapping || { bridgeEntity1, bridgeEntity2 } as TableMapping, existingSourceTimestampField?.sourceEntity) ||
+          bridgeEntity2,
+        generate: existingSourceTimestampField?.generate ?? true,
       }
     ];
-
-    const existingBridgeMapping = editingBridgeIndex !== null ? tableMappings[editingBridgeIndex] : undefined;
 
     const newMapping: TableMapping = {
       ...existingBridgeMapping,
@@ -1782,15 +1891,17 @@ const DataMigration: React.FC = () => {
       relationshipType: relationshipType || 'related',
     };
 
+    const finalizedMapping = ensureSourceTimeStampField(newMapping);
+
     if (editingBridgeIndex !== null) {
       // Update existing mapping
       const updated = [...tableMappings];
-      updated[editingBridgeIndex] = newMapping;
+      updated[editingBridgeIndex] = finalizedMapping;
       setTableMappings(updated);
       showSnackbar('Bridge mapping updated successfully', 'success');
     } else {
       // Add new mapping
-      setTableMappings([...tableMappings, newMapping]);
+      setTableMappings([...tableMappings, finalizedMapping]);
       showSnackbar('Bridge mapping added successfully', 'success');
     }
     
@@ -6720,7 +6831,8 @@ const DataMigration: React.FC = () => {
       }
 
       if (importedMappings.length > 0) {
-        setTableMappings([...tableMappings, ...importedMappings]);
+        const normalizedImportedMappings = importedMappings.map(ensureSourceTimeStampField);
+        setTableMappings([...tableMappings, ...normalizedImportedMappings]);
         showSnackbar(`Successfully imported ${importedMappings.length} mapping(s)`, 'success');
       } else {
         showSnackbar('No mappings found in file', 'error');
@@ -7840,6 +7952,95 @@ const DataMigration: React.FC = () => {
                           Add Filter
                         </Button>
                       </Box>
+
+                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
+                        Bridge sourceTimeStamp Configuration
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                        Select where sourceTimeStamp is read from for this entity-to-entity mapping.
+                      </Typography>
+
+                      {(() => {
+                        const sourceTimestampField = mapping.fieldMappings.find(
+                          (fm) => fm.fieldName.toLowerCase() === 'sourcetimestamp'
+                        );
+                        const selectedSource = getBridgeTimestampSourceSelection(mapping);
+                        const selectedSourceColumns = getBridgeTimestampColumnOptions(mapping, selectedSource);
+                        const timestampSourceOptions = [
+                          {
+                            value: BRIDGE_SOURCE_OPTION,
+                            label: `Bridge Source Table (${mapping.sourceTable})`,
+                          },
+                          ...(mapping.bridgeEntity1
+                            ? [{ value: mapping.bridgeEntity1, label: `Entity 1 (${entity1?.name || mapping.bridgeEntity1})` }]
+                            : []),
+                          ...(mapping.bridgeEntity2
+                            ? [{ value: mapping.bridgeEntity2, label: `Entity 2 (${entity2?.name || mapping.bridgeEntity2})` }]
+                            : []),
+                        ].filter((option, idx, arr) => idx === arr.findIndex((o) => o.value === option.value));
+
+                        return (
+                          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 3, flexWrap: 'wrap' }}>
+                            <FormControl size="small" sx={{ minWidth: 280 }}>
+                              <InputLabel>Timestamp Source</InputLabel>
+                              <Select
+                                label="Timestamp Source"
+                                value={selectedSource}
+                                onChange={(e) => {
+                                  const selectedValue = e.target.value;
+                                  const sourceEntity = selectedValue === BRIDGE_SOURCE_OPTION
+                                    ? mapping.sourceTable
+                                    : selectedValue;
+
+                                  handleUpdateFieldMapping(originalIndex, 'sourceTimeStamp', 'sourceEntity', sourceEntity);
+
+                                  const currentSourceColumn = sourceTimestampField?.sourceColumn || '';
+                                  const newSourceColumns = getBridgeTimestampColumnOptions(mapping, selectedValue);
+                                  if (!currentSourceColumn && newSourceColumns.includes('sourceTimeStamp')) {
+                                    handleUpdateFieldMapping(originalIndex, 'sourceTimeStamp', 'sourceColumn', 'sourceTimeStamp');
+                                  }
+                                }}
+                              >
+                                {timestampSourceOptions.map((option) => (
+                                  <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+
+                            <FormControl size="small" sx={{ minWidth: 280 }}>
+                              <InputLabel>Timestamp Source Column</InputLabel>
+                              <Select
+                                label="Timestamp Source Column"
+                                value={sourceTimestampField?.sourceColumn || ''}
+                                onChange={(e) => handleUpdateFieldMapping(originalIndex, 'sourceTimeStamp', 'sourceColumn', e.target.value)}
+                              >
+                                {selectedSourceColumns.length === 0 && (
+                                  <MenuItem value="">
+                                    <em>No columns available</em>
+                                  </MenuItem>
+                                )}
+                                {selectedSourceColumns.map((columnName) => (
+                                  <MenuItem key={columnName} value={columnName}>
+                                    {columnName}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={sourceTimestampField?.generate ?? true}
+                                  onChange={(e) => handleUpdateFieldMapping(originalIndex, 'sourceTimeStamp', 'generate', e.target.checked)}
+                                />
+                              }
+                              label="Generate sourceTimeStamp"
+                            />
+                          </Box>
+                        );
+                      })()}
 
                       <Button
                         startIcon={<DeleteIcon />}

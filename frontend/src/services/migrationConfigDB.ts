@@ -9,6 +9,7 @@ export interface FieldRuleConfig {
 export interface FieldMapping {
   fieldName: string;
   sourceColumn?: string;
+  sourceEntity?: string;
   generate: boolean;
   transformation?: string;
   fieldRule?: FieldRuleConfig;

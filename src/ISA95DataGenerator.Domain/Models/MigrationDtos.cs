@@ -61,6 +61,7 @@ public class FieldMappingDto
 {
     public string FieldName { get; set; } = string.Empty;
     public string? SourceColumn { get; set; }
+    public string? SourceEntity { get; set; }
     public bool Generate { get; set; }
     public string? Transformation { get; set; }
     public FieldRuleDto? FieldRule { get; set; }
