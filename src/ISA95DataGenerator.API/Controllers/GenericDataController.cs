@@ -659,6 +659,19 @@ public class GenericDataController : ControllerBase
         if (!storeName.Equals("equipmentPropertyTracking", StringComparison.Ordinal))
             return id;
 
+        if (element.TryGetProperty("__recordId", out var explicitRecordIdProp))
+        {
+            var explicitRecordId = explicitRecordIdProp.ValueKind switch
+            {
+                JsonValueKind.String => explicitRecordIdProp.GetString(),
+                JsonValueKind.Number => explicitRecordIdProp.GetRawText(),
+                _ => explicitRecordIdProp.GetRawText(),
+            };
+
+            if (!string.IsNullOrWhiteSpace(explicitRecordId))
+                return explicitRecordId;
+        }
+
         var tsSuffix = ExtractTimestampSuffix(element);
         if (string.IsNullOrWhiteSpace(tsSuffix))
             return id;
@@ -698,6 +711,11 @@ public class GenericDataController : ControllerBase
         var node = JsonNode.Parse(element.GetRawText())?.AsObject();
         if (node == null)
             return element.GetRawText();
+
+        if (storeName == "equipmentPropertyTracking")
+        {
+            node.Remove("__recordId");
+        }
 
         if (storeName == "segmentEquipmentRequirements")
         {

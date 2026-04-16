@@ -172,6 +172,7 @@ interface SegmentPersonnelActual {
 
 interface EquipmentPropertyTracking {
   id: string;
+  __recordId?: string;
   segmentResponseId: string;
   plantId: string;
   lineId: string;
@@ -256,7 +257,6 @@ const ProcessDataGenerator: React.FC = () => {
   const MAX_DAILY_ORDERS = 20;
   const MAX_UTILIZATION_PERCENT = 200;
   const PREVIEW_ROW_LIMIT = 200;
-  const MAX_TRACKING_RECORDS_TO_SAVE = 20000;
 
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
@@ -1782,6 +1782,9 @@ const ProcessDataGenerator: React.FC = () => {
             }
 
             const trackingId = `PROP-TRACK-${plantId}-${lineId}-${eqActual.equipmentId}-${assignment.equipmentPropertyId}`;
+            const createdTimestamp = sampleTime.toISOString().slice(0, 19).replace('T', ' ');
+            const timestampSuffix = createdTimestamp.replace(/[- :]/g, '');
+            const recordId = `PROP-TRACK-${eqActual.id}-${assignment.equipmentPropertyId}-${timestampSuffix}`;
 
             // Find equipment class from equipment
             const eqItem = equipment.find(e => e.id === eqActual.equipmentId);
@@ -1806,6 +1809,7 @@ const ProcessDataGenerator: React.FC = () => {
 
             const tracking: EquipmentPropertyTracking = {
               id: trackingId,
+              __recordId: recordId,
               segmentResponseId: eqActual.segmentResponseId,
               plantId: plantId,
               lineId: lineId,
@@ -1816,7 +1820,7 @@ const ProcessDataGenerator: React.FC = () => {
               equipmentClassPropertyId: equipmentClassPropertyId,
               value: value,
               uom: property.unit || '',
-              createdTimestamp: sampleTime.toISOString().slice(0, 19).replace('T', ' '),
+              createdTimestamp: createdTimestamp,
             };
 
             generatedPropertyTracking.push(tracking);
@@ -1901,6 +1905,9 @@ const ProcessDataGenerator: React.FC = () => {
               }
 
               const trackingId = `PROP-TRACK-${plantId}-${lineId}-${eqActual.equipmentId}-CHILD-${childEq.id}-${assignment.equipmentPropertyId}`;
+              const createdTimestamp = sampleTime.toISOString().slice(0, 19).replace('T', ' ');
+              const timestampSuffix = createdTimestamp.replace(/[- :]/g, '');
+              const recordId = `PROP-TRACK-${eqActual.id}-CHILD-${childEq.id}-${assignment.equipmentPropertyId}-${timestampSuffix}`;
 
               // Find equipment class from child equipment
               const childEqItem = equipment.find(e => e.id === childEq.id);
@@ -1914,6 +1921,7 @@ const ProcessDataGenerator: React.FC = () => {
 
               const tracking: EquipmentPropertyTracking = {
                 id: trackingId,
+                __recordId: recordId,
                 segmentResponseId: eqActual.segmentResponseId,
                 plantId: plantId,
                 lineId: lineId,
@@ -1925,7 +1933,7 @@ const ProcessDataGenerator: React.FC = () => {
                 equipmentClassPropertyId: childEquipmentClassPropertyId,
                 value: value,
                 uom: property.unit || '',
-                createdTimestamp: sampleTime.toISOString().slice(0, 19).replace('T', ' '),
+                createdTimestamp: createdTimestamp,
               };
 
               generatedPropertyTracking.push(tracking);
@@ -3031,18 +3039,7 @@ const ProcessDataGenerator: React.FC = () => {
     try {
       setLoading(true);
 
-      let trackingRecordsToSave = equipmentPropertyTracking;
-      if (equipmentPropertyTracking.length > MAX_TRACKING_RECORDS_TO_SAVE) {
-        const step = Math.ceil(equipmentPropertyTracking.length / MAX_TRACKING_RECORDS_TO_SAVE);
-        trackingRecordsToSave = equipmentPropertyTracking
-          .filter((_, index) => index % step === 0)
-          .slice(0, MAX_TRACKING_RECORDS_TO_SAVE);
-
-        showSnackbar(
-          `EquipmentPropertyTracking reduced for save: ${equipmentPropertyTracking.length} generated, ${trackingRecordsToSave.length} persisted`,
-          'success',
-        );
-      }
+      const trackingRecordsToSave = equipmentPropertyTracking;
 
       const entitySteps: Array<{
         entity: string;
