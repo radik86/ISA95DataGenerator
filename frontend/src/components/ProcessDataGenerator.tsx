@@ -3097,6 +3097,10 @@ const ProcessDataGenerator: React.FC = () => {
           save: async () => {
             if (generatedMaterialLotsForDisplay.length === 0) return 0;
             const result = await masterDataApi.bulkAdd('materialLots', generatedMaterialLotsForDisplay);
+            if (result.failed > 0) {
+              throw new Error(`Failed to save ${result.failed} material lot record(s) to master data`);
+            }
+            await processDataApi.upsertStoreRecords('materialLots' as any, generatedMaterialLotsForDisplay);
             return result.succeeded;
           },
         },
@@ -3105,6 +3109,10 @@ const ProcessDataGenerator: React.FC = () => {
           save: async () => {
             if (generatedMaterialSublotsForDisplay.length === 0) return 0;
             const result = await masterDataApi.bulkAdd('materialSublots', generatedMaterialSublotsForDisplay);
+            if (result.failed > 0) {
+              throw new Error(`Failed to save ${result.failed} material sublot record(s) to master data`);
+            }
+            await processDataApi.upsertStoreRecords('materialSublots' as any, generatedMaterialSublotsForDisplay);
             return result.succeeded;
           },
         },
