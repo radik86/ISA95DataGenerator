@@ -3745,7 +3745,7 @@ const ProcessDataGenerator: React.FC = () => {
       .map(le => le.equipmentId);
 
     let currentTime = new Date(planStart);
-    let previousSegmentFirstRunEnd: Date | null = null;
+    let previousSegmentRunEnds: Date[] = [];
 
     productSegments.forEach((segment, index) => {
       const segReqId = `SR-${plantId}-${lineId}-${dateTimeStr}-${String(index + 1).padStart(3, '0')}-${segment.id}`;
@@ -3757,16 +3757,39 @@ const ProcessDataGenerator: React.FC = () => {
       const requiredRuns = Math.max(1, Math.ceil(quantity / equipmentCapacity));
       const totalDuration = segmentDuration * requiredRuns;
 
-      let segmentStartTime: Date;
-      if (index === 0) segmentStartTime = new Date(currentTime);
-      else if (previousSegmentFirstRunEnd) segmentStartTime = new Date(previousSegmentFirstRunEnd);
-      else segmentStartTime = new Date(currentTime);
+      const runEndTimes: Date[] = [];
 
-      const firstRunEnd = new Date(segmentStartTime.getTime() + segmentDuration * 60 * 60 * 1000);
-      let allRunsEnd = new Date(segmentStartTime.getTime() + totalDuration * 60 * 60 * 1000);
-      if (index > 0 && currentTime > allRunsEnd) {
-        allRunsEnd = new Date(currentTime.getTime() + segmentDuration * 60 * 60 * 1000);
+      for (let run = 0; run < requiredRuns; run++) {
+        const equipmentAvailableTime = run > 0 ? runEndTimes[run - 1] : null;
+        const upstreamRunIndex = previousSegmentRunEnds.length > 0
+          ? Math.min(run, previousSegmentRunEnds.length - 1)
+          : -1;
+        const materialReadyTime = upstreamRunIndex >= 0
+          ? previousSegmentRunEnds[upstreamRunIndex]
+          : null;
+
+        let runStartTime: Date;
+        if (equipmentAvailableTime && materialReadyTime) {
+          runStartTime = equipmentAvailableTime > materialReadyTime
+            ? new Date(equipmentAvailableTime)
+            : new Date(materialReadyTime);
+        } else if (equipmentAvailableTime) {
+          runStartTime = new Date(equipmentAvailableTime);
+        } else if (materialReadyTime) {
+          runStartTime = new Date(materialReadyTime);
+        } else {
+          runStartTime = new Date(currentTime);
+        }
+
+        runEndTimes.push(new Date(runStartTime.getTime() + segmentDuration * 60 * 60 * 1000));
       }
+
+      const segmentStartTime = runEndTimes.length > 0
+        ? new Date(runEndTimes[0].getTime() - segmentDuration * 60 * 60 * 1000)
+        : new Date(currentTime);
+      const allRunsEnd = runEndTimes.length > 0
+        ? new Date(runEndTimes[runEndTimes.length - 1])
+        : new Date(segmentStartTime.getTime() + totalDuration * 60 * 60 * 1000);
 
       const segReq: SegmentRequirement = {
         id: segReqId,
@@ -3781,7 +3804,7 @@ const ProcessDataGenerator: React.FC = () => {
       };
       generatedSegReqs.push(segReq);
 
-      previousSegmentFirstRunEnd = firstRunEnd;
+      previousSegmentRunEnds = runEndTimes;
       currentTime = new Date(allRunsEnd);
 
       const bomLines = segmentBOMs.filter(bom => bom.processSegmentId === segment.id);
