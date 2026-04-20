@@ -455,7 +455,9 @@ public class MigrationProcessorV2Service
                     }
 
                     // Load source data for this mapping
+                    Log($"  Bridge source load: reading '{mapping.SourceTable}'...");
                     var sourceData = await sourceStoreProvider.GetStoreAsync(mapping.SourceTable, ct);
+                    Log($"  Bridge source load: '{mapping.SourceTable}' returned {sourceData.Count} row(s)");
                     if (sourceData.Count == 0)
                     {
                         Log($"  ⚠ Source table '{mapping.SourceTable}' empty or not found — skipping");
@@ -469,9 +471,12 @@ public class MigrationProcessorV2Service
                     }
 
                     // Apply filters
+                    Log($"  Bridge filter: applying filters for {mapping.TargetEntity}...");
                     var filteredData = ApplyFilters(sourceData, mapping.Filters);
                     if (filteredData.Count != sourceData.Count)
                         Log($"  Filtered: {sourceData.Count} → {filteredData.Count} records");
+                    else
+                        Log($"  Bridge filter: no rows filtered ({filteredData.Count} records)");
 
                     CollectMigratedGenericRowIds(filteredData, migratedGenericRowIds);
 
@@ -480,9 +485,11 @@ public class MigrationProcessorV2Service
                         ? mappingSubDir
                         : isa95SubDir;
                     // Bridge: keep current approach (bridges are typically small)
+                    Log($"  Bridge transform: starting {mapping.TargetEntity} on {filteredData.Count} row(s)...");
                     var transformedData = await ProcessBridgeMappingAsync(
                         mapping, filteredData, sortedMappings, sourceStoreProvider,
                         entityDataCache, Log, ct);
+                    Log($"  Bridge transform: completed {mapping.TargetEntity} with {transformedData.Count} row(s)");
 
                     var written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
                     var recordCount = transformedData.Count;
@@ -2006,8 +2013,9 @@ public class MigrationProcessorV2Service
         var entity2DisplayName = FormatEntityNameForOutput(entity2Name);
 
         // Get combined transformed data for both entities (from cache built during regular processing)
-        var entity1Data = await GetOrBuildEntityDataAsync(entity1Name, allMappings, sourceStoreProvider, entityDataCache, ct);
-        var entity2Data = await GetOrBuildEntityDataAsync(entity2Name, allMappings, sourceStoreProvider, entityDataCache, ct);
+        log($"  Building bridge caches for {entity1Name} and {entity2Name}...");
+        var entity1Data = await GetOrBuildEntityDataAsync(entity1Name, allMappings, sourceStoreProvider, entityDataCache, log, ct);
+        var entity2Data = await GetOrBuildEntityDataAsync(entity2Name, allMappings, sourceStoreProvider, entityDataCache, log, ct);
 
         // Build indexed lookups for fast joining
         var entity1Index = BuildIndex(entity1Data, mapping.BridgeEntity1JoinFields);
@@ -2124,28 +2132,50 @@ public class MigrationProcessorV2Service
         List<TableMappingDto> allMappings,
         SourceStoreProvider sourceStoreProvider,
         Dictionary<string, List<Dictionary<string, object?>>> entityDataCache,
+        Action<string> log,
         CancellationToken ct)
     {
         var cacheKey = $"COMBINED_{targetEntity}";
         if (entityDataCache.TryGetValue(cacheKey, out var cached))
+        {
+            log($"  Reusing cached bridge entity '{targetEntity}' ({cached.Count} records)");
             return cached;
+        }
 
         // Build it from the mapping configurations
         var entityMappings = allMappings
             .Where(m => !m.IsBridge && m.TargetEntity == targetEntity)
             .ToList();
 
+        if (entityMappings.Count == 0)
+        {
+            log($"  ⚠ No non-bridge mappings found to build bridge entity cache for '{targetEntity}'");
+        }
+
         var combined = new List<Dictionary<string, object?>>();
         foreach (var em in entityMappings)
         {
+            ct.ThrowIfCancellationRequested();
+
+            log($"  Cache build: {targetEntity} from {em.SourceTable}...");
             var srcData = await sourceStoreProvider.GetStoreAsync(em.SourceTable, ct);
             if (srcData.Count == 0) continue;
             var filtered = ApplyFilters(srcData, em.Filters);
-            var transformed = await ProcessRegularMappingAsync(em, filtered, sourceStoreProvider, _ => { }, ct);
+            log($"  Cache build: {targetEntity} source rows={srcData.Count}, filtered={filtered.Count}");
+
+            var transformed = await ProcessRegularMappingAsync(
+                em,
+                filtered,
+                sourceStoreProvider,
+                msg => log($"    {msg}"),
+                ct);
+
             combined.AddRange(transformed);
+            log($"  Cache build: {targetEntity} +{transformed.Count} transformed row(s)");
         }
 
         entityDataCache[cacheKey] = combined;
+        log($"  Built bridge entity cache '{targetEntity}' with {combined.Count} records");
         return combined;
     }
 

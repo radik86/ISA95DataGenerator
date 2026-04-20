@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "dataDirs": [
+      "generated"
+    ],
+    "dtdlDir": "InbuiltEntitiesDTDL",
+    "dtdlMetadataSource": "dtdl_dir",
+    "metadataCache": "generated/dtdl_metadata_cache.json",
+    "csvFilesEvaluated": 0,
+    "entityFilesEvaluated": 0,
+    "mappingFilesEvaluated": 0,
+    "errors": 0,
+    "warnings": 2
+  },
+  "issues": [
+    {
+      "severity": "warning",
+      "rule": "no_csv_found",
+      "file": "<global>",
+      "message": "No candidate CSV files found"
+    },
+    {
+      "severity": "warning",
+      "rule": "material_definition_property_file_missing",
+      "file": "<global>",
+      "message": "MaterialDefinitionProperty CSV not found in evaluated data directories"
+    }
+  ]
+}

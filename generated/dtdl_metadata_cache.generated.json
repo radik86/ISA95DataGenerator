@@ -1,0 +1,3527 @@
+{
+  "version": 1,
+  "generatedAtUtc": "2026-04-17T13:07:58.947358+00:00",
+  "dtdlDir": "InbuiltEntitiesDTDL",
+  "entities": [
+    {
+      "name": "BaseModel",
+      "source_file": "InbuiltEntitiesDTDL\\BaseModel.json",
+      "aliases": [
+        "basemodel"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment",
+      "source_file": "InbuiltEntitiesDTDL\\Equipment.json",
+      "aliases": [
+        "equipment"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "equipmentlevel": [
+          "Storage Unit",
+          "area",
+          "enterprise",
+          "processCell",
+          "productionLine",
+          "productionUnit",
+          "site",
+          "storageZone",
+          "unit",
+          "workCell",
+          "workCenter",
+          "workUnit"
+        ],
+        "operationallocationtype": [
+          "Description",
+          "Operational Location"
+        ]
+      }
+    },
+    {
+      "name": "Equipment Actual",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentActual.json",
+      "aliases": [
+        "equipmentactual"
+      ],
+      "mandatory_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "Operational Location"
+        ]
+      }
+    },
+    {
+      "name": "Equipment Actual property",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentActualproperty.json",
+      "aliases": [
+        "equipmentactualproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment Asset Mapping",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentAssetMapping.json",
+      "aliases": [
+        "equipmentassetmapping"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment Capability",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentCapability.json",
+      "aliases": [
+        "equipmentcapability"
+      ],
+      "mandatory_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "Operational Location"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "Equipment Capability property",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentCapabilityproperty.json",
+      "aliases": [
+        "equipmentcapabilityproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure",
+        "externalreferenceid"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure",
+        "externalreferenceid"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment Class",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentClass.json",
+      "aliases": [
+        "equipmentclass"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "equipmentlevel": [
+          "Storage Unit",
+          "area",
+          "enterprise",
+          "processCell",
+          "productionLine",
+          "productionUnit",
+          "site",
+          "storageZone",
+          "unit",
+          "workCell",
+          "workCenter",
+          "workUnit"
+        ]
+      }
+    },
+    {
+      "name": "Equipment Class Property",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentClassProperty.json",
+      "aliases": [
+        "equipmentclassproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Equipment Property",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentProperty.json",
+      "aliases": [
+        "equipmentproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment requirement",
+      "source_file": "InbuiltEntitiesDTDL\\Equipmentrequirement.json",
+      "aliases": [
+        "equipmentrequirement"
+      ],
+      "mandatory_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "Operational Location"
+        ],
+        "equipmentlevel": [
+          "Area",
+          "Enterprise",
+          "Site",
+          "Work Center",
+          "Work Unit"
+        ]
+      }
+    },
+    {
+      "name": "Equipment requirement property",
+      "source_file": "InbuiltEntitiesDTDL\\Equipmentrequirementproperty.json",
+      "aliases": [
+        "equipmentrequirementproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment Segment Specification",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentSegmentSpecification.json",
+      "aliases": [
+        "equipmentsegmentspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "Operational Location"
+        ]
+      }
+    },
+    {
+      "name": "Equipment Segment Specification Property",
+      "source_file": "InbuiltEntitiesDTDL\\EquipmentSegmentSpecificationProperty.json",
+      "aliases": [
+        "equipmentsegmentspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Equipment specification",
+      "source_file": "InbuiltEntitiesDTDL\\Equipmentspecification.json",
+      "aliases": [
+        "equipmentspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "equipmentuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "Operational Location"
+        ]
+      }
+    },
+    {
+      "name": "Equipment specification property",
+      "source_file": "InbuiltEntitiesDTDL\\Equipmentspecificationproperty.json",
+      "aliases": [
+        "equipmentspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Evaluated property",
+      "source_file": "InbuiltEntitiesDTDL\\Evaluatedproperty.json",
+      "aliases": [
+        "evaluatedproperty"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "FromResourceReference",
+      "source_file": "InbuiltEntitiesDTDL\\FromResourceReference.json",
+      "aliases": [
+        "fromresourcereference"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "resourcetype": [
+          "equipment",
+          "equipment class",
+          "material class",
+          "material definition",
+          "material lot",
+          "material sublot",
+          "operation definition",
+          "operational location",
+          "operations segment",
+          "person",
+          "personnel class",
+          "physical asset",
+          "physical asset class",
+          "process segment",
+          "test result",
+          "test specification",
+          "work master"
+        ]
+      }
+    },
+    {
+      "name": "FromResourceReferenceProperty",
+      "source_file": "InbuiltEntitiesDTDL\\FromResourceReferenceProperty.json",
+      "aliases": [
+        "fromresourcereferenceproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Hierarchy Scope",
+      "source_file": "InbuiltEntitiesDTDL\\HierarchyScope.json",
+      "aliases": [
+        "hierarchyscope"
+      ],
+      "mandatory_cols": [
+        "id",
+        "equipmentid",
+        "equipmentlevel"
+      ],
+      "primary_key_cols": [
+        "id",
+        "equipmentid",
+        "equipmentlevel"
+      ],
+      "enum_values": {
+        "equipmentlevel": [
+          "Area",
+          "Enterprise",
+          "Process Cell",
+          "Production Line",
+          "Production Unit",
+          "Site",
+          "Storage Unit",
+          "Storage Zone",
+          "Unit",
+          "Work Cell",
+          "Work Center",
+          "Work Unit"
+        ]
+      }
+    },
+    {
+      "name": "Job List",
+      "source_file": "InbuiltEntitiesDTDL\\JobList.json",
+      "aliases": [
+        "joblist"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ]
+      }
+    },
+    {
+      "name": "Job Order",
+      "source_file": "InbuiltEntitiesDTDL\\JobOrder.json",
+      "aliases": [
+        "joborder"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "dispatchstatus": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Job order parameter",
+      "source_file": "InbuiltEntitiesDTDL\\Joborderparameter.json",
+      "aliases": [
+        "joborderparameter"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Job response",
+      "source_file": "InbuiltEntitiesDTDL\\Jobresponse.json",
+      "aliases": [
+        "jobresponse"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ],
+        "jobstate": [
+          "aborted",
+          "closed",
+          "completed",
+          "held",
+          "ready",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Job response data",
+      "source_file": "InbuiltEntitiesDTDL\\Jobresponsedata.json",
+      "aliases": [
+        "jobresponsedata"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Job response list",
+      "source_file": "InbuiltEntitiesDTDL\\Jobresponselist.json",
+      "aliases": [
+        "jobresponselist"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ]
+      }
+    },
+    {
+      "name": "LangStringSet",
+      "source_file": "InbuiltEntitiesDTDL\\LangStringSet.json",
+      "aliases": [
+        "langstringset"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "Material Actual",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialActual.json",
+      "aliases": [
+        "materialactual"
+      ],
+      "mandatory_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "materialuse": [
+          "By-Product produced",
+          "Co-Product produced",
+          "Consumable",
+          "Destructive sample",
+          "Inventoried",
+          "Material consumed",
+          "Material produced",
+          "Retained sample",
+          "Returned sample",
+          "Scrap",
+          "Waste",
+          "Yield produced"
+        ]
+      }
+    },
+    {
+      "name": "Material Actual property",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialActualproperty.json",
+      "aliases": [
+        "materialactualproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Material Capability",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialCapability.json",
+      "aliases": [
+        "materialcapability"
+      ],
+      "mandatory_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ],
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "materialuse": [
+          "By-Product produced",
+          "Co-Product produced",
+          "Consumable",
+          "Destructive sample",
+          "Inventoried",
+          "Material consumed",
+          "Material produced",
+          "Retained sample",
+          "Returned sample",
+          "Yield produced"
+        ]
+      }
+    },
+    {
+      "name": "Material Capability property",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialCapabilityproperty.json",
+      "aliases": [
+        "materialcapabilityproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Material Class",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialClass.json",
+      "aliases": [
+        "materialclass"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ]
+      }
+    },
+    {
+      "name": "Material Class Property",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialClassProperty.json",
+      "aliases": [
+        "materialclassproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Material Definition",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialDefinition.json",
+      "aliases": [
+        "materialdefinition"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ]
+      }
+    },
+    {
+      "name": "Material Definition Property",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialDefinitionProperty.json",
+      "aliases": [
+        "materialdefinitionproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Material Lot",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialLot.json",
+      "aliases": [
+        "materiallot"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "disposition": [
+          "Closed",
+          "In process",
+          "Planned",
+          "Restricted",
+          "Unrestricted"
+        ]
+      }
+    },
+    {
+      "name": "Material Lot Property",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialLotProperty.json",
+      "aliases": [
+        "materiallotproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Material requirement",
+      "source_file": "InbuiltEntitiesDTDL\\Materialrequirement.json",
+      "aliases": [
+        "materialrequirement"
+      ],
+      "mandatory_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "materialuse": [
+          "By-Product produced",
+          "Co-Product produced",
+          "Consumable",
+          "Destructive sample",
+          "Inventoried",
+          "Material consumed",
+          "Material produced",
+          "Retained sample",
+          "Returned sample",
+          "Yield produced"
+        ]
+      }
+    },
+    {
+      "name": "Material requirement property",
+      "source_file": "InbuiltEntitiesDTDL\\Materialrequirementproperty.json",
+      "aliases": [
+        "materialrequirementproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Material Segment Specification",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialSegmentSpecification.json",
+      "aliases": [
+        "materialsegmentspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "materialuse": [
+          "By-Product produced",
+          "Co-Product produced",
+          "Consumable",
+          "Destructive sample",
+          "Inventoried",
+          "Material consumed",
+          "Material produced",
+          "Retained sample",
+          "Returned sample",
+          "Yield produced"
+        ]
+      }
+    },
+    {
+      "name": "Material Segment Specification Property",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialSegmentSpecificationProperty.json",
+      "aliases": [
+        "materialsegmentspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Material specification",
+      "source_file": "InbuiltEntitiesDTDL\\Materialspecification.json",
+      "aliases": [
+        "materialspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "materialuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "materialuse": [
+          "By-Product produced",
+          "Co-Product produced",
+          "Consumable",
+          "Destructive sample",
+          "Inventoried",
+          "Material consumed",
+          "Material produced",
+          "Retained sample",
+          "Returned sample",
+          "Yield produced"
+        ]
+      }
+    },
+    {
+      "name": "Material specification property",
+      "source_file": "InbuiltEntitiesDTDL\\Materialspecificationproperty.json",
+      "aliases": [
+        "materialspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Material Sublot",
+      "source_file": "InbuiltEntitiesDTDL\\MaterialSublot.json",
+      "aliases": [
+        "materialsublot"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ],
+        "storagelocationtype": [
+          "Description",
+          "Equipment",
+          "Operational location",
+          "Physical asset"
+        ],
+        "disposition": [
+          "Closed",
+          "In process",
+          "Planned",
+          "Restricted",
+          "Unrestricted"
+        ]
+      }
+    },
+    {
+      "name": "Operational location",
+      "source_file": "InbuiltEntitiesDTDL\\Operationallocation.json",
+      "aliases": [
+        "operationallocation"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operational location class",
+      "source_file": "InbuiltEntitiesDTDL\\Operationallocationclass.json",
+      "aliases": [
+        "operationallocationclass"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operational location class property",
+      "source_file": "InbuiltEntitiesDTDL\\Operationallocationclassproperty.json",
+      "aliases": [
+        "operationallocationclassproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Operational location property",
+      "source_file": "InbuiltEntitiesDTDL\\Operationallocationproperty.json",
+      "aliases": [
+        "operationallocationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operations Capability",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsCapability.json",
+      "aliases": [
+        "operationscapability"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "Operations Definition",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsDefinition.json",
+      "aliases": [
+        "operationsdefinition"
+      ],
+      "mandatory_cols": [
+        "id",
+        "version"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "definitiontype": [
+          "Instance",
+          "Pattern"
+        ]
+      }
+    },
+    {
+      "name": "Operations event",
+      "source_file": "InbuiltEntitiesDTDL\\Operationsevent.json",
+      "aliases": [
+        "operationsevent"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationseventtype": [
+          "Alarm",
+          "Alert",
+          "Event"
+        ],
+        "operationseventlevel": [
+          "3",
+          "4"
+        ],
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "momfunction": [
+          "Data collection",
+          "Definition management",
+          "Detailed scheduling",
+          "Dispatching",
+          "Execution management",
+          "Performance analysis",
+          "Resource management",
+          "Tracking"
+        ],
+        "enterprisefunction": [
+          "Engineering",
+          "Maintenance management",
+          "Marketing and sales",
+          "Material and energy control",
+          "Operations scheduling",
+          "Order processing",
+          "Procurement",
+          "Product cost accounting",
+          "Product inventory control",
+          "Product shipping administration",
+          "Production control",
+          "Quality assurance",
+          "R&D"
+        ]
+      }
+    },
+    {
+      "name": "Operations event class",
+      "source_file": "InbuiltEntitiesDTDL\\Operationseventclass.json",
+      "aliases": [
+        "operationseventclass"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operations event class property",
+      "source_file": "InbuiltEntitiesDTDL\\Operationseventclassproperty.json",
+      "aliases": [
+        "operationseventclassproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Operations event class record specification",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsEventClassRecordSpecification.json",
+      "aliases": [
+        "operationseventclassrecordspecification"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operations event definition",
+      "source_file": "InbuiltEntitiesDTDL\\Operationseventdefinition.json",
+      "aliases": [
+        "operationseventdefinition"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationseventtype": [
+          "Alarm",
+          "Alert",
+          "Event"
+        ],
+        "operationseventlevel": [
+          "3",
+          "4"
+        ],
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "momfunction": [
+          "Data collection",
+          "Definition management",
+          "Detailed scheduling",
+          "Dispatching",
+          "Execution management",
+          "Performance analysis",
+          "Resource management",
+          "Tracking"
+        ],
+        "enterprisefunction": [
+          "Engineering",
+          "Maintenance management",
+          "Marketing and sales",
+          "Material and energy control",
+          "Operations scheduling",
+          "Order processing",
+          "Procurement",
+          "Product cost accounting",
+          "Product inventory control",
+          "Product shipping administration",
+          "Production control",
+          "Quality assurance",
+          "R&D"
+        ]
+      }
+    },
+    {
+      "name": "Operations event definition property",
+      "source_file": "InbuiltEntitiesDTDL\\Operationseventdefinitionproperty.json",
+      "aliases": [
+        "operationseventdefinitionproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Operations event definition record specification",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsEventDefinitionRecordSpecification.json",
+      "aliases": [
+        "operationseventdefinitionrecordspecification"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operations event property",
+      "source_file": "InbuiltEntitiesDTDL\\Operationseventproperty.json",
+      "aliases": [
+        "operationseventproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Operations event record",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsEventRecord.json",
+      "aliases": [
+        "operationseventrecord"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "action": [
+          "added",
+          "changed",
+          "deleted",
+          "observed"
+        ]
+      }
+    },
+    {
+      "name": "Operations event record entry",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsEventRecordEntry.json",
+      "aliases": [
+        "operationseventrecordentry"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operations Material Bill",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsMaterialBill.json",
+      "aliases": [
+        "operationsmaterialbill"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "usetype": [
+          "Consumed",
+          "Mixed",
+          "Produced"
+        ]
+      }
+    },
+    {
+      "name": "Operations Material Bill Item",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsMaterialBillItem.json",
+      "aliases": [
+        "operationsmaterialbillitem"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "usetype": [
+          "Consumed",
+          "Mixed",
+          "Produced"
+        ],
+        "assemblytype": [
+          "Logical",
+          "Physical"
+        ],
+        "assemblyrelationship": [
+          "Permanent",
+          "Transient"
+        ]
+      }
+    },
+    {
+      "name": "Operations Performance",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsPerformance.json",
+      "aliases": [
+        "operationsperformance"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "performancestate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Operations record entry template",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsRecordEntryTemplate.json",
+      "aliases": [
+        "operationsrecordentrytemplate"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Operations record specification template",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsRecordSpecificationTemplate.json",
+      "aliases": [
+        "operationsrecordspecificationtemplate"
+      ],
+      "mandatory_cols": [
+        "id",
+        "informationobjecttype",
+        "informationobjecttypemultiplicity",
+        "action",
+        "actionmultiplicity"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "action": [
+          "added",
+          "changed",
+          "deleted",
+          "observed"
+        ]
+      }
+    },
+    {
+      "name": "Operations record template",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsRecordTemplate.json",
+      "aliases": [
+        "operationsrecordtemplate"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "action": [
+          "added",
+          "changed",
+          "deleted",
+          "observed"
+        ]
+      }
+    },
+    {
+      "name": "Operations Request",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsRequest.json",
+      "aliases": [
+        "operationsrequest"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "requeststate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Operations Response",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsResponse.json",
+      "aliases": [
+        "operationsresponse"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "responsestate": [
+          "aborted",
+          "closed",
+          "completed",
+          "held",
+          "ready",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Operations Schedule",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsSchedule.json",
+      "aliases": [
+        "operationsschedule"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "schedulestate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Operations Segment",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsSegment.json",
+      "aliases": [
+        "operationssegment"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "definitiontype": [
+          "Instance",
+          "Pattern"
+        ]
+      }
+    },
+    {
+      "name": "Operations segment capability",
+      "source_file": "InbuiltEntitiesDTDL\\Operationssegmentcapability.json",
+      "aliases": [
+        "operationssegmentcapability"
+      ],
+      "mandatory_cols": [
+        "id",
+        "description"
+      ],
+      "primary_key_cols": [
+        "id",
+        "description"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "OperationsTestRequirement",
+      "source_file": "InbuiltEntitiesDTDL\\OperationsTestRequirement.json",
+      "aliases": [
+        "operationstestrequirement"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "Person",
+      "source_file": "InbuiltEntitiesDTDL\\Person.json",
+      "aliases": [
+        "person"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Operational Location",
+          "description"
+        ]
+      }
+    },
+    {
+      "name": "Personnel Actual",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelActual.json",
+      "aliases": [
+        "personnelactual"
+      ],
+      "mandatory_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "OperationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Personnel Actual property",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelActualproperty.json",
+      "aliases": [
+        "personnelactualproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Personnel Capability",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelCapability.json",
+      "aliases": [
+        "personnelcapability"
+      ],
+      "mandatory_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "OperationalLocation"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "Personnel Capability property",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelCapabilityproperty.json",
+      "aliases": [
+        "personnelcapabilityproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Personnel Class",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelClass.json",
+      "aliases": [
+        "personnelclass"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Personnel Class Property",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelClassProperty.json",
+      "aliases": [
+        "personnelclassproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Personnel requirement",
+      "source_file": "InbuiltEntitiesDTDL\\Personnelrequirement.json",
+      "aliases": [
+        "personnelrequirement"
+      ],
+      "mandatory_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "OperationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Personnel requirement property",
+      "source_file": "InbuiltEntitiesDTDL\\Personnelrequirementproperty.json",
+      "aliases": [
+        "personnelrequirementproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Personnel Segment Specification",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelSegmentSpecification.json",
+      "aliases": [
+        "personnelsegmentspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "OperationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Personnel Segment Specification Property",
+      "source_file": "InbuiltEntitiesDTDL\\PersonnelSegmentSpecificationProperty.json",
+      "aliases": [
+        "personnelsegmentspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Personnel specification",
+      "source_file": "InbuiltEntitiesDTDL\\Personnelspecification.json",
+      "aliases": [
+        "personnelspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "personneluse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "operationallocationtype": [
+          "Description",
+          "OperationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Personnel specification property",
+      "source_file": "InbuiltEntitiesDTDL\\Personnelspecificationproperty.json",
+      "aliases": [
+        "personnelspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Person Property",
+      "source_file": "InbuiltEntitiesDTDL\\PersonProperty.json",
+      "aliases": [
+        "personproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAsset.json",
+      "aliases": [
+        "physicalasset"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "physicallocationtype": [
+          "description",
+          "operationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset Actual",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetActual.json",
+      "aliases": [
+        "physicalassetactual"
+      ],
+      "mandatory_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "physicallocationtype": [
+          "description",
+          "operationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset Actual property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetActualproperty.json",
+      "aliases": [
+        "physicalassetactualproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset Capability",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetCapability.json",
+      "aliases": [
+        "physicalassetcapability"
+      ],
+      "mandatory_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "physicallocationtype": [
+          "description",
+          "operationalLocation"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset Capability property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetCapabilityproperty.json",
+      "aliases": [
+        "physicalassetcapabilityproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset Class",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetClass.json",
+      "aliases": [
+        "physicalassetclass"
+      ],
+      "mandatory_cols": [
+        "id",
+        "manufacturer"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset Class Property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetClassProperty.json",
+      "aliases": [
+        "physicalassetclassproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset Property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetProperty.json",
+      "aliases": [
+        "physicalassetproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset requirement",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetrequirement.json",
+      "aliases": [
+        "physicalassetrequirement"
+      ],
+      "mandatory_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "physicallocationtype": [
+          "description",
+          "operationalLocation"
+        ],
+        "equipmentlevel": [
+          "Area",
+          "Enterprise",
+          "Site",
+          "Work Center",
+          "Work Unit"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset requirement property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetrequirementproperty.json",
+      "aliases": [
+        "physicalassetrequirementproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset Segment Specification",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetSegmentSpecification.json",
+      "aliases": [
+        "physicalassetsegmentspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "physicallocationtype": [
+          "description",
+          "operationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset Segment Specification Property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetSegmentSpecificationProperty.json",
+      "aliases": [
+        "physicalassetsegmentspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Physical Asset specification",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetspecification.json",
+      "aliases": [
+        "physicalassetspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "physicalassetuse",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {
+        "physicallocationtype": [
+          "description",
+          "operationalLocation"
+        ]
+      }
+    },
+    {
+      "name": "Physical Asset specification property",
+      "source_file": "InbuiltEntitiesDTDL\\PhysicalAssetspecificationproperty.json",
+      "aliases": [
+        "physicalassetspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure",
+        "quantity",
+        "quantityunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Process Segment",
+      "source_file": "InbuiltEntitiesDTDL\\ProcessSegment.json",
+      "aliases": [
+        "processsegment"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "definitiontype": [
+          "Instance",
+          "Pattern"
+        ]
+      }
+    },
+    {
+      "name": "Process segment capability",
+      "source_file": "InbuiltEntitiesDTDL\\Processsegmentcapability.json",
+      "aliases": [
+        "processsegmentcapability"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "Process Segment Dependency",
+      "source_file": "InbuiltEntitiesDTDL\\ProcessSegmentDependency.json",
+      "aliases": [
+        "processsegmentdependency"
+      ],
+      "mandatory_cols": [
+        "id",
+        "dependencytype",
+        "dependencyfactor"
+      ],
+      "primary_key_cols": [
+        "id",
+        "dependencytype",
+        "dependencyfactor"
+      ],
+      "enum_values": {
+        "dependencytype": [
+          "after end",
+          "after start",
+          "at start",
+          "no earlier after end",
+          "no earlier after start",
+          "no later after end",
+          "no later after start",
+          "not follow",
+          "not in parallel",
+          "possible parallel"
+        ]
+      }
+    },
+    {
+      "name": "Process Segment Parameter",
+      "source_file": "InbuiltEntitiesDTDL\\ProcessSegmentParameter.json",
+      "aliases": [
+        "processsegmentparameter"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Property measurement",
+      "source_file": "InbuiltEntitiesDTDL\\Propertymeasurement.json",
+      "aliases": [
+        "propertymeasurement"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Resource",
+      "source_file": "InbuiltEntitiesDTDL\\Resource.json",
+      "aliases": [
+        "resource"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceActual",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceActual.json",
+      "aliases": [
+        "resourceactual"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceClass",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceClass.json",
+      "aliases": [
+        "resourceclass"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceClassProperty",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceClassProperty.json",
+      "aliases": [
+        "resourceclassproperty"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {
+        "propertytype": [
+          "ClassType",
+          "DefaultType",
+          "InstanceType"
+        ]
+      }
+    },
+    {
+      "name": "ResourceNetworkConnection",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceNetworkConnection.json",
+      "aliases": [
+        "resourcenetworkconnection"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceNetworkConnectionProperty",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceNetworkConnectionProperty.json",
+      "aliases": [
+        "resourcenetworkconnectionproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceNetworkConnectionType",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceNetworkConnectionType.json",
+      "aliases": [
+        "resourcenetworkconnectiontype"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceNetworkConnectionTypeProperty",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceNetworkConnectionTypeProperty.json",
+      "aliases": [
+        "resourcenetworkconnectiontypeproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceProperty",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceProperty.json",
+      "aliases": [
+        "resourceproperty"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "ResourceRelationshipNetwork",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceRelationshipNetwork.json",
+      "aliases": [
+        "resourcerelationshipnetwork"
+      ],
+      "mandatory_cols": [
+        "id",
+        "relationshiptype"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "relationshiptype": [
+          "logical",
+          "physical"
+        ],
+        "relationshipform": [
+          "permanent",
+          "transient"
+        ]
+      }
+    },
+    {
+      "name": "ResourceRelationshipNetworkProperty",
+      "source_file": "InbuiltEntitiesDTDL\\ResourceRelationshipNetworkProperty.json",
+      "aliases": [
+        "resourcerelationshipnetworkproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Segment Data",
+      "source_file": "InbuiltEntitiesDTDL\\SegmentData.json",
+      "aliases": [
+        "segmentdata"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Segment Requirement",
+      "source_file": "InbuiltEntitiesDTDL\\SegmentRequirement.json",
+      "aliases": [
+        "segmentrequirement"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "segmentstate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "Segment Response",
+      "source_file": "InbuiltEntitiesDTDL\\SegmentResponse.json",
+      "aliases": [
+        "segmentresponse"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "segmentstate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "SpatialDefinition",
+      "source_file": "InbuiltEntitiesDTDL\\SpatialDefinition.json",
+      "aliases": [
+        "spatialdefinition"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "Tags",
+      "source_file": "InbuiltEntitiesDTDL\\Tags.json",
+      "aliases": [
+        "tags"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "TestableObject",
+      "source_file": "InbuiltEntitiesDTDL\\TestableObject.json",
+      "aliases": [
+        "testableobject"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "TestableObjectProperty",
+      "source_file": "InbuiltEntitiesDTDL\\TestableObjectProperty.json",
+      "aliases": [
+        "testableobjectproperty"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {}
+    },
+    {
+      "name": "Test result",
+      "source_file": "InbuiltEntitiesDTDL\\Testresult.json",
+      "aliases": [
+        "testresult"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "evaluatedcriterionresult": [
+          "Fail",
+          "Other",
+          "Pass",
+          "Warn"
+        ]
+      }
+    },
+    {
+      "name": "Test specification",
+      "source_file": "InbuiltEntitiesDTDL\\Testspecification.json",
+      "aliases": [
+        "testspecification"
+      ],
+      "mandatory_cols": [
+        "id",
+        "version"
+      ],
+      "primary_key_cols": [
+        "id",
+        "version"
+      ],
+      "enum_values": {
+        "physicalsample": [
+          "No",
+          "Yes"
+        ]
+      }
+    },
+    {
+      "name": "Test specification criteria",
+      "source_file": "InbuiltEntitiesDTDL\\Testspecificationcriteria.json",
+      "aliases": [
+        "testspecificationcriteria"
+      ],
+      "mandatory_cols": [
+        "id",
+        "sequence"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "result": [
+          "Fail",
+          "Other",
+          "Pass",
+          "Warn"
+        ]
+      }
+    },
+    {
+      "name": "Test specification property",
+      "source_file": "InbuiltEntitiesDTDL\\Testspecificationproperty.json",
+      "aliases": [
+        "testspecificationproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "ToResourceReference",
+      "source_file": "InbuiltEntitiesDTDL\\ToResourceReference.json",
+      "aliases": [
+        "toresourcereference"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "resourcetype": [
+          "equipment",
+          "equipment class",
+          "material class",
+          "material definition",
+          "material lot",
+          "material sublot",
+          "operation definition",
+          "operational location",
+          "operations segment",
+          "person",
+          "personnel class",
+          "physical asset",
+          "physical asset class",
+          "process segment",
+          "test result",
+          "test specification",
+          "work master"
+        ]
+      }
+    },
+    {
+      "name": "ToResourceReferenceProperty",
+      "source_file": "InbuiltEntitiesDTDL\\ToResourceReferenceProperty.json",
+      "aliases": [
+        "toresourcereferenceproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work Alert",
+      "source_file": "InbuiltEntitiesDTDL\\WorkAlert.json",
+      "aliases": [
+        "workalert"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work Alert Definition",
+      "source_file": "InbuiltEntitiesDTDL\\WorkAlertDefinition.json",
+      "aliases": [
+        "workalertdefinition"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work Alert Definition Property",
+      "source_file": "InbuiltEntitiesDTDL\\WorkAlertDefinitionProperty.json",
+      "aliases": [
+        "workalertdefinitionproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work Alert Property",
+      "source_file": "InbuiltEntitiesDTDL\\WorkAlertProperty.json",
+      "aliases": [
+        "workalertproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendar.json",
+      "aliases": [
+        "workcalendar"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar definition",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendardefinition.json",
+      "aliases": [
+        "workcalendardefinition"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar definition entry",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendardefinitionentry.json",
+      "aliases": [
+        "workcalendardefinitionentry"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar definition entry property",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendardefinitionentryproperty.json",
+      "aliases": [
+        "workcalendardefinitionentryproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "valueunitofmeasure",
+        "externalreferenceid"
+      ],
+      "primary_key_cols": [
+        "id",
+        "valueunitofmeasure",
+        "externalreferenceid"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar definition property",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendardefinitionproperty.json",
+      "aliases": [
+        "workcalendardefinitionproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar entry",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendarentry.json",
+      "aliases": [
+        "workcalendarentry"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar entry property",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendarentryproperty.json",
+      "aliases": [
+        "workcalendarentryproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work calendar property",
+      "source_file": "InbuiltEntitiesDTDL\\Workcalendarproperty.json",
+      "aliases": [
+        "workcalendarproperty"
+      ],
+      "mandatory_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "primary_key_cols": [
+        "id",
+        "value",
+        "valueunitofmeasure"
+      ],
+      "enum_values": {}
+    },
+    {
+      "name": "Work Capability",
+      "source_file": "InbuiltEntitiesDTDL\\WorkCapability.json",
+      "aliases": [
+        "workcapability"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "WorkDefinition",
+      "source_file": "InbuiltEntitiesDTDL\\WorkDefinition.json",
+      "aliases": [
+        "workdefinition"
+      ],
+      "mandatory_cols": [],
+      "primary_key_cols": [],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ]
+      }
+    },
+    {
+      "name": "work directive",
+      "source_file": "InbuiltEntitiesDTDL\\workdirective.json",
+      "aliases": [
+        "workdirective"
+      ],
+      "mandatory_cols": [
+        "id",
+        "version"
+      ],
+      "primary_key_cols": [
+        "id",
+        "version"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ]
+      }
+    },
+    {
+      "name": "work master",
+      "source_file": "InbuiltEntitiesDTDL\\workmaster.json",
+      "aliases": [
+        "workmaster"
+      ],
+      "mandatory_cols": [
+        "id",
+        "version"
+      ],
+      "primary_key_cols": [
+        "id",
+        "version"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ],
+        "definitiontype": [
+          "instance",
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "Work Master Capability",
+      "source_file": "InbuiltEntitiesDTDL\\WorkMasterCapability.json",
+      "aliases": [
+        "workmastercapability"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "operationstype": [
+          "Inventory",
+          "Maintenance",
+          "Mixed",
+          "Production",
+          "Quality"
+        ],
+        "capabilitytype": [
+          "available",
+          "committed",
+          "total",
+          "unattainable",
+          "unused",
+          "used"
+        ]
+      }
+    },
+    {
+      "name": "work Performance",
+      "source_file": "InbuiltEntitiesDTDL\\workPerformance.json",
+      "aliases": [
+        "workperformance"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ],
+        "workstate": [
+          "aborted",
+          "closed",
+          "completed",
+          "held",
+          "ready",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "work request",
+      "source_file": "InbuiltEntitiesDTDL\\workrequest.json",
+      "aliases": [
+        "workrequest"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ],
+        "requeststate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "work Response",
+      "source_file": "InbuiltEntitiesDTDL\\workResponse.json",
+      "aliases": [
+        "workresponse"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ],
+        "responsestate": [
+          "aborted",
+          "closed",
+          "completed",
+          "held",
+          "ready",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    },
+    {
+      "name": "work schedule",
+      "source_file": "InbuiltEntitiesDTDL\\workschedule.json",
+      "aliases": [
+        "workschedule"
+      ],
+      "mandatory_cols": [
+        "id"
+      ],
+      "primary_key_cols": [
+        "id"
+      ],
+      "enum_values": {
+        "worktype": [
+          "inventory",
+          "maintenance",
+          "mixed",
+          "production",
+          "quality"
+        ],
+        "schedulestate": [
+          "aborted",
+          "cancelled",
+          "closed",
+          "completed",
+          "forecast",
+          "held",
+          "ready",
+          "released",
+          "running",
+          "suspended",
+          "waiting"
+        ]
+      }
+    }
+  ]
+}
