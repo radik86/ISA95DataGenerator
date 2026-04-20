@@ -454,72 +454,67 @@ public class MigrationProcessorV2Service
                         continue;
                     }
 
-                    // Load source data for this mapping
+                    // Stream bridge source data directly to CSV to avoid materializing large mapping lists in memory.
                     Log($"  Bridge source load: reading '{mapping.SourceTable}'...");
-                    var sourceData = await sourceStoreProvider.GetStoreAsync(mapping.SourceTable, ct);
-                    Log($"  Bridge source load: '{mapping.SourceTable}' returned {sourceData.Count} row(s)");
-                    if (sourceData.Count == 0)
+                    var bridgeSourceCount = await sourceStoreProvider.GetStoreCountAsync(mapping.SourceTable, ct);
+                    Log($"  Bridge source load: '{mapping.SourceTable}' returned {bridgeSourceCount} row(s)");
+                    if (bridgeSourceCount == 0)
                     {
                         Log($"  ⚠ Source table '{mapping.SourceTable}' empty or not found — skipping");
                         skippedCount++;
                         skippedItems.Add($"{mapping.SourceTable} → {mapping.TargetEntity}");
 
-                        // Still decrement use count
                         if (sourceTableUseCount.ContainsKey(mapping.SourceTable))
+                        {
                             sourceTableUseCount[mapping.SourceTable]--;
+                            if (sourceTableUseCount[mapping.SourceTable] <= 0)
+                                sourceStoreProvider.ReleaseStore(mapping.SourceTable);
+                        }
                         continue;
                     }
 
-                    // Apply filters
-                    Log($"  Bridge filter: applying filters for {mapping.TargetEntity}...");
-                    var filteredData = ApplyFilters(sourceData, mapping.Filters);
-                    if (filteredData.Count != sourceData.Count)
-                        Log($"  Filtered: {sourceData.Count} → {filteredData.Count} records");
-                    else
-                        Log($"  Bridge filter: no rows filtered ({filteredData.Count} records)");
-
-                    CollectMigratedGenericRowIds(filteredData, migratedGenericRowIds);
-
                     var entityOutputName = FormatEntityNameForOutput(mapping.TargetEntity);
-                    var targetDir = mapping.IsBridge
-                        ? mappingSubDir
-                        : isa95SubDir;
-                    // Bridge: keep current approach (bridges are typically small)
-                    Log($"  Bridge transform: starting {mapping.TargetEntity} on {filteredData.Count} row(s)...");
-                    var transformedData = await ProcessBridgeMappingAsync(
-                        mapping, filteredData, sortedMappings, sourceStoreProvider,
-                        entityDataCache, Log, ct);
-                    Log($"  Bridge transform: completed {mapping.TargetEntity} with {transformedData.Count} row(s)");
+                    var targetDir = mappingSubDir;
 
-                    var written = await WriteCsvFilesAsync(entityOutputName, transformedData, targetDir, maxFileSizeBytes, ct);
-                    var recordCount = transformedData.Count;
+                    Log($"  Bridge transform: streaming {mapping.TargetEntity}...");
+                    var bridgeStreamResult = await StreamBridgeMappingByStoreToCsvAsync(
+                        mapping,
+                        sortedMappings,
+                        sourceStoreProvider,
+                        entityDataCache,
+                        entityOutputName,
+                        targetDir,
+                        maxFileSizeBytes,
+                        Log,
+                        migratedGenericRowIds,
+                        ct);
 
-                    outputFiles.AddRange(written);
-                    Log($"  ✓ {recordCount} records → {written.Count} file(s)");
+                    outputFiles.AddRange(bridgeStreamResult.Files);
+                    Log($"  ✓ {bridgeStreamResult.RecordCount} records → {bridgeStreamResult.Files.Count} file(s)");
                     successCount++;
 
-                    var summaryKey = $"{mapping.TargetEntity}|{(mapping.IsBridge ? "bridge" : "entity")}";
+                    var summaryKey = $"{mapping.TargetEntity}|bridge";
                     if (!exportSummaries.TryGetValue(summaryKey, out var summary))
                     {
                         summary = new ExportSummary
                         {
                             TargetEntity = mapping.TargetEntity,
-                            IsBridge = mapping.IsBridge,
+                            IsBridge = true,
                         };
                         exportSummaries[summaryKey] = summary;
                     }
-                    summary.SourceRows += filteredData.Count;
-                    summary.ExportedRows += recordCount;
-                    summary.FileCount += written.Count;
+                    summary.SourceRows += bridgeStreamResult.FilteredSourceCount;
+                    summary.ExportedRows += bridgeStreamResult.RecordCount;
+                    summary.FileCount += bridgeStreamResult.Files.Count;
 
-                    processedTotal += sourceData.Count;
+                    processedTotal += bridgeStreamResult.SourceRowsRead;
                     session.ProcessedRecords = processedTotal;
                     session.ProgressPercentage = totalRecords > 0
                         ? (int)((processedTotal * 100.0) / totalRecords)
                         : 0;
                     await SaveSession(session, logMessages, ct);
 
-                    // Release source data if this was the last mapping using this table
+                    // Release source data if this was the last mapping using this table.
                     sourceTableUseCount[mapping.SourceTable]--;
                     if (sourceTableUseCount[mapping.SourceTable] <= 0)
                     {
@@ -546,6 +541,16 @@ public class MigrationProcessorV2Service
             session.ProgressPercentage = totalRecords > 0 ? 99 : 100;
             await SaveSession(session, logMessages, ct);
 
+            // 6. Create ZIP first — extraction must not be blocked by timestamp stamping
+            Log("Creating ZIP archive...");
+            await SaveSession(session, logMessages, ct);
+            var zipFileName = $"migration_{sessionId:N}_{DateTime.UtcNow:yyyyMMddHHmmss}.zip";
+            var zipFilePath = Path.Combine(outputPath, zipFileName);
+            ZipFile.CreateFromDirectory(sessionOutputDir, zipFilePath);
+            outputFiles.Insert(0, zipFilePath); // ZIP first
+            Log($"ZIP archive created: {Path.GetFileName(zipFilePath)}");
+
+            // 7. Stamp LastDataMigrationAt AFTER ZIP is created so a stamping failure never blocks extraction
             var includedGenericStoreNames = sortedMappings
                 .Select(m => m.SourceTable)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -555,54 +560,53 @@ public class MigrationProcessorV2Service
                 .Cast<string>()
                 .ToList();
 
-            if (string.Equals(normalizedLoadMode, "full", StringComparison.OrdinalIgnoreCase) && includedGenericStoreNames.Count > 0)
+            try
             {
-                Log($"Stamping LastDataMigrationAt for full load using one set-based update across {includedGenericStoreNames.Count} included store(s)...");
-                await SaveSession(session, logMessages, ct);
+                if (string.Equals(normalizedLoadMode, "full", StringComparison.OrdinalIgnoreCase) && includedGenericStoreNames.Count > 0)
+                {
+                    Log($"Stamping LastDataMigrationAt for full load using one set-based update across {includedGenericStoreNames.Count} included store(s)...");
+                    await SaveSession(session, logMessages, ct);
 
-                var stamped = await StampLastDataMigrationAtForFullLoadAsync(
-                    includedGenericStoreNames,
-                    DateTime.UtcNow,
-                    ct);
+                    var stamped = await StampLastDataMigrationAtForFullLoadAsync(
+                        includedGenericStoreNames,
+                        DateTime.UtcNow,
+                        ct);
 
-                Log($"Stamped LastDataMigrationAt for {stamped} GenericDataStores row(s) in full-load mode");
-                await SaveSession(session, logMessages, ct);
-            }
-            else if (migratedGenericRowIds.Count > 0)
-            {
-                Log($"Stamping LastDataMigrationAt for {migratedGenericRowIds.Count} GenericDataStores row(s)...");
-                await SaveSession(session, logMessages, ct);
-                var stamped = await StampLastDataMigrationAtAsync(
-                    migratedGenericRowIds,
-                    DateTime.UtcNow,
-                    async (batchNumber, totalBatches) =>
-                    {
-                        // Keep finalization progress visible without flooding writes.
-                        if (batchNumber == 1 || batchNumber % 25 == 0 || batchNumber == totalBatches)
+                    Log($"Stamped LastDataMigrationAt for {stamped} GenericDataStores row(s) in full-load mode");
+                    await SaveSession(session, logMessages, ct);
+                }
+                else if (migratedGenericRowIds.Count > 0)
+                {
+                    Log($"Stamping LastDataMigrationAt for {migratedGenericRowIds.Count} GenericDataStores row(s)...");
+                    await SaveSession(session, logMessages, ct);
+                    var stamped = await StampLastDataMigrationAtAsync(
+                        migratedGenericRowIds,
+                        DateTime.UtcNow,
+                        async (batchNumber, totalBatches) =>
                         {
-                            Log($"  ... stamping progress: batch {batchNumber}/{totalBatches}");
-                            session.ProgressPercentage = totalRecords > 0 ? 99 : 100;
-                            await SaveSession(session, logMessages, ct);
-                        }
-                    },
-                    ct);
-                Log($"Stamped LastDataMigrationAt for {stamped} GenericDataStores row(s)");
-                await SaveSession(session, logMessages, ct);
+                            // Keep finalization progress visible without flooding writes.
+                            if (batchNumber == 1 || batchNumber % 25 == 0 || batchNumber == totalBatches)
+                            {
+                                Log($"  ... stamping progress: batch {batchNumber}/{totalBatches}");
+                                session.ProgressPercentage = totalRecords > 0 ? 99 : 100;
+                                await SaveSession(session, logMessages, ct);
+                            }
+                        },
+                        ct);
+                    Log($"Stamped LastDataMigrationAt for {stamped} GenericDataStores row(s)");
+                    await SaveSession(session, logMessages, ct);
+                }
+                else
+                {
+                    Log("No GenericDataStores rows required LastDataMigrationAt stamping");
+                    await SaveSession(session, logMessages, ct);
+                }
             }
-            else
+            catch (Exception stampEx)
             {
-                Log("No GenericDataStores rows required LastDataMigrationAt stamping");
+                Log($"⚠ LastDataMigrationAt stamping failed (ZIP already created — extraction is unaffected): {stampEx.Message}");
                 await SaveSession(session, logMessages, ct);
             }
-
-            // 6. Create ZIP
-            Log("Creating ZIP archive...");
-            await SaveSession(session, logMessages, ct);
-            var zipFileName = $"migration_{sessionId:N}_{DateTime.UtcNow:yyyyMMddHHmmss}.zip";
-            var zipFilePath = Path.Combine(outputPath, zipFileName);
-            ZipFile.CreateFromDirectory(sessionOutputDir, zipFilePath);
-            outputFiles.Insert(0, zipFilePath); // ZIP first
-            Log($"ZIP archive created: {Path.GetFileName(zipFilePath)}");
 
             // 7. Update session
             session.Status = failCount > 0 ? "CompletedWithErrors" : "Completed";
@@ -1157,6 +1161,9 @@ public class MigrationProcessorV2Service
         bool preferServerSideSource,
         [EnumeratorCancellation] CancellationToken ct)
     {
+        // Streaming keeps the SQL connection open for the entire processing duration.
+        // Set CommandTimeout = 0 (unlimited) so large tables don't timeout mid-stream.
+        _dbContext.Database.SetCommandTimeout(0);
         var hasUploaded = false;
         if (!preferServerSideSource)
         {
@@ -1907,6 +1914,218 @@ public class MigrationProcessorV2Service
                 {
                     await onProgressAsync(sourceRowsRead);
                     lastProgressSaveAt = DateTime.UtcNow;
+                }
+
+                if (totalRecords % CSV_FLUSH_INTERVAL == 0)
+                    await writer.FlushAsync(ct);
+            }
+        }
+        finally
+        {
+            await writer.FlushAsync(ct);
+            await writer.DisposeAsync();
+        }
+
+        return (files, totalRecords, filteredSourceCount, sourceRowsRead);
+    }
+
+    // ────────────────────────────────────────────
+    //  Stream-transform BRIDGE mapping directly to CSV (no intermediate list)
+    // ────────────────────────────────────────────
+    private async Task<(List<string> Files, int RecordCount, int FilteredSourceCount, int SourceRowsRead)> StreamBridgeMappingByStoreToCsvAsync(
+        TableMappingDto mapping,
+        List<TableMappingDto> allMappings,
+        SourceStoreProvider sourceStoreProvider,
+        Dictionary<string, List<Dictionary<string, object?>>> entityDataCache,
+        string entityDisplayName,
+        string outputDir,
+        long maxFileSizeBytes,
+        Action<string> log,
+        HashSet<long> migratedGenericRowIds,
+        CancellationToken ct)
+    {
+        var entity1Name = mapping.BridgeEntity1 ?? "";
+        var entity2Name = mapping.BridgeEntity2 ?? "";
+        var entity1DisplayName = FormatEntityNameForOutput(entity1Name);
+        var entity2DisplayName = FormatEntityNameForOutput(entity2Name);
+
+        log($"  Building bridge caches for {entity1Name} and {entity2Name}...");
+        var entity1Data = await GetOrBuildEntityDataAsync(entity1Name, allMappings, sourceStoreProvider, entityDataCache, log, ct);
+        var entity2Data = await GetOrBuildEntityDataAsync(entity2Name, allMappings, sourceStoreProvider, entityDataCache, log, ct);
+
+        var entity1Index = BuildIndex(entity1Data, mapping.BridgeEntity1JoinFields);
+        var entity2Index = BuildIndex(entity2Data, mapping.BridgeEntity2JoinFields);
+        log($"  Bridge entity caches: {entity1Name}={entity1Data.Count}, {entity2Name}={entity2Data.Count}");
+
+        var enabledFilters = (mapping.Filters ?? new List<FilterDto>())
+            .Where(f => f.Enabled)
+            .ToList();
+
+        var columns = new List<string>
+        {
+            "Source type",
+            "Source PrimaryKey",
+            "Target Type",
+            "Target PrimaryKey",
+            "Relationship Type"
+        };
+        foreach (var fm in mapping.FieldMappings)
+        {
+            if (fm.Generate && !columns.Contains(fm.FieldName, StringComparer.OrdinalIgnoreCase))
+                columns.Add(fm.FieldName);
+        }
+        if (mapping.PrimaryKeyRule != null && !columns.Contains("PrimaryKey", StringComparer.OrdinalIgnoreCase))
+            columns.Add("PrimaryKey");
+
+        var files = new List<string>();
+        int pkSequenceCounter = GetSequenceStart(mapping.PrimaryKeyRule);
+        int totalRecords = 0;
+        int filteredSourceCount = 0;
+        int sourceRowsRead = 0;
+        var startedAt = DateTime.UtcNow;
+
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        int fileIndex = 1;
+        var filePath = Path.Combine(outputDir, $"{entityDisplayName}_{timestamp}.csv");
+        var writer = new StreamWriter(filePath, append: false, encoding: Encoding.UTF8, bufferSize: 65536);
+        await writer.WriteLineAsync(string.Join(",", columns));
+        long currentFileBytes = Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+        int recordsInCurrentFile = 0;
+        files.Add(filePath);
+
+        var csvSb = new StringBuilder(256);
+
+        try
+        {
+            await foreach (var record in sourceStoreProvider.StreamStoreAsync(mapping.SourceTable, ct))
+            {
+                sourceRowsRead++;
+
+                if (enabledFilters.Count > 0 && !MatchesFilters(record, enabledFilters))
+                    continue;
+
+                filteredSourceCount++;
+                CollectMigratedGenericRowIds(record, migratedGenericRowIds);
+
+                var transformed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Source type"] = entity1DisplayName,
+                    ["Source PrimaryKey"] = "",
+                    ["Target Type"] = entity2DisplayName,
+                    ["Target PrimaryKey"] = "",
+                    ["Relationship Type"] = mapping.RelationshipType ?? "related"
+                };
+
+                Dictionary<string, object?>? entity1Record = null;
+                Dictionary<string, object?>? entity2Record = null;
+
+                if (mapping.BridgeEntity1JoinFields is { Count: > 0 })
+                {
+                    var key = BuildLookupKey(record, mapping.BridgeEntity1JoinFields);
+                    if (entity1Index.TryGetValue(key, out var e1))
+                    {
+                        entity1Record = e1;
+                        transformed["Source PrimaryKey"] = e1.GetValueOrDefault("PrimaryKey") ?? "";
+                    }
+                }
+
+                if (mapping.BridgeEntity2JoinFields is { Count: > 0 })
+                {
+                    var key = BuildLookupKey(record, mapping.BridgeEntity2JoinFields);
+                    if (entity2Index.TryGetValue(key, out var e2))
+                    {
+                        entity2Record = e2;
+                        transformed["Target PrimaryKey"] = e2.GetValueOrDefault("PrimaryKey") ?? "";
+                    }
+                }
+
+                foreach (var fm in mapping.FieldMappings)
+                {
+                    if (!fm.Generate) continue;
+                    if (transformed.ContainsKey(fm.FieldName)) continue;
+
+                    var sourceRecord = record;
+                    if (!string.IsNullOrWhiteSpace(fm.SourceEntity))
+                    {
+                        var sourceEntity = fm.SourceEntity.Trim();
+                        if ((sourceEntity.Equals("Entity1", StringComparison.OrdinalIgnoreCase) ||
+                             sourceEntity.Equals(entity1Name, StringComparison.OrdinalIgnoreCase)) &&
+                            entity1Record != null)
+                        {
+                            sourceRecord = entity1Record;
+                        }
+                        else if ((sourceEntity.Equals("Entity2", StringComparison.OrdinalIgnoreCase) ||
+                                  sourceEntity.Equals(entity2Name, StringComparison.OrdinalIgnoreCase)) &&
+                                 entity2Record != null)
+                        {
+                            sourceRecord = entity2Record;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(fm.SourceColumn))
+                    {
+                        transformed[fm.FieldName] = sourceRecord.GetValueOrDefault(fm.SourceColumn.Trim());
+                    }
+                    else if (fm.FieldRule != null)
+                    {
+                        transformed[fm.FieldName] = ApplyFieldRule(fm.FieldRule, record, filteredSourceCount - 1, transformed);
+                    }
+                    else
+                    {
+                        transformed[fm.FieldName] = "";
+                    }
+                }
+
+                if (mapping.PrimaryKeyRule != null)
+                {
+                    transformed["PrimaryKey"] = ApplyPkRule(
+                        mapping.PrimaryKeyRule, record, filteredSourceCount - 1, transformed, null, ref pkSequenceCounter);
+                }
+
+                csvSb.Clear();
+                for (int ci = 0; ci < columns.Count; ci++)
+                {
+                    if (ci > 0) csvSb.Append(',');
+                    var str = FormatCsvValue(columns[ci], transformed.GetValueOrDefault(columns[ci]));
+                    if (str.IndexOfAny(CsvSpecialChars) >= 0)
+                    {
+                        csvSb.Append('"');
+                        csvSb.Append(str.Replace("\"", "\"\""));
+                        csvSb.Append('"');
+                    }
+                    else
+                    {
+                        csvSb.Append(str);
+                    }
+                }
+
+                var line = csvSb.ToString();
+                var lineBytes = Encoding.UTF8.GetByteCount(line) + Encoding.UTF8.GetByteCount(Environment.NewLine);
+
+                if (recordsInCurrentFile > 0 && currentFileBytes + lineBytes > maxFileSizeBytes)
+                {
+                    await writer.FlushAsync(ct);
+                    await writer.DisposeAsync();
+
+                    fileIndex++;
+                    filePath = Path.Combine(outputDir, $"{entityDisplayName}_{timestamp}_{fileIndex:D2}.csv");
+                    writer = new StreamWriter(filePath, append: false, encoding: Encoding.UTF8, bufferSize: 65536);
+                    await writer.WriteLineAsync(string.Join(",", columns));
+                    currentFileBytes = Encoding.UTF8.GetByteCount(string.Join(",", columns) + Environment.NewLine);
+                    recordsInCurrentFile = 0;
+                    files.Add(filePath);
+                }
+
+                await writer.WriteLineAsync(line);
+                currentFileBytes += lineBytes;
+                recordsInCurrentFile++;
+                totalRecords++;
+
+                if (totalRecords % PROGRESS_FLUSH_INTERVAL == 0)
+                {
+                    var elapsedSec = Math.Max(1, (DateTime.UtcNow - startedAt).TotalSeconds);
+                    var rps = (int)(totalRecords / elapsedSec);
+                    log($"  ... bridge {mapping.SourceTable} -> {mapping.TargetEntity}: processed {totalRecords} filtered records (~{rps} rec/s)");
                 }
 
                 if (totalRecords % CSV_FLUSH_INTERVAL == 0)
