@@ -31,6 +31,7 @@ import csv
 import json
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -452,9 +453,9 @@ class Validator:
 
             try:
                 if is_referenced and entity:
-                    # Keep only id + PK columns + sourceTimestamp
                     keep_cols: Set[str] = set()
-                    for col_key in list(entity.primary_key_cols) + ["id", "sourcetimestamp"]:
+                    # RI uses only the pre-aggregated PrimaryKey from entity CSV rows.
+                    for col_key in ["primarykey", "sourcetimestamp"]:
                         actual = norm_h.get(col_key)
                         if actual:
                             keep_cols.add(actual)
@@ -694,24 +695,16 @@ class Validator:
                 else:
                     seen[key_parts] = idx
 
-            # Build PK index for referential checks.
-            pk_values: Set[str] = set()
-            id_col = hmap.get("id")
-            if id_col:
-                pk_values = {(row.get(id_col) or "").strip() for row in table.rows if (row.get(id_col) or "").strip()}
-            else:
-                for row in table.rows:
-                    parts = [
-                        (row.get(hmap[c]) or "").strip()
-                        for c in pk_cols
-                        if (row.get(hmap[c]) or "").strip()
-                    ]
-                    if len(parts) == len(pk_cols):
-                        pk_values.add("|".join(parts))
+        # Build PK index for referential integrity from entity CSV PrimaryKey only.
+        pk_values: Set[str] = set()
+        prejoined_col = hmap.get("primarykey")
+        if prejoined_col:
+            pk_values = {(row.get(prejoined_col) or "").strip() for row in table.rows
+                         if (row.get(prejoined_col) or "").strip()}
 
-            for alias in (entity.aliases | table.stem_aliases):
-                if alias:
-                    self.entity_pk_index.setdefault(alias, set()).update(pk_values)
+        for alias in (entity.aliases | table.stem_aliases):
+            if alias:
+                self.entity_pk_index.setdefault(alias, set()).update(pk_values)
 
     def _build_pk_index_for_table(self, table: CsvTable, entity: DtdlEntity) -> None:
         """Build PK index only (used for pk_only tables that carry PK + sourceTimestamp exclusively)."""
@@ -719,22 +712,11 @@ class Validator:
         pk_cols = [pk for pk in entity.primary_key_cols if pk in hmap]
         self.entity_pk_columns[table.path] = pk_cols
 
-        if not pk_cols:
-            return
-
         pk_values: Set[str] = set()
-        id_col = hmap.get("id")
-        if id_col:
-            pk_values = {(row.get(id_col) or "").strip() for row in table.rows if (row.get(id_col) or "").strip()}
-        else:
-            for row in table.rows:
-                parts = [
-                    (row.get(hmap[c]) or "").strip()
-                    for c in pk_cols
-                    if (row.get(hmap.get(c, ""), "") or "").strip()
-                ]
-                if len(parts) == len(pk_cols):
-                    pk_values.add("|".join(parts))
+        prejoined_col = hmap.get("primarykey")
+        if prejoined_col:
+            pk_values = {(row.get(prejoined_col) or "").strip() for row in table.rows
+                         if (row.get(prejoined_col) or "").strip()}
 
         for alias in (entity.aliases | table.stem_aliases):
             if alias:
@@ -967,9 +949,13 @@ class Validator:
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate ISA-95 migrated entity/mapping CSV outputs")
     parser.add_argument(
+        "--input-report-json",
+        default="",
+        help="Read and evaluate an existing JSON report instead of rerunning validation",
+    )
+    parser.add_argument(
         "--data-dirs",
         nargs="+",
-        required=True,
         help="One or more directories containing migrated output CSV files",
     )
     parser.add_argument(
@@ -991,6 +977,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--output-json",
         default="",
         help="Optional path to write JSON report",
+    )
+    parser.add_argument(
+        "--max-issues",
+        type=int,
+        default=20,
+        help="Maximum number of issues to print in the terminal summary",
     )
     parser.add_argument(
         "--max-past-days",
@@ -1017,10 +1009,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
 
     args = parser.parse_args(argv)
+    if not args.input_report_json and not args.data_dirs:
+        parser.error("Either --data-dirs or --input-report-json is required")
     if args.include_master_process:
         args.exclude_master_process = False
     if args.refresh_metadata and not args.dtdl_dir:
         parser.error("--refresh-metadata requires --dtdl-dir")
+    if args.input_report_json and args.refresh_metadata:
+        parser.error("--input-report-json cannot be combined with --refresh-metadata")
     return args
 
 
@@ -1066,14 +1062,13 @@ def run_validation_for_notebook(
         out_path = Path(output_json)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        write_report_evaluation(out_path, build_report_evaluation(report))
 
     return report
 
 
 def print_report_summary(report: Dict[str, Any], max_issues: int = 20) -> None:
     """Print a compact summary in notebook/terminal contexts."""
-    from collections import Counter
-
     summary = report.get("summary", {})
     issues  = report.get("issues", [])
 
@@ -1110,17 +1105,222 @@ def print_report_summary(report: Dict[str, Any], max_issues: int = 20) -> None:
     print("=" * 60)
 
 
+def get_report_evaluation_path(report_path: Path) -> Path:
+    return report_path.with_name(f"{report_path.stem}.evaluation.json")
+
+
+def build_report_evaluation(report: Dict[str, Any], sample_limit: int = 50) -> Dict[str, Any]:
+    issues = report.get("issues", [])
+    counts: Counter[str] = Counter(
+        f"[{i.get('severity', 'warning').upper()}] {i.get('rule', '?')}"
+        for i in issues
+    )
+    summary = dict(report.get("summary", {}))
+    summary["issuesEvaluated"] = len(issues)
+
+    return {
+        "evaluationGeneratedAtUtc": datetime.now(timezone.utc).isoformat(),
+        "reportGeneratedAtUtc": report.get("generatedAtUtc"),
+        "riMode": report.get("riMode", "python"),
+        "summary": summary,
+        "issueCountsByRule": [
+            {"rule": rule_key, "count": count}
+            for rule_key, count in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+        ],
+        "sampleIssues": list(issues[:sample_limit]),
+    }
+
+
+def write_report_evaluation(report_path: Path, evaluation: Dict[str, Any]) -> Path:
+    evaluation_path = get_report_evaluation_path(report_path)
+    evaluation_path.parent.mkdir(parents=True, exist_ok=True)
+    evaluation_path.write_text(json.dumps(evaluation, indent=2), encoding="utf-8")
+    return evaluation_path
+
+
+def _update_json_depth(text: str, depth: int) -> int:
+    in_string = False
+    escaped = False
+
+    for ch in text:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+    return depth
+
+
+def _stream_report_evaluation(report_path: Path, sample_limit: int = 50) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {}
+    sample_issues: List[Dict[str, Any]] = []
+    counts: Counter[str] = Counter()
+    issues_evaluated = 0
+
+    collecting_summary = False
+    collecting_issue = False
+    issues_started = False
+    summary_lines: List[str] = []
+    issue_lines: List[str] = []
+    summary_depth = 0
+    issue_depth = 0
+
+    with report_path.open("r", encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.strip()
+
+            if not collecting_summary and not issues_started and line.startswith('"summary"'):
+                fragment = line.split(":", 1)[1].strip()
+                summary_lines = [fragment]
+                summary_depth = _update_json_depth(fragment, 0)
+                collecting_summary = summary_depth > 0
+                if not collecting_summary:
+                    summary = json.loads(fragment.rstrip(","))
+                continue
+
+            if collecting_summary:
+                summary_lines.append(line)
+                summary_depth = _update_json_depth(line, summary_depth)
+                if summary_depth == 0:
+                    summary = json.loads("\n".join(summary_lines).rstrip(","))
+                    collecting_summary = False
+                continue
+
+            if not issues_started and line.startswith('"issues"'):
+                issues_started = True
+                continue
+
+            if not issues_started:
+                continue
+
+            if not collecting_issue:
+                if line.startswith("{"):
+                    issue_lines = [line]
+                    issue_depth = _update_json_depth(line, 0)
+                    collecting_issue = issue_depth > 0
+                    if not collecting_issue:
+                        issue = json.loads(line.rstrip(","))
+                        issues_evaluated += 1
+                        counts[f"[{issue.get('severity', 'warning').upper()}] {issue.get('rule', '?')}"] += 1
+                        if len(sample_issues) < sample_limit:
+                            sample_issues.append(issue)
+                elif line.startswith("]"):
+                    break
+                continue
+
+            issue_lines.append(line)
+            issue_depth = _update_json_depth(line, issue_depth)
+            if issue_depth == 0:
+                issue = json.loads("\n".join(issue_lines).rstrip(","))
+                issues_evaluated += 1
+                counts[f"[{issue.get('severity', 'warning').upper()}] {issue.get('rule', '?')}"] += 1
+                if len(sample_issues) < sample_limit:
+                    sample_issues.append(issue)
+                collecting_issue = False
+
+    summary = dict(summary)
+    summary["issuesEvaluated"] = issues_evaluated
+
+    return {
+        "evaluationGeneratedAtUtc": datetime.now(timezone.utc).isoformat(),
+        "reportGeneratedAtUtc": None,
+        "riMode": "python",
+        "summary": summary,
+        "issueCountsByRule": [
+            {"rule": rule_key, "count": count}
+            for rule_key, count in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+        ],
+        "sampleIssues": sample_issues,
+    }
+
+
+def load_cached_report_evaluation(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as fh:
+        evaluation = json.load(fh)
+    if not isinstance(evaluation, dict):
+        raise ValueError(f"Report evaluation JSON must contain an object at root: {path}")
+    return evaluation
+
+
+def load_or_build_report_evaluation(path: str, sample_limit: int = 50) -> Dict[str, Any]:
+    input_path = Path(path)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Report JSON not found: {input_path}")
+
+    if input_path.name.endswith(".evaluation.json"):
+        return load_cached_report_evaluation(input_path)
+
+    evaluation_path = get_report_evaluation_path(input_path)
+    if evaluation_path.exists() and evaluation_path.stat().st_mtime >= input_path.stat().st_mtime:
+        return load_cached_report_evaluation(evaluation_path)
+
+    evaluation = _stream_report_evaluation(input_path, sample_limit=sample_limit)
+    write_report_evaluation(input_path, evaluation)
+    return evaluation
+
+
+def print_report_evaluation(evaluation: Dict[str, Any], max_issues: int = 20) -> None:
+    summary = evaluation.get("summary", {})
+    counts = evaluation.get("issueCountsByRule", [])
+    issues = evaluation.get("sampleIssues", [])
+
+    print("=" * 60)
+    print("ISA-95 Saved Report Evaluation")
+    print("=" * 60)
+    print(f"RI mode:             {evaluation.get('riMode', 'python')}")
+    print(f"CSV files evaluated: {summary.get('csvFilesEvaluated', 0)}")
+    print(f"Entity files:        {summary.get('entityFilesEvaluated', 0)}")
+    print(f"Mapping files:       {summary.get('mappingFilesEvaluated', 0)}")
+    print(f"Errors:              {summary.get('errors', 0)}")
+    print(f"Warnings:            {summary.get('warnings', 0)}")
+    print(f"Issues evaluated:    {summary.get('issuesEvaluated', 0)}")
+    print()
+
+    if counts:
+        print("── Issues by Rule " + "─" * 42)
+        for entry in counts:
+            print(f"  {entry.get('count', 0):6d}  {entry.get('rule', '?')}")
+        print()
+
+    if max_issues and issues:
+        print(f"── Sample Issue(s) ({min(max_issues, len(issues))} shown) " + "─" * 27)
+        for issue in issues[:max_issues]:
+            location = issue.get("file", "")
+            row = issue.get("row")
+            if row is not None:
+                location = f"{location}:{row}"
+            print(f"[{issue.get('severity', 'warning').upper()}] {issue.get('rule')} - {Path(location).name if location else ''} - {issue.get('message')}")
+    print("=" * 60)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
-    validator = Validator(args)
-    report = validator.run()
 
-    if args.output_json:
+    if args.input_report_json:
+        evaluation = load_or_build_report_evaluation(args.input_report_json, sample_limit=max(args.max_issues, 50))
+        print_report_evaluation(evaluation, max_issues=args.max_issues)
+        return 1 if evaluation.get("summary", {}).get("errors", 0) > 0 else 0
+    else:
+        validator = Validator(args)
+        report = validator.run()
+
+    if args.output_json and not args.input_report_json:
         out_path = Path(args.output_json)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        write_report_evaluation(out_path, build_report_evaluation(report))
 
-    print_report_summary(report, max_issues=20)
+    print_report_summary(report, max_issues=args.max_issues)
 
     return 1 if report["summary"]["errors"] > 0 else 0
 

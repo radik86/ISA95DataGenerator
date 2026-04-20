@@ -1,0 +1,43 @@
+{
+  "evaluationGeneratedAtUtc": "2026-04-20T14:59:04.437340+00:00",
+  "reportGeneratedAtUtc": null,
+  "riMode": "python",
+  "summary": {
+    "dataDirs": [
+      "generated"
+    ],
+    "dtdlDir": "InbuiltEntitiesDTDL",
+    "dtdlMetadataSource": "dtdl_dir",
+    "metadataCache": "generated/dtdl_metadata_cache.json",
+    "csvFilesEvaluated": 0,
+    "entityFilesEvaluated": 0,
+    "mappingFilesEvaluated": 0,
+    "errors": 0,
+    "warnings": 2,
+    "issuesEvaluated": 2
+  },
+  "issueCountsByRule": [
+    {
+      "rule": "[WARNING] material_definition_property_file_missing",
+      "count": 1
+    },
+    {
+      "rule": "[WARNING] no_csv_found",
+      "count": 1
+    }
+  ],
+  "sampleIssues": [
+    {
+      "severity": "warning",
+      "rule": "no_csv_found",
+      "file": "<global>",
+      "message": "No candidate CSV files found"
+    },
+    {
+      "severity": "warning",
+      "rule": "material_definition_property_file_missing",
+      "file": "<global>",
+      "message": "MaterialDefinitionProperty CSV not found in evaluated data directories"
+    }
+  ]
+}
