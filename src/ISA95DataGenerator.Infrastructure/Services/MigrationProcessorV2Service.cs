@@ -541,7 +541,7 @@ public class MigrationProcessorV2Service
             session.ProgressPercentage = totalRecords > 0 ? 99 : 100;
             await SaveSession(session, logMessages, ct);
 
-            // 6. Create ZIP first — extraction must not be blocked by timestamp stamping
+            // 6. Create ZIP first and persist it as downloadable before any timestamp stamping
             Log("Creating ZIP archive...");
             await SaveSession(session, logMessages, ct);
             var zipFileName = $"migration_{sessionId:N}_{DateTime.UtcNow:yyyyMMddHHmmss}.zip";
@@ -550,7 +550,16 @@ public class MigrationProcessorV2Service
             outputFiles.Insert(0, zipFilePath); // ZIP first
             Log($"ZIP archive created: {Path.GetFileName(zipFilePath)}");
 
-            // 7. Stamp LastDataMigrationAt AFTER ZIP is created so a stamping failure never blocks extraction
+            // Ensure ZIP can be opened for read and persist output files so download endpoint can serve it now.
+            using (var zipReadStream = new FileStream(zipFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                // no-op: opening the stream validates download-readiness
+            }
+            session.ResultFilesPaths = JsonSerializer.Serialize(outputFiles);
+            Log("ZIP is ready for download; persisted output files before LastDataMigrationAt stamping");
+            await SaveSession(session, logMessages, ct);
+
+            // 7. Stamp LastDataMigrationAt only after ZIP creation and download-readiness are persisted
             var includedGenericStoreNames = sortedMappings
                 .Select(m => m.SourceTable)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
