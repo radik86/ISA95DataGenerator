@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "name": "material_definition_property_defaults",
+      "entity": "MaterialDefinitionProperty",
+      "entityAliases": [
+        "materialdefinitionproperty",
+        "materialdefinitionproperties",
+        "materialdefinitionpropertyoutput"
+      ],
+      "candidateColumns": [
+        "description"
+      ],
+      "expectedValues": [
+        "MaterialCode",
+        "DefaultUnitOfMeasure"
+      ],
+      "compareMode": "exact",
+      "missingValueRule": "material_definition_property_defaults_missing",
+      "missingEntityRule": "material_definition_property_file_missing",
+      "severity": "error"
+    }
+  ]
+}

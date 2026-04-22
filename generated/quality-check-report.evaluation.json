@@ -1,0 +1,385 @@
+{
+  "evaluationGeneratedAtUtc": "2026-04-21T15:13:20.261398+00:00",
+  "reportGeneratedAtUtc": null,
+  "riMode": "python",
+  "summary": {
+    "dataDirs": [
+      "C:/Users/radion.badanjuk/Downloads/migration_2026-04-17T07-57-10.065Z/isa95"
+    ],
+    "dtdlDir": "InbuiltEntitiesDTDL",
+    "dtdlMetadataSource": "dtdl_dir",
+    "metadataCache": "generated/dtdl_metadata_cache.json",
+    "csvFilesEvaluated": 494,
+    "entityFilesEvaluated": 194,
+    "mappingFilesEvaluated": 300,
+    "errors": 10587286,
+    "warnings": 0,
+    "issuesEvaluated": 10587286
+  },
+  "issueCountsByRule": [
+    {
+      "rule": "[ERROR] source_timestamp_empty",
+      "count": 10153206
+    },
+    {
+      "rule": "[ERROR] mapping_source_fk_broken",
+      "count": 434071
+    },
+    {
+      "rule": "[ERROR] mapping_target_fk_broken",
+      "count": 9
+    }
+  ],
+  "sampleIssues": [
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 2
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 3
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 4
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 5
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 6
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 7
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 8
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 9
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 10
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 11
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 12
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 13
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 14
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 15
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 16
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 17
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 18
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 19
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 20
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 21
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 22
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 23
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 24
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 25
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 26
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 27
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 28
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 29
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 30
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 31
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 32
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 33
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 34
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 35
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 36
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 37
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 38
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 39
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 40
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 41
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 42
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 43
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 44
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 45
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 46
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 47
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 48
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 49
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 50
+    },
+    {
+      "severity": "error",
+      "rule": "source_timestamp_empty",
+      "file": "C:\\Users\\radion.badanjuk\\Downloads\\migration_2026-04-17T07-57-10.065Z\\isa95\\mapping\\Equipment_to_Equipment Property_mapping_20260417-073019.csv",
+      "message": "sourceTimeStamp is empty",
+      "row": 51
+    }
+  ]
+}

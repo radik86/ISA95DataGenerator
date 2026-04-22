@@ -11,8 +11,8 @@ Rules implemented:
    past/future window.
 4) durationUnitofMeasure values must be one of:
    milliseconds, seconds, minutes, hours, days
-5) MaterialDefinitionProperty defaults must include DefaultUnitOfMeasure and
-   MaterialCode.
+5) Configurable value-presence rules (default: MaterialDefinitionProperty must
+    contain DefaultUnitOfMeasure and MaterialCode in description).
 6) Primary key checks from DTDL metadata:
    - primary key columns are present
    - all primary key values are populated
@@ -48,10 +48,11 @@ TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 FILENAME_TIMESTAMP_SUFFIX_RE = re.compile(
     r"^(?P<base>.+?)(?:[_\-. ]+)(?:"
     r"\d{8}T\d{6}Z?"
+    r"|\d{8}[_\-. ]\d{6}Z?"
     r"|\d{14}"
     r"|\d{8}"
     r"|\d{4}-\d{2}-\d{2}(?:[_\-. ]\d{2}(?::?\d{2}){1,2})?"
-    r")$",
+    r")(?:[_\-. ]+\d{1,4})?$",
     re.IGNORECASE,
 )
 
@@ -61,8 +62,39 @@ MAPPING_FILENAME_RE = re.compile(
 )
 
 
+DEFAULT_VALUE_PRESENCE_RULES: List[Dict[str, Any]] = [
+    {
+        "name": "material_definition_property_defaults",
+        "entity": "MaterialDefinitionProperty",
+        "entityAliases": [
+            "materialdefinitionproperty",
+            "materialdefinitionproperties",
+            "materialdefinitionpropertyoutput",
+        ],
+        "candidateColumns": ["description"],
+        "expectedValues": ["MaterialCode", "DefaultUnitOfMeasure"],
+        "compareMode": "exact",  # exact | lowercase | normalized
+        "missingValueRule": "material_definition_property_defaults_missing",
+        "missingEntityRule": "material_definition_property_file_missing",
+        "severity": "error",
+    }
+]
+
+
 def normalize_name(value: str) -> str:
     return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def clean_text(value: Any) -> str:
+    # Remove invisible marker characters that often appear in CSV exports.
+    text = "" if value is None else str(value)
+    return (
+        text.replace("\ufeff", "")
+        .replace("\u200b", "")
+        .replace("\u200e", "")
+        .replace("\u200f", "")
+        .strip()
+    )
 
 
 def strip_filename_timestamp_suffix(stem: str) -> str:
@@ -670,10 +702,16 @@ class Validator:
 
         # PK row population + uniqueness
         if pk_cols:
+            ts_col = hmap.get("sourcetimestamp")
+            uniqueness_cols = list(pk_cols)
+            if ts_col:
+                # Some entities are versioned by sourceTimeStamp; include it in duplicate detection.
+                uniqueness_cols.append("sourcetimestamp")
+
             seen: Dict[Tuple[str, ...], int] = {}
             for idx, row in enumerate(table.rows, start=2):
-                key_parts = tuple((row.get(hmap[c]) or "").strip() for c in pk_cols)
-                if any(part == "" for part in key_parts):
+                pk_key_parts = tuple((row.get(hmap[c]) or "").strip() for c in pk_cols)
+                if any(part == "" for part in pk_key_parts):
                     self.add_issue(
                         "error",
                         "primary_key_value_missing",
@@ -683,17 +721,27 @@ class Validator:
                         {"columns": pk_cols, "entity": entity.name},
                     )
                     continue
-                if key_parts in seen:
+
+                uniqueness_key_parts = pk_key_parts
+                if ts_col:
+                    uniqueness_key_parts = pk_key_parts + (((row.get(ts_col) or "").strip(),))
+
+                if uniqueness_key_parts in seen:
                     self.add_issue(
                         "error",
                         "primary_key_duplicate",
                         table.path,
                         "Duplicate primary key combination",
                         idx,
-                        {"firstRow": seen[key_parts], "columns": pk_cols, "entity": entity.name},
+                        {
+                            "firstRow": seen[uniqueness_key_parts],
+                            "columns": pk_cols,
+                            "uniquenessColumns": uniqueness_cols,
+                            "entity": entity.name,
+                        },
                     )
                 else:
-                    seen[key_parts] = idx
+                    seen[uniqueness_key_parts] = idx
 
         # Build PK index for referential integrity from entity CSV PrimaryKey only.
         pk_values: Set[str] = set()
@@ -722,58 +770,225 @@ class Validator:
             if alias:
                 self.entity_pk_index.setdefault(alias, set()).update(pk_values)
 
-    def validate_material_definition_property_defaults(self) -> None:
-        required = {"defaultunitofmeasure", "materialcode"}
-        found: Set[str] = set()
-        mdp_tables_seen = 0
+    @staticmethod
+    def _normalize_compare_value(value: str, compare_mode: str) -> str:
+        raw = clean_text(value)
+        if compare_mode == "exact":
+            return raw
+        if compare_mode == "lowercase":
+            return raw.lower()
+        return normalize_name(raw)
 
-        for table in self.tables:
-            matched = self.entity_match.get(table.path)
-            if matched and normalize_name(matched.name) == "materialdefinitionproperty":
-                mdp_tables_seen += 1
-            elif normalize_name(table.path.stem) not in {
-                "materialdefinitionproperty",
-                "materialdefinitionproperties",
-                "materialdefinitionpropertyoutput",
-            }:
-                continue
-            else:
-                mdp_tables_seen += 1
-
-            headers_norm = table.normalized_headers
-            candidate_cols = [
-                headers_norm.get("id"),
-                headers_norm.get("name"),
-                headers_norm.get("propertyname"),
-                headers_norm.get("description"),
-                headers_norm.get("value"),
-            ]
-            candidate_cols = [c for c in candidate_cols if c]
-
-            for row in table.rows:
-                for col in candidate_cols:
-                    token = normalize_name((row.get(col) or "").strip())
-                    if token in required:
-                        found.add(token)
-
-        if mdp_tables_seen == 0:
-            self.add_issue(
-                "warning",
-                "material_definition_property_file_missing",
-                Path("<global>"),
-                "MaterialDefinitionProperty CSV not found in evaluated data directories",
-            )
+    def _iter_rows_for_value_rule(self, table: CsvTable) -> Iterable[Dict[str, str]]:
+        if not table.pk_only:
+            yield from table.rows
             return
 
-        missing = sorted(required - found)
-        if missing:
+        # For RI-optimized tables we only load PK/sourceTimeStamp in memory.
+        # Value-presence rules may need other columns (e.g., description),
+        # so read the file directly when evaluating those rules.
+        try:
+            with table.path.open("r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    yield {k: clean_text(v) for k, v in row.items()}
+        except Exception as exc:
             self.add_issue(
-                "error",
-                "material_definition_property_defaults_missing",
-                Path("<global>"),
-                "Missing required default MaterialDefinitionProperty entries",
-                details={"missing": missing},
+                "warning",
+                "value_rule_csv_read",
+                table.path,
+                f"Failed to read full CSV rows for value rule evaluation: {exc}",
             )
+
+    def _load_value_presence_rules(self) -> List[Dict[str, Any]]:
+        rules = [dict(rule) for rule in DEFAULT_VALUE_PRESENCE_RULES]
+
+        config_path_raw = (getattr(self.args, "value_rules_config", "") or "").strip()
+        if not config_path_raw:
+            return rules
+
+        config_path = Path(config_path_raw)
+        if not config_path.exists():
+            self.add_issue(
+                "warning",
+                "value_rules_config_missing",
+                config_path,
+                "Configured value-rules file does not exist; using default rules only",
+            )
+            return rules
+
+        try:
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            self.add_issue(
+                "warning",
+                "value_rules_config_read",
+                config_path,
+                f"Failed to read value-rules config: {exc}",
+            )
+            return rules
+
+        if isinstance(payload, dict):
+            external_rules = payload.get("rules")
+        else:
+            external_rules = payload
+
+        if not isinstance(external_rules, list):
+            self.add_issue(
+                "warning",
+                "value_rules_config_invalid",
+                config_path,
+                "Value-rules config must be a JSON array or object with a 'rules' array",
+            )
+            return rules
+
+        for idx, entry in enumerate(external_rules, start=1):
+            if not isinstance(entry, dict):
+                self.add_issue(
+                    "warning",
+                    "value_rules_config_invalid_entry",
+                    config_path,
+                    "Ignoring non-object value-rule entry",
+                    details={"index": idx},
+                )
+                continue
+            rules.append(dict(entry))
+
+        return rules
+
+    def validate_configured_value_presence_rules(self) -> None:
+        rules = self._load_value_presence_rules()
+
+        for rule in rules:
+            rule_name = str(rule.get("name") or "value_presence_rule").strip()
+            entity_name = str(rule.get("entity") or "").strip()
+            if not entity_name:
+                self.add_issue(
+                    "warning",
+                    "value_rule_invalid",
+                    Path("<global>"),
+                    "Value rule is missing required 'entity'",
+                    details={"ruleName": rule_name},
+                )
+                continue
+
+            candidate_columns = [str(c).strip() for c in (rule.get("candidateColumns") or []) if str(c).strip()]
+            expected_values = [str(v).strip() for v in (rule.get("expectedValues") or []) if str(v).strip()]
+            if not candidate_columns or not expected_values:
+                self.add_issue(
+                    "warning",
+                    "value_rule_invalid",
+                    Path("<global>"),
+                    "Value rule requires non-empty candidateColumns and expectedValues",
+                    details={"ruleName": rule_name, "entity": entity_name},
+                )
+                continue
+
+            compare_mode = str(rule.get("compareMode") or "normalized").strip().lower()
+            if compare_mode not in {"exact", "lowercase", "normalized"}:
+                self.add_issue(
+                    "warning",
+                    "value_rule_compare_mode_invalid",
+                    Path("<global>"),
+                    "Invalid compareMode in value rule; using 'normalized'",
+                    details={"ruleName": rule_name, "compareMode": compare_mode},
+                )
+                compare_mode = "normalized"
+
+            missing_value_rule = str(rule.get("missingValueRule") or "value_rule_required_values_missing").strip()
+            missing_entity_rule = str(rule.get("missingEntityRule") or "value_rule_entity_file_missing").strip()
+            severity = str(rule.get("severity") or "error").strip().lower()
+            if severity not in {"error", "warning", "info"}:
+                severity = "error"
+
+            entity_keys = {normalize_name(entity_name)}
+            entity_keys.update(
+                normalize_name(alias)
+                for alias in (rule.get("entityAliases") or [])
+                if str(alias).strip()
+            )
+
+            matched_tables: List[CsvTable] = []
+            for table in self.tables:
+                if self.is_mapping_table(table):
+                    continue
+
+                matched_entity = self.entity_match.get(table.path)
+                if matched_entity and normalize_name(matched_entity.name) == normalize_name(entity_name):
+                    matched_tables.append(table)
+                    continue
+
+                if table.stem_aliases.intersection(entity_keys):
+                    matched_tables.append(table)
+
+            if not matched_tables:
+                self.add_issue(
+                    "warning",
+                    missing_entity_rule,
+                    Path("<global>"),
+                    f"No CSV found for configured value rule entity '{entity_name}'",
+                    details={
+                        "ruleName": rule_name,
+                        "entity": entity_name,
+                        "candidateColumns": candidate_columns,
+                        "expectedValues": expected_values,
+                        "compareMode": compare_mode,
+                    },
+                )
+                continue
+
+            expected_tokens = {
+                expected: self._normalize_compare_value(expected, compare_mode)
+                for expected in expected_values
+            }
+            found_tokens: Set[str] = set()
+            resolved_columns: Set[str] = set()
+            table_names: List[str] = []
+
+            for table in matched_tables:
+                table_names.append(str(table.path.name))
+                hmap = table.normalized_headers
+                rule_headers = []
+                for col in candidate_columns:
+                    header = hmap.get(normalize_name(col))
+                    if header:
+                        rule_headers.append(header)
+                        resolved_columns.add(header)
+
+                for row in self._iter_rows_for_value_rule(table):
+                    for header in rule_headers:
+                        cell_value = clean_text(row.get(header))
+                        if not cell_value:
+                            continue
+                        found_tokens.add(self._normalize_compare_value(cell_value, compare_mode))
+
+            missing_values = [
+                expected for expected, token in expected_tokens.items()
+                if token not in found_tokens
+            ]
+
+            if missing_values:
+                self.add_issue(
+                    severity,
+                    missing_value_rule,
+                    Path("<global>"),
+                    f"Missing required configured value(s) for entity '{entity_name}'",
+                    details={
+                        "ruleName": rule_name,
+                        "entity": entity_name,
+                        "candidateColumns": candidate_columns,
+                        "resolvedColumns": sorted(resolved_columns),
+                        "expectedValues": expected_values,
+                        "missingValues": missing_values,
+                        "compareMode": compare_mode,
+                        "lookups": [
+                            {"field": col, "value": val}
+                            for col in candidate_columns
+                            for val in expected_values
+                        ],
+                        "matchedTables": sorted(set(table_names)),
+                    },
+                )
 
     def validate_mapping_referential_integrity(self, table: CsvTable) -> None:
         hmap = table.normalized_headers
@@ -919,7 +1134,7 @@ class Validator:
                 # pk_only: only build the PK index for referential integrity; skip full validation
                 self._build_pk_index_for_table(table, entity)
 
-        self.validate_material_definition_property_defaults()
+        self.validate_configured_value_presence_rules()
 
         for table in mapping_tables:
             self.validate_mapping_referential_integrity(table)
@@ -1007,6 +1222,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Override and include masterdata/processdata folders",
     )
+    parser.add_argument(
+        "--value-rules-config",
+        default="",
+        help="Optional path to JSON config with additional value-presence rules",
+    )
 
     args = parser.parse_args(argv)
     if not args.input_report_json and not args.data_dirs:
@@ -1030,6 +1250,7 @@ def run_validation_for_notebook(
     max_future_days: int = 30,
     include_master_process: bool = False,
     max_rows_per_file: Optional[int] = None,
+    value_rules_config: str = "",
 ) -> Dict[str, Any]:
     """
     Notebook-friendly API for Fabric/Jupyter usage.
@@ -1053,6 +1274,7 @@ def run_validation_for_notebook(
         exclude_master_process=not include_master_process,
         include_master_process=include_master_process,
         max_rows_per_file=max_rows_per_file,
+        value_rules_config=value_rules_config,
     )
 
     validator = Validator(args)
