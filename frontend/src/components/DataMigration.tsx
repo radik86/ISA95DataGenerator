@@ -173,6 +173,7 @@ const MASTER_STORE_MAP: Record<string, string> = {
   'material_definition_properties': 'materialDefinitionProperties',
   'material_class_properties': 'materialClassProperties',
   'material_class_properties_assignments': 'materialClassPropertiesAssignments',
+  'material_class_properties_to_material_class_assignment': 'materialClassToPropertyAssignments',
   'material_definition_property_assignments': 'materialDefinitionPropertyAssignments',
   'equipment_classes': 'equipmentClasses',
   'equipment': 'equipment',
@@ -687,6 +688,7 @@ const DataMigration: React.FC = () => {
       const masterDataStores = [
         'materialClasses', 'materials', 'materialLots', 'materialSublots',
         'materialClassProperties', 'materialClassPropertiesAssignments',
+        'materialClassToPropertyAssignments',
         'materialDefinitionProperties', 'materialDefinitionPropertyAssignments',
         'equipmentClasses', 'equipment', 'equipmentProperties', 
         'equipmentPropertyAssignments', 'plants', 'productionLines',
@@ -742,6 +744,7 @@ const DataMigration: React.FC = () => {
       const materialDefinitionPropertyAssignments = masterDataResults['materialDefinitionPropertyAssignments'];
       const materialClassProperties = masterDataResults['materialClassProperties'];
       const materialClassPropertiesAssignments = masterDataResults['materialClassPropertiesAssignments'];
+      const materialClassToPropertyAssignments = masterDataResults['materialClassToPropertyAssignments'];
       const equipmentClasses = masterDataResults['equipmentClasses'];
       const equipment = masterDataResults['equipment'];
       const equipmentProperties = masterDataResults['equipmentProperties'];
@@ -850,6 +853,16 @@ const DataMigration: React.FC = () => {
             { name: 'id', type: 'string', sample: materialClassPropertiesAssignments?.[0]?.id },
             { name: 'materialClassPropertyId', type: 'string', sample: materialClassPropertiesAssignments?.[0]?.materialClassPropertyId },
             { name: 'materialDefinitionPropertyId', type: 'string', sample: materialClassPropertiesAssignments?.[0]?.materialDefinitionPropertyId },
+          ],
+        },
+        {
+          name: 'material_class_properties_to_material_class_assignment',
+          rowCount: materialClassToPropertyAssignments?.length || 0,
+          columns: [
+            { name: 'id', type: 'string', sample: materialClassToPropertyAssignments?.[0]?.id },
+            { name: 'materialClassId', type: 'string', sample: materialClassToPropertyAssignments?.[0]?.materialClassId },
+            { name: 'materialClassPropertyId', type: 'string', sample: materialClassToPropertyAssignments?.[0]?.materialClassPropertyId },
+            { name: 'sourceTimeStamp', type: 'string', sample: materialClassToPropertyAssignments?.[0]?.sourceTimeStamp },
           ],
         },
         {

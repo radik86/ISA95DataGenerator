@@ -364,6 +364,13 @@ interface MaterialClassPropertyAssignment {
   materialDefinitionPropertyId: string;
 }
 
+interface MaterialClassToPropertyAssignment {
+  id: string;
+  materialClassId: string;
+  materialClassPropertyId: string;
+  sourceTimeStamp?: string;
+}
+
 interface MaterialDefinitionPropertyAssignment {
   pk: string; // Unique primary key
   id: string; // Property identifier (can be duplicated)
@@ -381,6 +388,7 @@ const TEMPLATE_UPDATE_SUPPORTED_FILES = new Set<string>([
   'material_lots.csv',
   'material_class_properties.csv',
   'material_class_properties_assignments.csv',
+  'material_class_properties_to_material_class_assignment.csv',
   'material_definition_property_template.csv',
   'material_definition_property_assignment_template.csv',
   'equipment_classes.csv',
@@ -400,14 +408,15 @@ const TEMPLATE_UPDATE_SUPPORTED_FILES = new Set<string>([
 ]);
 const STORE_TEMPLATE_MAP: Record<number, Record<number, StoreTemplateEntry | null>> = {
   0: { // Materials
-    0: { storeName: 'materialClasses', csvFile: 'material_classes.csv', parserKey: 'materialClasses', label: 'Material Classes', clearFirst: ['materialClassPropertiesAssignments', 'materialClassProperties', 'materialDefinitionPropertyAssignments', 'materialDefinitionProperties', 'materialSublots', 'materialLots', 'materials'] },
+    0: { storeName: 'materialClasses', csvFile: 'material_classes.csv', parserKey: 'materialClasses', label: 'Material Classes', clearFirst: ['materialClassToPropertyAssignments', 'materialClassPropertiesAssignments', 'materialClassProperties', 'materialDefinitionPropertyAssignments', 'materialDefinitionProperties', 'materialSublots', 'materialLots', 'materials'] },
     1: { storeName: 'materials', csvFile: 'materials.csv', parserKey: 'materials', label: 'Materials', clearFirst: ['materialSublots', 'materialLots'] },
     2: { storeName: 'materialLots', csvFile: 'material_lots.csv', parserKey: 'materialLots', label: 'Material Lots', clearFirst: ['materialSublots'] },
     3: null,
-    4: { storeName: 'materialClassProperties', csvFile: 'material_class_properties.csv', parserKey: 'materialClassProperties', label: 'Material Class Properties', clearFirst: ['materialClassPropertiesAssignments'] },
+    4: { storeName: 'materialClassProperties', csvFile: 'material_class_properties.csv', parserKey: 'materialClassProperties', label: 'Material Class Properties', clearFirst: ['materialClassPropertiesAssignments', 'materialClassToPropertyAssignments'] },
     5: { storeName: 'materialClassPropertiesAssignments', csvFile: 'material_class_properties_assignments.csv', parserKey: 'materialClassPropertiesAssignments', label: 'Material Class Property Assign.' },
     6: { storeName: 'materialDefinitionProperties', csvFile: 'material_definition_property_template.csv', parserKey: 'materialDefinitionProperties', label: 'Material Definition Properties', clearFirst: ['materialDefinitionPropertyAssignments'] },
     7: { storeName: 'materialDefinitionPropertyAssignments', csvFile: 'material_definition_property_assignment_template.csv', parserKey: 'materialDefinitionPropertyAssignments', label: 'Material Def. Property Assign.' },
+    8: { storeName: 'materialClassToPropertyAssignments', csvFile: 'material_class_properties_to_material_class_assignment.csv', parserKey: 'materialClassToPropertyAssignments', label: 'Mat. Class to Prop. Assign.' },
   },
   1: { // Equipment & Facilities
     0: { storeName: 'equipmentClasses', csvFile: 'equipment_classes.csv', parserKey: 'equipmentClasses', label: 'Equipment Classes', clearFirst: ['equipmentClassPropertiesAssignments', 'equipmentClassProperties'] },
@@ -501,6 +510,11 @@ const MasterDataManager: React.FC = () => {
   const [materialClassPropertyAssignments, setMaterialClassPropertyAssignments] = useState<MaterialClassPropertyAssignment[]>([]);
   const [materialClassPropertyAssignmentDialog, setMaterialClassPropertyAssignmentDialog] = useState(false);
   const [editingMaterialClassPropertyAssignment, setEditingMaterialClassPropertyAssignment] = useState<MaterialClassPropertyAssignment | null>(null);
+
+  // Material Class to Property Assignment State
+  const [materialClassToPropertyAssignments, setMaterialClassToPropertyAssignments] = useState<MaterialClassToPropertyAssignment[]>([]);
+  const [materialClassToPropertyAssignmentDialog, setMaterialClassToPropertyAssignmentDialog] = useState(false);
+  const [editingMaterialClassToPropertyAssignment, setEditingMaterialClassToPropertyAssignment] = useState<MaterialClassToPropertyAssignment | null>(null);
   
   // Material Definition Property Assignment State
   const [materialDefinitionPropertyAssignments, setMaterialDefinitionPropertyAssignments] = useState<MaterialDefinitionPropertyAssignment[]>([]);
@@ -652,13 +666,14 @@ const MasterDataManager: React.FC = () => {
       }
 
       // Load all data from database
-      const [mc, m, ml, ms, mcp, mcpa, mdp, mdpa, ec, e, ep, epa, ps, bom, mbom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, pc, pcap, emp, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
+      const [mc, m, ml, ms, mcp, mcpa, mctpa, mdp, mdpa, ec, e, ep, epa, ps, bom, mbom, eu, p, pl, le, hs, hsf, hspc, oed, oedsa, oedp, oedpa, sh, cr, sca, pc, pcap, emp, oec, oer, oee, ecprop, ecpropAssign] = await Promise.all([
         masterDataApi.getAll('materialClasses'),
         masterDataApi.getAll('materials'),
         masterDataApi.getAll('materialLots'),
         masterDataApi.getAll('materialSublots'),
         masterDataApi.getAll('materialClassProperties'),
         masterDataApi.getAll('materialClassPropertiesAssignments'),
+        masterDataApi.getAll('materialClassToPropertyAssignments'),
         masterDataApi.getAll('materialDefinitionProperties'),
         masterDataApi.getAll('materialDefinitionPropertyAssignments'),
         masterDataApi.getAll('equipmentClasses'),
@@ -698,6 +713,7 @@ const MasterDataManager: React.FC = () => {
       setMaterialSublots(ms);
       setMaterialClassProperties(mcp);
       setMaterialClassPropertyAssignments(mcpa);
+      setMaterialClassToPropertyAssignments(mctpa);
       setMaterialDefinitionProperties(mdp);
       setMaterialDefinitionPropertyAssignments(mdpa);
       setEquipmentClasses(ec);
@@ -1145,6 +1161,38 @@ const MasterDataManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete material class property assignment:', error);
       showSnackbar('Failed to delete material class property assignment', 'error');
+    }
+  };
+
+  // Material Class to Property Assignment Handlers
+  const handleSaveMaterialClassToPropertyAssignment = async (data: MaterialClassToPropertyAssignment) => {
+    try {
+      if (editingMaterialClassToPropertyAssignment) {
+        await masterDataApi.update('materialClassToPropertyAssignments', data);
+        setMaterialClassToPropertyAssignments(prev => prev.map(r => r.id === data.id ? data : r));
+        showSnackbar('Mat. class to property assignment updated', 'success');
+      } else {
+        await masterDataApi.add('materialClassToPropertyAssignments', data);
+        setMaterialClassToPropertyAssignments(prev => [...prev, data]);
+        showSnackbar('Mat. class to property assignment added', 'success');
+      }
+      setMaterialClassToPropertyAssignmentDialog(false);
+      setEditingMaterialClassToPropertyAssignment(null);
+    } catch (error) {
+      console.error('Failed to save mat. class to property assignment:', error);
+      showSnackbar('Failed to save mat. class to property assignment', 'error');
+    }
+  };
+
+  const handleDeleteMaterialClassToPropertyAssignment = async (id: string) => {
+    if (!confirm('Delete this mat. class to property assignment?')) return;
+    try {
+      await masterDataApi.delete('materialClassToPropertyAssignments', id);
+      setMaterialClassToPropertyAssignments(prev => prev.filter(r => r.id !== id));
+      showSnackbar('Mat. class to property assignment deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete mat. class to property assignment:', error);
+      showSnackbar('Failed to delete mat. class to property assignment', 'error');
     }
   };
 
@@ -2003,6 +2051,15 @@ const MasterDataManager: React.FC = () => {
         await mcpaWritable.write(mcpaCsv);
         await mcpaWritable.close();
 
+        // Export Material Class to Property Assignments
+        const mctpaHeaders = 'MaterialClassId,MaterialClassPropertyId,sourceTimeStamp';
+        const mctpaRows = materialClassToPropertyAssignments.map(r => `${r.materialClassId},${r.materialClassPropertyId},${r.sourceTimeStamp || ''}`).join('\n');
+        const mctpaCsv = `${mctpaHeaders}\n${mctpaRows}`;
+        const mctpaFileHandle = await dirHandle.getFileHandle('material_class_properties_to_material_class_assignment.csv', { create: true });
+        const mctpaWritable = await mctpaFileHandle.createWritable();
+        await mctpaWritable.write(mctpaCsv);
+        await mctpaWritable.close();
+
         // Export Material Definition Properties
         const mdpHeaders = 'id,Value,Description,ValueUnitOfMeasure';
         const mdpRows = materialDefinitionProperties.map(mdp => `${mdp.id},${mdp.value},${mdp.description || ''},${mdp.valueUnitOfMeasure || ''}`).join('\n');
@@ -2181,6 +2238,11 @@ const MasterDataManager: React.FC = () => {
       const mcpaHeaders = 'MaterialClassPropertyId,MaterialDefinitionPropertyId';
       const mcpaRows = materialClassPropertyAssignments.map(mcpa => `${mcpa.materialClassPropertyId},${mcpa.materialDefinitionPropertyId}`).join('\n');
       downloadCSV(`${mcpaHeaders}\n${mcpaRows}`, 'material_class_properties_assignments.csv');
+
+      // Export Material Class to Property Assignments
+      const mctpaHeaders = 'MaterialClassId,MaterialClassPropertyId,sourceTimeStamp';
+      const mctpaRows = materialClassToPropertyAssignments.map(r => `${r.materialClassId},${r.materialClassPropertyId},${r.sourceTimeStamp || ''}`).join('\n');
+      downloadCSV(`${mctpaHeaders}\n${mctpaRows}`, 'material_class_properties_to_material_class_assignment.csv');
 
       // Export Material Definition Properties
       const mdpHeaders = 'id,Value,Description,ValueUnitOfMeasure';
@@ -2571,7 +2633,14 @@ const MasterDataManager: React.FC = () => {
       {/* Materials Category */}
       {categoryTab === 0 && (
         <Box>
-          <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
+          <Tabs
+            value={tabValue}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+          >
             <Tab label="Material Classes" />
             <Tab label="Materials" />
             <Tab label="Material Lots" />
@@ -2580,6 +2649,7 @@ const MasterDataManager: React.FC = () => {
             <Tab label="Material Class Property Assignments" />
             <Tab label="Material Definition Properties" />
             <Tab label="Material Definition Property Assignments" />
+            <Tab label="Mat. Class to Prop. Assign." />
           </Tabs>
 
           <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
@@ -2877,6 +2947,64 @@ const MasterDataManager: React.FC = () => {
                             <IconButton
                               size="small"
                               onClick={() => handleDeleteMaterialDefinitionPropertyAssignment(item.pk)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            {tabValue === 8 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Material Class to Property Assignments</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => {
+                      setEditingMaterialClassToPropertyAssignment(null);
+                      setMaterialClassToPropertyAssignmentDialog(true);
+                    }}
+                  >
+                    Add Assignment
+                  </Button>
+                </Box>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>ID</TableCell>
+                        <TableCell>Material Class ID</TableCell>
+                        <TableCell>Material Class Property ID</TableCell>
+                        <TableCell>Source Timestamp</TableCell>
+                        <TableCell>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {materialClassToPropertyAssignments.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.id}</TableCell>
+                          <TableCell>{item.materialClassId}</TableCell>
+                          <TableCell>{item.materialClassPropertyId}</TableCell>
+                          <TableCell>{item.sourceTimeStamp}</TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setEditingMaterialClassToPropertyAssignment(item);
+                                setMaterialClassToPropertyAssignmentDialog(true);
+                              }}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeleteMaterialClassToPropertyAssignment(item.id)}
                             >
                               <DeleteIcon />
                             </IconButton>
@@ -4099,6 +4227,18 @@ const MasterDataManager: React.FC = () => {
           setEditingMaterialClassPropertyAssignment(null);
         }}
         onSave={handleSaveMaterialClassPropertyAssignment}
+      />
+
+      <MaterialClassToPropertyAssignmentDialog
+        open={materialClassToPropertyAssignmentDialog}
+        data={editingMaterialClassToPropertyAssignment}
+        materialClasses={materialClasses}
+        materialClassProperties={materialClassProperties}
+        onClose={() => {
+          setMaterialClassToPropertyAssignmentDialog(false);
+          setEditingMaterialClassToPropertyAssignment(null);
+        }}
+        onSave={handleSaveMaterialClassToPropertyAssignment}
       />
 
       <MaterialDefinitionPropertyAssignmentDialog
@@ -6384,6 +6524,95 @@ const MaterialClassPropertyAssignmentDialog: React.FC<MaterialClassPropertyAssig
                 ))}
               </Select>
             </FormControl>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">Save</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+interface MaterialClassToPropertyAssignmentDialogProps {
+  open: boolean;
+  data: MaterialClassToPropertyAssignment | null;
+  materialClasses: MaterialClass[];
+  materialClassProperties: MaterialClassProperty[];
+  onClose: () => void;
+  onSave: (data: MaterialClassToPropertyAssignment) => void;
+}
+
+const MaterialClassToPropertyAssignmentDialog: React.FC<MaterialClassToPropertyAssignmentDialogProps> = ({
+  open, data, materialClasses, materialClassProperties, onClose, onSave
+}) => {
+  const [formData, setFormData] = useState<MaterialClassToPropertyAssignment>(
+    data || { id: '', materialClassId: '', materialClassPropertyId: '', sourceTimeStamp: '' }
+  );
+
+  React.useEffect(() => {
+    if (data) {
+      setFormData(data);
+    } else {
+      setFormData({ id: '', materialClassId: '', materialClassPropertyId: '', sourceTimeStamp: '' });
+    }
+  }, [data, open]);
+
+  const handleSubmit = () => {
+    if (!formData.materialClassId || !formData.materialClassPropertyId) {
+      alert('Material Class and Material Class Property are required');
+      return;
+    }
+
+    const generatedId = `${formData.materialClassId}_${formData.materialClassPropertyId}`;
+    onSave({ ...formData, id: formData.id || generatedId });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{data ? 'Edit' : 'Add'} Material Class to Property Assignment</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Material Class</InputLabel>
+              <Select
+                value={formData.materialClassId}
+                label="Material Class"
+                onChange={(e) => setFormData({ ...formData, materialClassId: e.target.value })}
+              >
+                {materialClasses.map((mc) => (
+                  <MenuItem key={mc.id} value={mc.id}>
+                    {mc.id} - {mc.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={12}>
+            <FormControl fullWidth required>
+              <InputLabel>Material Class Property</InputLabel>
+              <Select
+                value={formData.materialClassPropertyId}
+                label="Material Class Property"
+                onChange={(e) => setFormData({ ...formData, materialClassPropertyId: e.target.value })}
+              >
+                {materialClassProperties.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.id} - {p.propertyName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid xs={12}>
+            <TextField
+              fullWidth
+              label="Source Timestamp"
+              value={formData.sourceTimeStamp || ''}
+              onChange={(e) => setFormData({ ...formData, sourceTimeStamp: e.target.value })}
+            />
           </Grid>
         </Grid>
       </DialogContent>

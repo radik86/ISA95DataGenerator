@@ -26,6 +26,7 @@ export class TemplateDataLoader {
       { name: 'material_lots.csv', parser: 'materialLots' },
       { name: 'material_class_properties.csv', parser: 'materialClassProperties' },
       { name: 'material_class_properties_assignments.csv', parser: 'materialClassPropertiesAssignments' },
+      { name: 'material_class_properties_to_material_class_assignment.csv', parser: 'materialClassToPropertyAssignments' },
       { name: 'material_definition_property_template.csv', parser: 'materialDefinitionProperties' },
       { name: 'material_definition_property_assignment_template.csv', parser: 'materialDefinitionPropertyAssignments' },
       { name: 'equipment_classes.csv', parser: 'equipmentClasses' },
@@ -90,6 +91,10 @@ export class TemplateDataLoader {
           case 'materialClassPropertiesAssignments':
             parsed = csvParser.parseMaterialClassPropertiesAssignments(csvText);
             result.materialClassPropertiesAssignments = parsed;
+            break;
+          case 'materialClassToPropertyAssignments':
+            parsed = csvParser.parseMaterialClassToPropertyAssignments(csvText);
+            result.materialClassToPropertyAssignments = parsed;
             break;
           case 'materialDefinitionPropertyAssignments':
             parsed = csvParser.parseMaterialDefinitionPropertyAssignments(csvText);
@@ -225,6 +230,7 @@ export class TemplateDataLoader {
       case 'materialDefinitionProperties': return csvParser.parseMaterialDefinitionProperties(csvText);
       case 'materialClassProperties': return csvParser.parseMaterialClassProperties(csvText);
       case 'materialClassPropertiesAssignments': return csvParser.parseMaterialClassPropertiesAssignments(csvText);
+      case 'materialClassToPropertyAssignments': return csvParser.parseMaterialClassToPropertyAssignments(csvText);
       case 'materialDefinitionPropertyAssignments': return csvParser.parseMaterialDefinitionPropertyAssignments(csvText);
       case 'equipmentClasses': return csvParser.parseEquipmentClasses(csvText);
       case 'equipment': return csvParser.parseEquipment(csvText);

@@ -36,6 +36,7 @@ export interface ParsedCSVData {
   employees?: any[];
   equipmentClassProperties?: any[];
   equipmentClassPropertiesAssignments?: any[];
+  materialClassToPropertyAssignments?: any[];
 }
 
 class CSVParser {
@@ -182,6 +183,23 @@ class CSVParser {
       updatedAt: new Date(),
       version: 1,
     })).filter(r => r.id.trim().length > 0);
+  }
+
+  parseMaterialClassToPropertyAssignments(csvText: string): any[] {
+    const records = this.parseCSV(csvText);
+    return records.map(r => {
+      const materialClassId = r.MaterialClassId || '';
+      const materialClassPropertyId = r.MaterialClassPropertyId || '';
+      return {
+        id: `${materialClassId}_${materialClassPropertyId}`,
+        materialClassId,
+        materialClassPropertyId,
+        sourceTimeStamp: r.sourceTimeStamp || '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+      };
+    }).filter(r => r.materialClassId.trim().length > 0 && r.materialClassPropertyId.trim().length > 0);
   }
 
   parseMaterialClassPropertiesAssignments(csvText: string): any[] {

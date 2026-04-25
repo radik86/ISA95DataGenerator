@@ -27,6 +27,7 @@ public class MigrationDbContext : DbContext
     public DbSet<MaterialSublot> MaterialSublots { get; set; }
     public DbSet<MaterialClassProperty> MaterialClassProperties { get; set; }
     public DbSet<MaterialClassPropertyAssignment> MaterialClassPropertyAssignments { get; set; }
+    public DbSet<MaterialClassToPropertyAssignment> MaterialClassToPropertyAssignments { get; set; }
     public DbSet<MaterialDefinitionProperty> MaterialDefinitionProperties { get; set; }
     public DbSet<MaterialDefinitionPropertyAssignment> MaterialDefinitionPropertyAssignments { get; set; }
     public DbSet<EquipmentClass> EquipmentClasses { get; set; }
@@ -228,6 +229,26 @@ public class MigrationDbContext : DbContext
             entity.Property(e => e.MaterialDefinitionPropertyId).HasMaxLength(100);
             entity.HasIndex(e => e.MaterialClassPropertyId);
             entity.HasIndex(e => e.MaterialDefinitionPropertyId);
+        });
+
+        // MaterialClassToPropertyAssignment
+        modelBuilder.Entity<MaterialClassToPropertyAssignment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(200);
+            entity.Property(e => e.MaterialClassId).HasMaxLength(100);
+            entity.Property(e => e.MaterialClassPropertyId).HasMaxLength(100);
+            entity.Property(e => e.SourceTimeStamp).HasMaxLength(50);
+            entity.HasIndex(e => e.MaterialClassId);
+            entity.HasIndex(e => e.MaterialClassPropertyId);
+            entity.HasOne(e => e.MaterialClass)
+                .WithMany()
+                .HasForeignKey(e => e.MaterialClassId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.MaterialClassProperty)
+                .WithMany()
+                .HasForeignKey(e => e.MaterialClassPropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         // MaterialDefinitionProperty
