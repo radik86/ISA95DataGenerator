@@ -1,4 +1,4 @@
 MaterialClassPropertyId,PropertyName,Description,ValueDataType,Unit,MinValue,MaxValue
 MCP-DefaultUnitOfMeasure,DefaultUnitOfMeasure,g,,g,g,g
 MCP-MaterialCode,MaterialCode,NA,,NA,MC1,MC1000
-MCP-DefaultUnitOfMeasureEA,DefaultUnitOfMeasure,EA,,EA,EA,EA
+MCP-DefaultUnitOfMeasureEA,DefaultUnitOfMeasureEA,EA,,EA,EA,EA
