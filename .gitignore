@@ -1,2 +1,4 @@
 src/ISA95DataGenerator.API/Data/Outputs/
 _db_migration/ISA95Migrations-20260309_182849.bak
+
+generated/quality-check-report.json
