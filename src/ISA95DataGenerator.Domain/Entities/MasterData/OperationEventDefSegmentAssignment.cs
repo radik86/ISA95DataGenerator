@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ISA95DataGenerator.Domain.Entities.MasterData;
 
@@ -16,6 +16,7 @@ public class OperationEventDefSegmentAssignment
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastDataMigrationAt { get; set; }
     public int Version { get; set; }
 
     // Navigation properties

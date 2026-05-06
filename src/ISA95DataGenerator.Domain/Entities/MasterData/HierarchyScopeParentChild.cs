@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ISA95DataGenerator.Domain.Entities.MasterData;
 
@@ -15,5 +15,6 @@ public class HierarchyScopeParentChild
     public string ChildEquipmentID { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastDataMigrationAt { get; set; }
     public int Version { get; set; }
 }

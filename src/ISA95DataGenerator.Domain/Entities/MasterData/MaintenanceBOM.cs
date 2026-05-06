@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ISA95DataGenerator.Domain.Entities.MasterData;
 
@@ -21,6 +21,7 @@ public class MaintenanceBOM
     public string MaterialUse { get; set; } = "CONSUME";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastDataMigrationAt { get; set; }
     public int Version { get; set; }
 
     public ProcessSegment? ProcessSegment { get; set; }

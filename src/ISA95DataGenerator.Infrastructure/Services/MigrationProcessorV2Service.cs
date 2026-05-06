@@ -612,6 +612,15 @@ public class MigrationProcessorV2Service
                     Log("No GenericDataStores rows required LastDataMigrationAt stamping");
                     await SaveSession(session, logMessages, ct);
                 }
+
+                // Stamp LastDataMigrationAt for dedicated entity table rows that were exported.
+                var dedicatedStoreNames = includedGenericStoreNames.Where(n => DedicatedEntityTypeMap.ContainsKey(n)).ToList();
+                if (dedicatedStoreNames.Count > 0)
+                {
+                    var stampedDedicated = await StampDedicatedTableRowsAsync(dedicatedStoreNames, DateTime.UtcNow, ct);
+                    if (stampedDedicated > 0)
+                        Log($"Stamped LastDataMigrationAt for {stampedDedicated} dedicated entity table row(s)");
+                }
             }
             catch (Exception stampEx)
             {
@@ -868,12 +877,11 @@ public class MigrationProcessorV2Service
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return 0;
 
-        // ── For master-data sources the dedicated EF table is the source of truth.
-        //    Query it first so that any stale/partial GenericDataStores rows cannot shadow real data.
-        if (!ProcessSourceTables.Contains(sourceTable) &&
-            DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
+        // ── For dedicated EF tables, use them as source of truth.
+        //    Apply delta watermark when in delta mode.
+        if (DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
         {
-            var dedicatedCount = await CountFromDedicatedTableAsync(masterEntityClrType, ct);
+            var dedicatedCount = await CountFromDedicatedTableAsync(masterEntityClrType, loadMode, ct);
             if (dedicatedCount > 0)
                 return dedicatedCount;
         }
@@ -882,8 +890,8 @@ public class MigrationProcessorV2Service
             .AsNoTracking()
             .Where(r => r.StoreName == genericStoreName);
 
-        if (string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase) &&
-            ProcessSourceTables.Contains(sourceTable))
+        // Apply delta filter for ALL GenericDataStores-backed stores (process AND master data).
+        if (string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase))
         {
             genericQuery = genericQuery.Where(r => !r.LastDataMigrationAt.HasValue || r.UpdatedAt > r.LastDataMigrationAt.Value);
         }
@@ -928,7 +936,7 @@ public class MigrationProcessorV2Service
         }
     }
 
-    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, string loadMode, bool preferServerSideSource, CancellationToken ct)
+    private async Task<List<Dictionary<string, object?>>> LoadStoreDataAsync(Guid sessionId, string sourceTable, string loadMode, bool preferServerSideSource, CancellationToken ct, ISet<string>? requiredColumns = null)
     {
         var result = new List<Dictionary<string, object?>>();
 
@@ -974,11 +982,11 @@ public class MigrationProcessorV2Service
         if (!GenericStoreMap.TryGetValue(sourceTable, out var genericStoreName))
             return result;
 
-        // ── For master-data sources query the dedicated EF table first (source of truth).
-        if (!ProcessSourceTables.Contains(sourceTable) &&
-            DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
+        // ── For dedicated EF tables, use them as source of truth.
+        //    Delta filter applied via LastDataMigrationAt column on each entity.
+        if (DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
         {
-            var dedicatedRows = await LoadFromDedicatedTableAsync(masterEntityClrType, ct);
+            var dedicatedRows = await LoadFromDedicatedTableAsync(masterEntityClrType, loadMode, ct, requiredColumns);
             if (dedicatedRows.Count > 0)
             {
                 AddComputedFieldsForStore(sourceTable, dedicatedRows);
@@ -1009,10 +1017,10 @@ public class MigrationProcessorV2Service
             var qualifiedTable = string.IsNullOrEmpty(schema)
                 ? $"\"{tableName}\""
                 : $"\"{schema}\".\"{tableName}\"";
-            var isDeltaProcessStore = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase) &&
-                ProcessSourceTables.Contains(sourceTable);
+            // Apply delta filter for ALL GenericDataStores-backed stores (process AND master data).
+            var applyDelta = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase);
 
-            cmd.CommandText = isDeltaProcessStore
+            cmd.CommandText = applyDelta
                 ? $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName AND (\"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\") ORDER BY \"Id\""
                 : $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
 
@@ -1047,14 +1055,19 @@ public class MigrationProcessorV2Service
         // ── Third fallback: dedicated EF master data table ──
         if (result.Count == 0 && DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
         {
-            result = await LoadFromDedicatedTableAsync(entityClrType, ct);
+            result = await LoadFromDedicatedTableAsync(entityClrType, loadMode, ct, requiredColumns);
+        }
+        else if (result.Count > 0 && requiredColumns != null && requiredColumns.Count > 0)
+        {
+            // Project GenericDataStores dicts to only the required columns to reduce .NET heap usage.
+            result = ProjectDictsToRequiredColumns(result, requiredColumns);
         }
 
         AddComputedFieldsForStore(sourceTable, result);
         return result;
     }
 
-    private async Task<int> CountFromDedicatedTableAsync(Type entityClrType, CancellationToken ct)
+    private async Task<int> CountFromDedicatedTableAsync(Type entityClrType, string loadMode, CancellationToken ct)
     {
         var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
         if (dedicatedEntityType == null) return 0;
@@ -1072,7 +1085,9 @@ public class MigrationProcessorV2Service
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
-            cmd.CommandText = $"SELECT COUNT(*) FROM {qualifiedTable}";
+            cmd.CommandText = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase)
+                ? $"SELECT COUNT(*) FROM {qualifiedTable} WHERE \"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\""
+                : $"SELECT COUNT(*) FROM {qualifiedTable}";
             var countObj = await cmd.ExecuteScalarAsync(ct);
             return Convert.ToInt32(countObj);
         }
@@ -1084,10 +1099,11 @@ public class MigrationProcessorV2Service
     }
 
     /// <summary>
-    /// Reads all rows from a dedicated EF master data table using raw DbDataReader
+    /// Reads rows from a dedicated EF master data table using raw DbDataReader
     /// and returns them as generic dictionaries (column name → value).
+    /// In delta mode only rows where LastDataMigrationAt IS NULL OR UpdatedAt > LastDataMigrationAt are returned.
     /// </summary>
-    private async Task<List<Dictionary<string, object?>>> LoadFromDedicatedTableAsync(Type entityClrType, CancellationToken ct)
+    private async Task<List<Dictionary<string, object?>>> LoadFromDedicatedTableAsync(Type entityClrType, string loadMode, CancellationToken ct, ISet<string>? requiredColumns = null)
     {
         var result = new List<Dictionary<string, object?>>();
 
@@ -1102,6 +1118,9 @@ public class MigrationProcessorV2Service
             ? $"\"{dedTable}\""
             : $"\"{dedSchema}\".\"{dedTable}\"";
 
+        // Build column projection to reduce SQL buffer pool pressure on large tables.
+        var selectClause = BuildDedicatedTableSelectClause(dedicatedEntityType, requiredColumns);
+
         var conn = _dbContext.Database.GetDbConnection();
         var ownConn = conn.State != ConnectionState.Open;
         if (ownConn) await conn.OpenAsync(ct);
@@ -1109,7 +1128,9 @@ public class MigrationProcessorV2Service
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
-            cmd.CommandText = $"SELECT * FROM {qualifiedTable}";
+            cmd.CommandText = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase)
+                ? $"SELECT {selectClause} FROM {qualifiedTable} WHERE \"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\""
+                : $"SELECT {selectClause} FROM {qualifiedTable}";
 
             using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
             var fieldCount = reader.FieldCount;
@@ -1221,13 +1242,12 @@ public class MigrationProcessorV2Service
             genericStoreName = null;
         }
 
-        // ── For master-data sources the dedicated EF table is the source of truth.
-        //    Yield from it first so stale/partial GenericDataStores rows never shadow real data.
-        if (!ProcessSourceTables.Contains(sourceTable) &&
-            genericStoreName != null &&
+        // ── For dedicated EF tables, use them as source of truth.
+        //    Delta filter applied via LastDataMigrationAt column on each entity.
+        if (genericStoreName != null &&
             DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var masterEntityClrType))
         {
-            var dedicatedRows = await LoadFromDedicatedTableAsync(masterEntityClrType, ct);
+            var dedicatedRows = await LoadFromDedicatedTableAsync(masterEntityClrType, loadMode, ct);
             if (dedicatedRows.Count > 0)
             {
                 foreach (var row in dedicatedRows)
@@ -1268,10 +1288,10 @@ public class MigrationProcessorV2Service
                 var qualifiedTable = string.IsNullOrEmpty(schema)
                     ? $"\"{tableName}\""
                     : $"\"{schema}\".\"{tableName}\"";
-                var isDeltaProcessStore = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase) &&
-                    ProcessSourceTables.Contains(sourceTable);
+                // Apply delta filter for ALL GenericDataStores-backed stores (process AND master data).
+                var applyDelta = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase);
 
-                cmd.CommandText = isDeltaProcessStore
+                cmd.CommandText = applyDelta
                     ? $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName AND (\"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\") ORDER BY \"Id\""
                     : $"SELECT \"Id\", \"DataJson\" FROM {qualifiedTable} WHERE \"StoreName\" = @storeName ORDER BY \"Id\"";
 
@@ -1316,7 +1336,7 @@ public class MigrationProcessorV2Service
         // ── Third fallback: dedicated EF master data table ──
         if (genericStoreName != null && DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
         {
-            var rows = await LoadFromDedicatedTableAsync(entityClrType, ct);
+            var rows = await LoadFromDedicatedTableAsync(entityClrType, loadMode, ct);
             foreach (var row in rows)
             {
                 AddComputedFieldsForRecord(sourceTable, row);
@@ -1332,6 +1352,8 @@ public class MigrationProcessorV2Service
         private readonly string _loadMode;
         private readonly bool _preferServerSideSource;
         private readonly Dictionary<string, List<Dictionary<string, object?>>> _cache = new(StringComparer.OrdinalIgnoreCase);
+        // Separate full-load cache for lookup/reference resolution — delta is never applied here.
+        private readonly Dictionary<string, List<Dictionary<string, object?>>> _lookupCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> _countCache = new(StringComparer.OrdinalIgnoreCase);
 
         public SourceStoreProvider(MigrationProcessorV2Service owner, Guid sessionId, string loadMode, bool preferServerSideSource)
@@ -1363,6 +1385,28 @@ public class MigrationProcessorV2Service
             return loaded;
         }
 
+        /// <summary>
+        /// Load a store for lookup/reference resolution. Always uses full load mode regardless of
+        /// the session load mode — lookup tables must contain ALL rows so that existing references
+        /// can be resolved even when those rows have not changed since the last migration.
+        /// </summary>
+        public async Task<List<Dictionary<string, object?>>> GetStoreForLookupAsync(string sourceTable, CancellationToken ct, ISet<string>? requiredColumns = null)
+        {
+            // Use a compound cache key for projected loads so a slim result doesn't
+            // pollute the cache for a subsequent full-column request for the same table.
+            var cacheKey = requiredColumns != null
+                ? $"{sourceTable}|{string.Join(",", requiredColumns.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))}"
+                : sourceTable;
+
+            if (_lookupCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+            // Force full load so delta filter is never applied to lookup/reference data.
+            var loaded = await _owner.LoadStoreDataAsync(_sessionId, sourceTable, "full", _preferServerSideSource, ct, requiredColumns);
+            _lookupCache[cacheKey] = loaded;
+            return loaded;
+        }
+
         public IAsyncEnumerable<Dictionary<string, object?>> StreamStoreAsync(string sourceTable, CancellationToken ct)
         {
             return _owner.StreamStoreDataAsync(_sessionId, sourceTable, _loadMode, _preferServerSideSource, ct);
@@ -1376,6 +1420,7 @@ public class MigrationProcessorV2Service
         public void Clear()
         {
             _cache.Clear();
+            _lookupCache.Clear();
             _countCache.Clear();
         }
     }
@@ -1552,6 +1597,75 @@ public class MigrationProcessorV2Service
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(g => g.LastDataMigrationAt, stampTimeUtc),
                 ct);
+    }
+
+    // ────────────────────────────────────────────
+    //  Dedicated entity table stamping
+    // ────────────────────────────────────────────
+
+    /// <summary>
+    /// Stamps LastDataMigrationAt on all rows that were included in the delta export
+    /// (i.e. rows where LastDataMigrationAt IS NULL OR UpdatedAt > LastDataMigrationAt).
+    /// Must be called after the ZIP is safely created.
+    /// Returns total rows updated across all tables.
+    /// </summary>
+    private async Task<int> StampDedicatedTableRowsAsync(
+        IEnumerable<string> genericStoreNames,
+        DateTime stampTimeUtc,
+        CancellationToken ct)
+    {
+        var names = genericStoreNames
+            .Where(n => DedicatedEntityTypeMap.ContainsKey(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (names.Count == 0) return 0;
+
+        var conn = _dbContext.Database.GetDbConnection();
+        var ownConn = conn.State != ConnectionState.Open;
+        if (ownConn) await conn.OpenAsync(ct);
+
+        var totalUpdated = 0;
+        try
+        {
+            foreach (var genericStoreName in names)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (!DedicatedEntityTypeMap.TryGetValue(genericStoreName, out var entityClrType))
+                    continue;
+
+                var dedicatedEntityType = _dbContext.Model.FindEntityType(entityClrType);
+                if (dedicatedEntityType == null) continue;
+
+                var dedTable = dedicatedEntityType.GetTableName();
+                if (string.IsNullOrEmpty(dedTable)) continue;
+                var dedSchema = dedicatedEntityType.GetSchema();
+                var qualifiedTable = string.IsNullOrEmpty(dedSchema)
+                    ? $"\"{dedTable}\""
+                    : $"\"{dedSchema}\".\"{dedTable}\"";
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
+
+                var p = cmd.CreateParameter();
+                p.ParameterName = "@stampTime";
+                p.Value = stampTimeUtc;
+                p.DbType = DbType.DateTime2;
+                cmd.Parameters.Add(p);
+
+                cmd.CommandText = $"UPDATE {qualifiedTable} SET \"LastDataMigrationAt\" = @stampTime WHERE \"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\"";
+
+                totalUpdated += await cmd.ExecuteNonQueryAsync(ct);
+            }
+        }
+        finally
+        {
+            if (ownConn && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+
+        return totalUpdated;
     }
 
     // ────────────────────────────────────────────
@@ -2365,7 +2479,9 @@ public class MigrationProcessorV2Service
         Action<string> log,
         CancellationToken ct)
     {
-        var cacheKey = $"COMBINED_{targetEntity}";
+        // Use a FULL_ prefixed key so bridge PK resolution always uses the complete entity set,
+        // independent of the COMBINED_ streaming cache which may only contain delta-filtered records.
+        var cacheKey = $"FULL_{targetEntity}";
         if (entityDataCache.TryGetValue(cacheKey, out var cached))
         {
             log($"  Reusing cached bridge entity '{targetEntity}' ({cached.Count} records)");
@@ -2382,13 +2498,20 @@ public class MigrationProcessorV2Service
             log($"  ⚠ No non-bridge mappings found to build bridge entity cache for '{targetEntity}'");
         }
 
+        // Compute the minimum set of source columns required for this entity's mapping rules.
+        // This lets the dedicated-table loader use SELECT col1, col2 instead of SELECT * to
+        // reduce SQL Server buffer pool pressure when tables are large.
+        var requiredSourceCols = CollectRequiredSourceColumns(entityMappings);
+
         var combined = new List<Dictionary<string, object?>>();
         foreach (var em in entityMappings)
         {
             ct.ThrowIfCancellationRequested();
 
-            log($"  Cache build: {targetEntity} from {em.SourceTable}...");
-            var srcData = await sourceStoreProvider.GetStoreAsync(em.SourceTable, ct);
+            log($"  Cache build: {targetEntity} from {em.SourceTable}... ({(requiredSourceCols != null ? $"{requiredSourceCols.Count} projected columns" : "all columns")})");
+            // Always use full load for bridge entity cache — PK resolution requires all rows,
+            // not just rows changed since the last migration.
+            var srcData = await sourceStoreProvider.GetStoreForLookupAsync(em.SourceTable, ct, requiredSourceCols);
             if (srcData.Count == 0) continue;
             var filtered = ApplyFilters(srcData, em.Filters);
             log($"  Cache build: {targetEntity} source rows={srcData.Count}, filtered={filtered.Count}");
@@ -2487,7 +2610,7 @@ public class MigrationProcessorV2Service
             var tableName = GetJsonString(p.Value, "sourceTable") ?? GetJsonString(p.Value, "lookupTable");
             if (tableName != null && !lookupTables.ContainsKey(tableName))
             {
-                var data = await sourceStoreProvider.GetStoreAsync(tableName, ct);
+                var data = await sourceStoreProvider.GetStoreForLookupAsync(tableName, ct);
                 if (data.Count > 0)
                     lookupTables[tableName] = data;
             }
@@ -2501,7 +2624,7 @@ public class MigrationProcessorV2Service
                     var tableName = GetJsonStringFromElement(step, "lookupTable");
                     if (tableName != null && !lookupTables.ContainsKey(tableName))
                     {
-                        var data = await sourceStoreProvider.GetStoreAsync(tableName, ct);
+                        var data = await sourceStoreProvider.GetStoreForLookupAsync(tableName, ct);
                         if (data.Count > 0)
                             lookupTables[tableName] = data;
                     }
@@ -3423,6 +3546,124 @@ public class MigrationProcessorV2Service
         if (el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Array)
             return v.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
         return new();
+    }
+
+    // ────────────────────────────────────────────
+    //  Lookup column projection helpers
+    // ────────────────────────────────────────────
+
+    // System columns always included in any projected load (needed for delta stamping and audit).
+    private static readonly HashSet<string> LookupSystemColumns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Id", "UpdatedAt", "CreatedAt", "LastDataMigrationAt"
+    };
+
+    /// <summary>
+    /// Collects the source column names referenced across all field mappings, PK rules, and filters
+    /// for a set of entity mappings. Returns null when the column set cannot be determined safely
+    /// (e.g. all fields use only rule-generated values with no source column reference).
+    /// </summary>
+    private static ISet<string>? CollectRequiredSourceColumns(IEnumerable<TableMappingDto> entityMappings)
+    {
+        var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in entityMappings)
+        {
+            foreach (var fm in m.FieldMappings)
+            {
+                if (!fm.Generate) continue;
+                if (fm.SourceColumn != null)
+                    cols.Add(fm.SourceColumn);
+                if (fm.FieldRule != null)
+                    ExtractRuleSourceColumnRefs(fm.FieldRule, cols);
+            }
+            if (m.PrimaryKeyRule != null)
+                ExtractRuleSourceColumnRefs(m.PrimaryKeyRule, cols);
+            foreach (var f in m.Filters ?? [])
+                if (!string.IsNullOrEmpty(f.Field))
+                    cols.Add(f.Field);
+        }
+        return cols.Count > 0 ? cols : null;
+    }
+
+    /// <summary>
+    /// Extracts source column name references from a field rule's parameters for common rule types.
+    /// </summary>
+    private static void ExtractRuleSourceColumnRefs(FieldRuleDto rule, ISet<string> result)
+    {
+        var p = rule.Parameters;
+        switch (rule.RuleType)
+        {
+            case "Concat":
+            case "Coalesce":
+                foreach (var f in GetJsonStringArray(p, "sourceFields"))
+                    if (!string.IsNullOrEmpty(f)) result.Add(f);
+                break;
+            case "IfThen":
+                var sf = GetJsonString(p, "sourceField");
+                if (sf != null) result.Add(sf);
+                foreach (var f in GetJsonStringArray(p, "sourceFields"))
+                    if (!string.IsNullOrEmpty(f)) result.Add(f);
+                break;
+            case "Case":
+                var csf = GetJsonString(p, "sourceField");
+                if (csf != null) result.Add(csf);
+                var defF = GetJsonString(p, "defaultFieldName");
+                if (defF != null) result.Add(defF);
+                break;
+            case "Lookup":
+            case "MultipleLookups":
+                var lf = GetJsonString(p, "sourceField");
+                if (lf != null) result.Add(lf);
+                if (p.HasValue && p.Value.TryGetProperty("joinConditions", out var jcEl)
+                    && jcEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var jc in jcEl.EnumerateArray())
+                        if (jc.TryGetProperty("localField", out var lfEl)
+                            && lfEl.ValueKind == JsonValueKind.String)
+                            result.Add(lfEl.GetString()!);
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Builds the SELECT column list for a dedicated EF entity table, restricted to the required
+    /// columns plus always-included system columns. Returns "*" when requiredColumns is null or
+    /// the projection covers all columns anyway.
+    /// </summary>
+    private static string BuildDedicatedTableSelectClause(
+        Microsoft.EntityFrameworkCore.Metadata.IEntityType entityType,
+        ISet<string>? requiredColumns)
+    {
+        if (requiredColumns == null || requiredColumns.Count == 0)
+            return "*";
+
+        var allProps = entityType.GetProperties().Select(p => p.Name).ToList();
+        var selected = allProps
+            .Where(c => requiredColumns.Contains(c) || LookupSystemColumns.Contains(c))
+            .Select(c => $"\"{ c}\"")
+            .ToList();
+
+        // If every column would be selected, use * to keep queries simple.
+        return selected.Count >= allProps.Count ? "*" : string.Join(", ", selected);
+    }
+
+    /// <summary>
+    /// Projects each dict to only the required keys plus system columns, reducing .NET heap usage
+    /// for GenericDataStores-backed lookup data where SQL-level projection is not possible.
+    /// </summary>
+    private static List<Dictionary<string, object?>> ProjectDictsToRequiredColumns(
+        List<Dictionary<string, object?>> data,
+        ISet<string> requiredColumns)
+    {
+        return data.Select(d =>
+        {
+            var projected = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in d)
+                if (requiredColumns.Contains(kv.Key) || LookupSystemColumns.Contains(kv.Key))
+                    projected[kv.Key] = kv.Value;
+            return projected;
+        }).ToList();
     }
 
     // ────────────────────────────────────────────

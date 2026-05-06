@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ISA95DataGenerator.Domain.Entities.MasterData;
 
@@ -16,6 +16,7 @@ public class OperationsEventRecord
     public string Comments { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastDataMigrationAt { get; set; }
     public int Version { get; set; }
 
     // Navigation properties

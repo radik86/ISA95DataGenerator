@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ISA95DataGenerator.Domain.Entities.MasterData;
 
@@ -13,6 +13,7 @@ public class MaterialClassToPropertyAssignment
     public string? SourceTimeStamp { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastDataMigrationAt { get; set; }
     public int Version { get; set; }
 
     public MaterialClass? MaterialClass { get; set; }
