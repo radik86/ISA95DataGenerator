@@ -38,7 +38,36 @@ class MigrationResult:
 
 def _utc_now_iso() -> str:
     """Return current UTC timestamp in ISO-like format used in run/item logs."""
-    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    now = datetime.utcnow()
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+
+
+def _format_source_timestamp(val: Any) -> str:
+    """Normalize a sourceTimeStamp value to exactly yyyy-MM-ddTHH:mm:ss.fffZ format."""
+    if val is None:
+        return ""
+    raw = str(val).strip()
+    if not raw:
+        return ""
+    try:
+        from datetime import timezone
+        # Handle trailing Z / offset
+        if raw.endswith("Z"):
+            raw_parse = raw[:-1] + "+00:00"
+        else:
+            raw_parse = raw
+        try:
+            dt = datetime.fromisoformat(raw_parse)
+        except ValueError:
+            # Fallback for formats like "2024-01-01T12:00:00.123456"
+            import email.utils
+            dt = datetime.strptime(raw[:26], "%Y-%m-%dT%H:%M:%S.%f")
+        # Convert to UTC naive
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+    except Exception:
+        return raw
 
 
 def _write_run_log(
@@ -496,6 +525,40 @@ def _build_bridge_key(record: Dict[str, Any], join_fields: List[Dict[str, Any]],
     return "||".join(parts)
 
 
+def _add_computed_fields(table_name: str, rows: List[Dict[str, Any]]) -> None:
+    """Inject computed fields into source rows — mirrors backend AddComputedFieldsForRecord."""
+    if table_name.lower() != "segment_requirements":
+        return
+    for rec in rows:
+        start_raw = _to_str(_ci_get(rec, "earliestStartDateTime", "")).strip()
+        end_raw = _to_str(_ci_get(rec, "latestEndDateTime", "")).strip()
+        try:
+            from datetime import timezone
+            fmt = "%Y-%m-%dT%H:%M:%S.%f"
+
+            def _parse_dt(s: str) -> Optional[datetime]:
+                if not s:
+                    return None
+                s2 = s[:-1] + "+00:00" if s.endswith("Z") else s
+                try:
+                    return datetime.fromisoformat(s2)
+                except ValueError:
+                    try:
+                        return datetime.strptime(s[:26], fmt)
+                    except ValueError:
+                        return None
+
+            s_dt = _parse_dt(start_raw)
+            e_dt = _parse_dt(end_raw)
+            if s_dt and e_dt:
+                delta = e_dt - s_dt
+                rec["durationHours"] = delta.total_seconds() / 3600.0
+            else:
+                rec["durationHours"] = 0.0
+        except Exception:
+            rec["durationHours"] = 0.0
+
+
 def _load_source_table(
     spark: SparkSession,
     source_base_path: str,
@@ -590,6 +653,7 @@ def _transform_regular_mapping(
     """Transform a regular (non-bridge) mapping into ISA95 entity rows."""
     filtered_df = _apply_filters(source_df, mapping.get("filters"))
     source_rows = _to_rows(filtered_df)
+    _add_computed_fields(mapping.get("sourceTable") or "", source_rows)
 
     out_rows: List[Dict[str, Any]] = []
     pk_rule = mapping.get("primaryKeyRule")
@@ -700,6 +764,47 @@ def _transform_bridge_mapping(
         if entity2_join:
             k2 = _build_bridge_key(src, entity2_join, from_bridge=True)
             out["Target PrimaryKey"] = _ci_get(e2_index.get(k2, {}), "PrimaryKey", "")
+
+        # Apply configured bridge field mappings (mirrors backend ProcessBridgeMapping)
+        entity1_name = entity1 or ""
+        entity2_name = entity2 or ""
+        e1_record = e1_index.get(_build_bridge_key(src, entity1_join, from_bridge=True)) if entity1_join else None
+        e2_record = e2_index.get(_build_bridge_key(src, entity2_join, from_bridge=True)) if entity2_join else None
+        lookup_tables: Dict[str, List[Dict[str, Any]]] = {}
+        for name in _extract_lookup_table_names(mapping):
+            if name in all_source_dfs:
+                lookup_tables[name] = _to_rows(all_source_dfs[name])
+
+        for fm in mapping.get("fieldMappings") or []:
+            if not fm.get("generate", False):
+                continue
+            field_name = fm.get("fieldName")
+            if not field_name or field_name in out:
+                continue
+
+            # Resolve source record: bridge row, or delegate to entity1/entity2 cache
+            source_entity = (fm.get("sourceEntity") or "").strip()
+            fm_record = src
+            if source_entity:
+                if source_entity.lower() in ("entity1", entity1_name.lower()) and e1_record is not None:
+                    fm_record = e1_record
+                elif source_entity.lower() in ("entity2", entity2_name.lower()) and e2_record is not None:
+                    fm_record = e2_record
+
+            field_rule = fm.get("fieldRule")
+            source_column = fm.get("sourceColumn")
+            if source_column:
+                out[field_name] = _ci_get(fm_record, source_column, "")
+            elif field_rule:
+                rt = field_rule.get("ruleType")
+                if rt == "Lookup":
+                    out[field_name] = _resolve_lookup(fm_record, field_rule, lookup_tables)
+                elif rt == "MultipleLookups":
+                    out[field_name] = _resolve_multiple_lookups(fm_record, field_rule, lookup_tables)
+                else:
+                    out[field_name] = _apply_field_rule(field_rule, fm_record, idx, out)
+            else:
+                out[field_name] = ""
 
         if pk_rule:
             out["PrimaryKey"] = _apply_pk_rule(pk_rule, src, idx, out, {}, sequence_counter)
@@ -819,10 +924,17 @@ def _write_entity_csv_files(
 
     current_file, current_bytes, records_in_current_file = _open_file(file_index)
 
+    _ts_cols = {c for c in columns if c.lower() == "sourcetimestamp"}
+
     try:
         for row in df.toLocalIterator():
             row_data = row.asDict(recursive=True)
-            line = ",".join(_csv_escape(row_data.get(col)) for col in columns)
+            line = ",".join(
+                _csv_escape(_format_source_timestamp(row_data.get(col)))
+                if col in _ts_cols
+                else _csv_escape(row_data.get(col))
+                for col in columns
+            )
             line_bytes = len((line + "\n").encode("utf-8"))
 
             if records_in_current_file > 0 and current_bytes + line_bytes > max_file_bytes:
@@ -880,10 +992,17 @@ def _write_mapping_csv_files(
 
     current_file, current_bytes, records_in_current_file = _open_file(file_index)
 
+    _ts_cols = {c for c in columns if c.lower() == "sourcetimestamp"}
+
     try:
         for row in df.toLocalIterator():
             row_data = row.asDict(recursive=True)
-            line = ",".join(_csv_escape(row_data.get(col)) for col in columns)
+            line = ",".join(
+                _csv_escape(_format_source_timestamp(row_data.get(col)))
+                if col in _ts_cols
+                else _csv_escape(row_data.get(col))
+                for col in columns
+            )
             line_bytes = len((line + "\n").encode("utf-8"))
 
             if records_in_current_file > 0 and current_bytes + line_bytes > max_file_bytes:
