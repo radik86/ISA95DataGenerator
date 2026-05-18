@@ -2972,6 +2972,85 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
+  const backfillCrewSegmentData = async () => {
+    if (!window.confirm('Backfill missing CREW segment data records for existing segment responses? Only missing records will be added. Existing records will not be modified.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const backfillRunId = `BF-CREW-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+
+      if (shiftCrewAssignments.length === 0) {
+        showSnackbar('No shift-crew assignments found in master data. Please ensure master data is loaded.', 'warning');
+        setLoading(false);
+        return;
+      }
+
+      // Load all existing segment data from the database
+      const existingSegmentDataRaw = await processDataApi.getAll('segmentData');
+      const shiftSegData = existingSegmentDataRaw.filter((sd: any) => sd.recordType === 'shift');
+
+      // Build a set of (segmentResponseId-crewId) keys that already have CREW records to avoid duplicates
+      const existingCrewKeys = new Set<string>(
+        existingSegmentDataRaw
+          .filter((sd: any) => sd.recordType === 'crew')
+          .map((sd: any) => `${sd.segmentResponseId}-${sd.crewId}`),
+      );
+
+      const newCrewRecords: SegmentData[] = [];
+
+      for (const shiftSd of shiftSegData) {
+        if (!shiftSd.shiftId) continue;
+
+        // Use the segment's actual date for validity check (not today's date)
+        const segmentDate = new Date(shiftSd.startDateTime.replace(' ', 'T'));
+
+        const applicableCrewAssignments = shiftCrewAssignments.filter((sca: any) => {
+          if (sca.shiftId !== shiftSd.shiftId) return false;
+          const effectiveDate = new Date(sca.effectiveDate);
+          const expiryDate = sca.expiryDate ? new Date(sca.expiryDate) : new Date('2099-12-31');
+          return segmentDate >= effectiveDate && segmentDate <= expiryDate;
+        });
+
+        for (const crewAssignment of applicableCrewAssignments) {
+          const crew = crews.find((c: any) => c.id === crewAssignment.crewId);
+          if (!crew) continue;
+
+          const key = `${shiftSd.segmentResponseId}-${crew.id}`;
+          if (existingCrewKeys.has(key)) continue;
+          existingCrewKeys.add(key); // prevent duplicates within this run
+
+          newCrewRecords.push({
+            id: `SEG-DATA-CREW-${shiftSd.segmentResponseId}-${crew.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            segmentResponseId: shiftSd.segmentResponseId,
+            recordType: 'crew',
+            crewId: crew.id,
+            startDateTime: shiftSd.startDateTime,
+            endDateTime: shiftSd.endDateTime,
+            notes: `${crew.crewName} - ${crew.peopleCount} people`,
+          });
+        }
+      }
+
+      if (newCrewRecords.length > 0) {
+        await processDataApi.upsertStoreRecords('segmentData', newCrewRecords);
+      }
+
+      await loadStoredActualData();
+      setLoading(false);
+      showSnackbar(
+        `Backfill completed (${backfillRunId}). Shift records processed: ${shiftSegData.length}, new CREW records added: ${newCrewRecords.length}.`,
+        'success',
+      );
+    } catch (error: any) {
+      console.error('Failed to backfill crew segment data:', error);
+      showSnackbar(`Failed to backfill crew segment data: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
+  };
+
   const checkOperationsRequestData = async () => {
     if (!selectedOperationsRequestId) {
       showSnackbar('Please select an operations request first', 'error');
@@ -5312,6 +5391,16 @@ const ProcessDataGenerator: React.FC = () => {
             size="small"
           >
             Backfill OER/OEE
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<UploadIcon />}
+            onClick={backfillCrewSegmentData}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Backfill CREW Segment Data
           </Button>
           <Button
             variant="outlined"
