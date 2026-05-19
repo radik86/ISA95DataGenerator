@@ -918,6 +918,7 @@ const ProcessDataGenerator: React.FC = () => {
       const generatedSegResponses: SegmentResponse[] = [];
       const generatedMatActuals: SegmentMaterialActual[] = [];
       const generatedEqActuals: SegmentEquipmentActual[] = [];
+      const generatedPersonnelActuals: SegmentPersonnelActual[] = [];
       const generatedMaterialLots: any[] = []; // Store material lots to be created in master data
       const generatedMaterialSublots: any[] = []; // Store material sublots to be created in master data
       const generatedOperationsEvents: OperationsEvent[] = [];
@@ -1985,8 +1986,28 @@ const ProcessDataGenerator: React.FC = () => {
       setOperationsEventEntries(generatedOperationsEventEntries);
       setOperationsEventProperties(generatedOperationsEventProperties);
       setGeneratedMaterialLotsForDisplay(generatedMaterialLots);
-      
-      // Generate Test Results for produced material lots
+
+      // Generate Personnel Actuals from personnel requirements
+      const persReqs: SegmentPersonnelRequirement[] = orData.personnelRequirements || [];
+      for (const segResp of generatedSegResponses) {
+        const relatedPersReqs = persReqs.filter((pr: SegmentPersonnelRequirement) => pr.segmentRequirementId === segResp.segmentRequirementId);
+        for (const pr of relatedPersReqs) {
+          const employee = employees.find(e => e.personClassId === pr.personClassId);
+          generatedPersonnelActuals.push({
+            id: `PERS-ACT-${segResp.id}-${pr.personClassId || pr.id}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+            segmentResponseId: segResp.id,
+            employeeId: employee?.id,
+            personClassId: pr.personClassId,
+            actualQuantity: pr.quantity || 1,
+            quantityUnitOfMeasure: pr.quantityUnitOfMeasure || 'Person',
+            personnelUse: pr.personnelUse || 'Production',
+            actualStartDateTime: segResp.actualStartDateTime,
+            actualEndDateTime: segResp.actualEndDateTime,
+            operationsType: 'Production',
+          });
+        }
+      }
+      setPersonnelActuals(generatedPersonnelActuals);
       const generatedTestResults: TestResult[] = [];
       for (const lot of generatedMaterialLots) {
         const testResultId = `TEST-${lot.id}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
@@ -2018,7 +2039,7 @@ const ProcessDataGenerator: React.FC = () => {
       
       setLoading(false);
 
-      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedOperationsEventProperties.length} event properties, ${generatedSegmentData.length} segment data records, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
+      showSnackbar(`Generated actual data: ${generatedSegResponses.length} segment responses, ${generatedMatActuals.length} material actuals, ${generatedEqActuals.length} equipment actuals, ${generatedPersonnelActuals.length} personnel actuals, ${generatedPropertyTracking.length} property tracking records, ${generatedOperationsEvents.length} operations events, ${generatedOperationsEventProperties.length} event properties, ${generatedSegmentData.length} segment data records, ${generatedMaterialLots.length} material lots, ${generatedMaterialSublots.length} material sublots, ${generatedTestResults.length} test results`, 'success');
     } catch (error) {
       console.error('Error generating actual data:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate actual data';
@@ -2042,6 +2063,7 @@ const ProcessDataGenerator: React.FC = () => {
     setOperationsEventEntries([]);
     setOperationsEventProperties([]);
     setSegmentData([]);
+    setPersonnelActuals([]);
     setTestResults([]);
     setGeneratedMaterialLotsForDisplay([]);
     setGeneratedMaterialSublotsForDisplay([]);
@@ -3051,6 +3073,159 @@ const ProcessDataGenerator: React.FC = () => {
     }
   };
 
+  const backfillPersonnelRequirementsForExistingData = async () => {
+    if (!window.confirm('Backfill missing Personnel Requirements for existing Segment Requirements? One record per person class will be created for each Segment Requirement that is missing them. Existing records will not be modified.')) {
+      return;
+    }
+    if (personClasses.length === 0) {
+      showSnackbar('No person classes available. Load master data first.', 'error');
+      return;
+    }
+    try {
+      setLoading(true);
+      const [allSegReqs, allPersReqs] = await Promise.all([
+        processDataApi.getAll('segmentRequirements'),
+        processDataApi.getAll('segmentPersonnelRequirements'),
+      ]);
+
+      const segReqsWithPersonnel = new Set((allPersReqs as SegmentPersonnelRequirement[]).map((pr) => pr.segmentRequirementId));
+      const segReqsMissing = (allSegReqs as SegmentRequirement[]).filter(
+        (sr) => sr.operationsType === 'Production' && !segReqsWithPersonnel.has(sr.id),
+      );
+
+      if (segReqsMissing.length === 0) {
+        showSnackbar('All production segment requirements already have personnel requirements.', 'info');
+        setLoading(false);
+        return;
+      }
+
+      const newPersReqs: SegmentPersonnelRequirement[] = [];
+      for (const sr of segReqsMissing) {
+        personClasses
+          .filter(pc => !pc.name.toLowerCase().includes('maintenance') && !pc.id.toUpperCase().includes('MAINT'))
+          .forEach((pc, pcIndex) => {
+          const employee = employees.find(e => e.personClassId === pc.id);
+          newPersReqs.push({
+            id: `SPR-BACKFILL-${sr.id}-${String(pcIndex + 1).padStart(3, '0')}-${pc.id}`,
+            segmentRequirementId: sr.id,
+            employeeId: employee?.id,
+            personClassId: pc.id,
+            quantity: 1,
+            quantityUnitOfMeasure: 'Person',
+            personnelUse: 'Production',
+            operationsType: 'Production',
+          });
+        });
+      }
+
+      await processDataApi.upsertStoreRecords('segmentPersonnelRequirements', newPersReqs);
+      setLoading(false);
+      showSnackbar(`Backfill completed: ${newPersReqs.length} personnel requirement(s) added for ${segReqsMissing.length} segment requirement(s).`, 'success');
+    } catch (error: any) {
+      console.error('Failed to backfill personnel requirements:', error);
+      showSnackbar(`Failed to backfill personnel requirements: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
+  };
+
+  const backfillPersonnelActualsForExistingData = async () => {
+    if (!window.confirm('Backfill missing Personnel Actuals for existing Segment Responses? One record per personnel requirement will be created for each Segment Response that is missing them. Existing records will not be modified.')) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const [allSegResponses, allPersActuals, allPersReqs] = await Promise.all([
+        processDataApi.getAll('segmentResponses'),
+        processDataApi.getAll('segmentPersonnelActuals'),
+        processDataApi.getAll('segmentPersonnelRequirements'),
+      ]);
+
+      const segRespIdsThatHavePersonnel = new Set((allPersActuals as SegmentPersonnelActual[]).map((pa) => pa.segmentResponseId));
+      const segRespsMissing = (allSegResponses as SegmentResponse[]).filter(
+        (sr) => (sr.operationsType === 'Production' || !sr.operationsType) && !segRespIdsThatHavePersonnel.has(sr.id),
+      );
+
+      if (segRespsMissing.length === 0) {
+        showSnackbar('All production segment responses already have personnel actuals.', 'info');
+        setLoading(false);
+        return;
+      }
+
+      // Build lookup: segmentRequirementId -> SegmentPersonnelRequirement[]
+      const persReqsBySegReqId = new Map<string, SegmentPersonnelRequirement[]>();
+      for (const pr of allPersReqs as SegmentPersonnelRequirement[]) {
+        const list = persReqsBySegReqId.get(pr.segmentRequirementId) || [];
+        list.push(pr);
+        persReqsBySegReqId.set(pr.segmentRequirementId, list);
+      }
+
+      // Build lookup: segmentResponseId -> segmentRequirementId (from segment responses themselves)
+      const segReqIdBySegRespId = new Map<string, string>();
+      for (const sr of allSegResponses as SegmentResponse[]) {
+        if (sr.segmentRequirementId) {
+          segReqIdBySegRespId.set(sr.id, sr.segmentRequirementId);
+        }
+      }
+
+      const newPersActuals: SegmentPersonnelActual[] = [];
+      for (const segResp of segRespsMissing) {
+        const segReqId = segReqIdBySegRespId.get(segResp.id);
+        const relatedPersReqs = segReqId ? (persReqsBySegReqId.get(segReqId) || []) : [];
+
+        if (relatedPersReqs.length === 0) {
+          // No personnel requirements; generate one per person class as fallback
+          personClasses
+            .filter(pc => !pc.name.toLowerCase().includes('maintenance') && !pc.id.toUpperCase().includes('MAINT'))
+            .forEach((pc) => {
+            const employee = employees.find(e => e.personClassId === pc.id);
+            newPersActuals.push({
+              id: `PERS-ACT-BACKFILL-${segResp.id}-${pc.id}`,
+              segmentResponseId: segResp.id,
+              employeeId: employee?.id,
+              personClassId: pc.id,
+              actualQuantity: 1,
+              quantityUnitOfMeasure: 'Person',
+              personnelUse: 'Production',
+              actualStartDateTime: segResp.actualStartDateTime,
+              actualEndDateTime: segResp.actualEndDateTime,
+              operationsType: 'Production',
+            });
+          });
+        } else {
+          for (const pr of relatedPersReqs) {
+            const employee = employees.find(e => e.personClassId === pr.personClassId);
+            newPersActuals.push({
+              id: `PERS-ACT-BACKFILL-${segResp.id}-${pr.personClassId || pr.id}`,
+              segmentResponseId: segResp.id,
+              employeeId: employee?.id,
+              personClassId: pr.personClassId,
+              actualQuantity: pr.quantity || 1,
+              quantityUnitOfMeasure: pr.quantityUnitOfMeasure || 'Person',
+              personnelUse: pr.personnelUse || 'Production',
+              actualStartDateTime: segResp.actualStartDateTime,
+              actualEndDateTime: segResp.actualEndDateTime,
+              operationsType: 'Production',
+            });
+          }
+        }
+      }
+
+      if (newPersActuals.length === 0) {
+        showSnackbar('No new personnel actuals to add. All segment responses already covered.', 'info');
+        setLoading(false);
+        return;
+      }
+
+      await processDataApi.upsertStoreRecords('segmentPersonnelActuals', newPersActuals);
+      setLoading(false);
+      showSnackbar(`Backfill completed: ${newPersActuals.length} personnel actual(s) added for ${segRespsMissing.length} segment response(s).`, 'success');
+    } catch (error: any) {
+      console.error('Failed to backfill personnel actuals:', error);
+      showSnackbar(`Failed to backfill personnel actuals: ${error?.message || error}`, 'error');
+      setLoading(false);
+    }
+  };
+
   const checkOperationsRequestData = async () => {
     if (!selectedOperationsRequestId) {
       showSnackbar('Please select an operations request first', 'error');
@@ -3165,6 +3340,10 @@ const ProcessDataGenerator: React.FC = () => {
           save: () => processDataApi.upsertStoreRecords('segmentData', segmentData),
         },
         {
+          entity: 'SegmentPersonnelActual',
+          save: () => processDataApi.upsertStoreRecords('segmentPersonnelActuals', personnelActuals),
+        },
+        {
           entity: 'TestResult',
           save: () => processDataApi.upsertStoreRecords('testResults', testResults),
         },
@@ -3204,6 +3383,7 @@ const ProcessDataGenerator: React.FC = () => {
         if (step.entity === 'OperationsEventProperty') return operationsEventProperties.length > 0;
         if (step.entity === 'EquipmentPropertyTracking') return trackingRecordsToSave.length > 0;
         if (step.entity === 'SegmentData') return segmentData.length > 0;
+        if (step.entity === 'SegmentPersonnelActual') return personnelActuals.length > 0;
         if (step.entity === 'SegmentMaterialActual') return materialActuals.length > 0;
         if (step.entity === 'SegmentEquipmentActual') return equipmentActuals.length > 0;
         if (step.entity === 'SegmentResponse') return segmentResponses.length > 0;
@@ -3815,6 +3995,7 @@ const ProcessDataGenerator: React.FC = () => {
     const generatedSegReqs: SegmentRequirement[] = [];
     const generatedMatReqs: SegmentMaterialRequirement[] = [];
     const generatedEqReqs: SegmentEquipmentRequirement[] = [];
+    const generatedPerReqs: SegmentPersonnelRequirement[] = [];
 
     const lineEquipmentIds = lineEquipment
       .filter(le => le.productionLineId === lineId && le.plantId === plantId)
@@ -3930,6 +4111,23 @@ const ProcessDataGenerator: React.FC = () => {
           generatedSegReqs[index].equipmentId = usage.equipmentId;
         }
       });
+
+      // Generate Personnel Requirements for this segment
+      personClasses
+        .filter(pc => !pc.name.toLowerCase().includes('maintenance') && !pc.id.toUpperCase().includes('MAINT'))
+        .forEach((pc, pcIndex) => {
+        const employee = employees.find(e => e.personClassId === pc.id);
+        generatedPerReqs.push({
+          id: `SPR-${plantId}-${lineId}-${dateTimeStr}-${String(pcIndex + 1).padStart(3, '0')}-${segment.id}`,
+          segmentRequirementId: segReqId,
+          employeeId: employee?.id,
+          personClassId: pc.id,
+          quantity: 1,
+          quantityUnitOfMeasure: 'Person',
+          personnelUse: 'Production',
+          operationsType: 'Production',
+        });
+      });
     });
 
     const operationsRequest: OperationsRequest = {
@@ -3952,6 +4150,7 @@ const ProcessDataGenerator: React.FC = () => {
       segmentRequirements: generatedSegReqs,
       materialRequirements: generatedMatReqs,
       equipmentRequirements: generatedEqReqs,
+      personnelRequirements: generatedPerReqs,
       endTime: currentTime,
     };
   };
@@ -3976,6 +4175,7 @@ const ProcessDataGenerator: React.FC = () => {
     const generatedSegResponses: SegmentResponse[] = [];
     const generatedMatActuals: SegmentMaterialActual[] = [];
     const generatedEqActuals: SegmentEquipmentActual[] = [];
+    const generatedPersonnelActuals: SegmentPersonnelActual[] = [];
     const generatedPropertyTracking: EquipmentPropertyTracking[] = [];
     const generatedOperationsEvents: OperationsEvent[] = [];
     const generatedOperationsEventRecords: OperationsEventRecord[] = [];
@@ -4329,6 +4529,27 @@ const ProcessDataGenerator: React.FC = () => {
       operationsType: 'Production',
     };
 
+    // Generate Personnel Actuals from personnel requirements
+    const persReqs: SegmentPersonnelRequirement[] = orData.personnelRequirements || [];
+    for (const segResp of generatedSegResponses) {
+      const relatedPersReqs = persReqs.filter((pr: SegmentPersonnelRequirement) => pr.segmentRequirementId === segResp.segmentRequirementId);
+      for (const pr of relatedPersReqs) {
+        const employee = employees.find(e => e.personClassId === pr.personClassId);
+        generatedPersonnelActuals.push({
+          id: `PERS-ACT-${segResp.id}-${pr.personClassId || pr.id}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+          segmentResponseId: segResp.id,
+          employeeId: employee?.id,
+          personClassId: pr.personClassId,
+          actualQuantity: pr.quantity || 1,
+          quantityUnitOfMeasure: pr.quantityUnitOfMeasure || 'Person',
+          personnelUse: pr.personnelUse || 'Production',
+          actualStartDateTime: segResp.actualStartDateTime,
+          actualEndDateTime: segResp.actualEndDateTime,
+          operationsType: 'Production',
+        });
+      }
+    }
+
     await processDataApi.saveActualData(
       operationsResponse,
       generatedSegResponses,
@@ -4341,6 +4562,7 @@ const ProcessDataGenerator: React.FC = () => {
       generatedOperationsEventEntries,
       generatedOperationsEventProperties,
       generatedSegmentData,
+      generatedPersonnelActuals,
     );
 
     return overallEnd;
@@ -4432,6 +4654,7 @@ const ProcessDataGenerator: React.FC = () => {
                 planPackage.segmentRequirements,
                 planPackage.materialRequirements,
                 planPackage.equipmentRequirements,
+                planPackage.personnelRequirements,
               );
 
               const actualEndTime = await generateAndSaveActualForOrder(
@@ -4490,6 +4713,7 @@ const ProcessDataGenerator: React.FC = () => {
       const generatedSegReqs: SegmentRequirement[] = [];
       const generatedMatReqs: SegmentMaterialRequirement[] = [];
       const generatedEqReqs: SegmentEquipmentRequirement[] = [];
+      const generatedPerReqs: SegmentPersonnelRequirement[] = [];
 
       // Parse datetime-local format (YYYY-MM-DDTHH:mm) - add :00 for seconds
       const startTime = new Date(formData.plannedStartDateTime + ':00');
@@ -4642,6 +4866,23 @@ const ProcessDataGenerator: React.FC = () => {
           }
         });
 
+        // Generate Personnel Requirements based on available person classes
+        personClasses
+          .filter(pc => !pc.name.toLowerCase().includes('maintenance') && !pc.id.toUpperCase().includes('MAINT'))
+          .forEach((pc, pcIndex) => {
+          const employee = employees.find(e => e.personClassId === pc.id);
+          generatedPerReqs.push({
+            id: `SPR-${formData.plantId}-${formData.lineId}-${dateTimeStr}-${String(pcIndex + 1).padStart(3, '00')}-${segment.id}`,
+            segmentRequirementId: segReqId,
+            employeeId: employee?.id,
+            personClassId: pc.id,
+            quantity: 1,
+            quantityUnitOfMeasure: 'Person',
+            personnelUse: 'Production',
+            operationsType: 'Production',
+          });
+        });
+
         // Note: currentTime is updated above to allRunsEnd for tracking overall timeline
       });
 
@@ -4665,8 +4906,9 @@ const ProcessDataGenerator: React.FC = () => {
       setSegmentRequirements(generatedSegReqs);
       setMaterialRequirements(generatedMatReqs);
       setEquipmentRequirements(generatedEqReqs);
+      setPersonnelRequirements(generatedPerReqs);
       
-      showSnackbar(`Generated ${generatedSegReqs.length} segment requirements with ${generatedMatReqs.length} material and ${generatedEqReqs.length} equipment requirements`, 'success');
+      showSnackbar(`Generated ${generatedSegReqs.length} segment requirements with ${generatedMatReqs.length} material, ${generatedEqReqs.length} equipment and ${generatedPerReqs.length} personnel requirements`, 'success');
     } catch (error) {
       console.error('Error generating process data:', error);
       showSnackbar('Failed to generate process data', 'error');
@@ -4692,7 +4934,8 @@ const ProcessDataGenerator: React.FC = () => {
         generatedOperationsRequest,
         segmentRequirements,
         materialRequirements,
-        equipmentRequirements
+        equipmentRequirements,
+        personnelRequirements,
       );
       
       console.log('Data saved successfully, reloading operations requests...');
@@ -5192,6 +5435,7 @@ const ProcessDataGenerator: React.FC = () => {
     setSegmentRequirements([]);
     setMaterialRequirements([]);
     setEquipmentRequirements([]);
+    setPersonnelRequirements([]);
     setGenerationTimestamp(null);
     setDataVersion(1);
   };
@@ -5401,6 +5645,26 @@ const ProcessDataGenerator: React.FC = () => {
             size="small"
           >
             Backfill CREW Segment Data
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<UploadIcon />}
+            onClick={backfillPersonnelRequirementsForExistingData}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Backfill Personnel Requirements
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<UploadIcon />}
+            onClick={backfillPersonnelActualsForExistingData}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Backfill Personnel Actuals
           </Button>
           <Button
             variant="outlined"
@@ -5907,6 +6171,7 @@ const ProcessDataGenerator: React.FC = () => {
                     <Chip label={`${segmentRequirements.length} Segment Requirements`} color="primary" sx={{ mr: 1, mb: 1 }} />
                     <Chip label={`${materialRequirements.length} Material Requirements`} color="secondary" sx={{ mr: 1, mb: 1 }} />
                     <Chip label={`${equipmentRequirements.length} Equipment Requirements`} color="info" sx={{ mr: 1, mb: 1 }} />
+                    <Chip label={`${personnelRequirements.length} Personnel Requirements`} color="warning" sx={{ mr: 1, mb: 1 }} />
                     <Chip label={`${operationsEventProperties.length} Event Properties`} color="warning" sx={{ mb: 1 }} />
                   </Box>
 
@@ -6144,6 +6409,49 @@ const ProcessDataGenerator: React.FC = () => {
                           <Chip label={er.requirementType} size="small" color="info" />
                         </TableCell>
                         <TableCell>{er.operationsType || 'N/A'}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+
+          {/* Personnel Requirements Table */}
+          <Paper>
+            <Box sx={{ p: 2, bgcolor: 'secondary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="subtitle1">Personnel Requirements</Typography>
+            </Box>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>ID</TableCell>
+                    <TableCell>Segment Requirement</TableCell>
+                    <TableCell>Person Class</TableCell>
+                    <TableCell>Employee</TableCell>
+                    <TableCell>Quantity</TableCell>
+                    <TableCell>UoM</TableCell>
+                    <TableCell>Personnel Use</TableCell>
+                    <TableCell>Operations Type</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {personnelRequirements.map((pr) => {
+                    const personClass = personClasses.find(pc => pc.id === pr.personClassId);
+                    const employee = pr.employeeId ? employees.find(e => e.id === pr.employeeId) : undefined;
+                    return (
+                      <TableRow key={pr.id}>
+                        <TableCell>{pr.id}</TableCell>
+                        <TableCell>{pr.segmentRequirementId}</TableCell>
+                        <TableCell>{personClass?.name || pr.personClassId || 'N/A'}</TableCell>
+                        <TableCell>{employee?.employeeName || pr.employeeId || 'N/A'}</TableCell>
+                        <TableCell>{pr.quantity}</TableCell>
+                        <TableCell>{pr.quantityUnitOfMeasure || 'Person'}</TableCell>
+                        <TableCell>
+                          <Chip label={pr.personnelUse} size="small" color="secondary" />
+                        </TableCell>
+                        <TableCell>{pr.operationsType || 'N/A'}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -6590,6 +6898,7 @@ const ProcessDataGenerator: React.FC = () => {
                         <Chip label={`${segmentResponses.length} Segment Responses`} color="success" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${materialActuals.length} Material Actuals`} color="warning" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentActuals.length} Equipment Actuals`} color="info" sx={{ mr: 1, mb: 1 }} />
+                        <Chip label={`${personnelActuals.length} Personnel Actuals`} color="secondary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${equipmentPropertyTracking.length} Property Tracking`} color="secondary" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${operationsEvents.length} Operations Events`} color="error" sx={{ mr: 1, mb: 1 }} />
                         <Chip label={`${operationsEventRecords.length} Event Records`} color="warning" sx={{ mr: 1, mb: 1 }} />
@@ -7329,6 +7638,60 @@ const ProcessDataGenerator: React.FC = () => {
                     <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
                       <Typography variant="caption" color="text.secondary">
                         Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              )}
+
+              {/* Personnel Actuals Table */}
+              {personnelActuals.length > 0 && (
+                <Paper sx={{ mb: 2 }}>
+                  <Box sx={{ p: 2, bgcolor: 'warning.dark', color: 'white' }}>
+                    <Typography variant="subtitle1">Personnel Actuals</Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>ID</TableCell>
+                          <TableCell>Segment Response</TableCell>
+                          <TableCell>Person Class</TableCell>
+                          <TableCell>Employee</TableCell>
+                          <TableCell>Actual Qty</TableCell>
+                          <TableCell>UoM</TableCell>
+                          <TableCell>Personnel Use</TableCell>
+                          <TableCell>Start DateTime</TableCell>
+                          <TableCell>End DateTime</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {personnelActuals.slice(0, PREVIEW_ROW_LIMIT).map((pa) => {
+                          const personClass = personClasses.find(pc => pc.id === pa.personClassId);
+                          const employee = pa.employeeId ? employees.find(e => e.id === pa.employeeId) : undefined;
+                          return (
+                            <TableRow key={pa.id}>
+                              <TableCell>{pa.id}</TableCell>
+                              <TableCell>{pa.segmentResponseId}</TableCell>
+                              <TableCell>{personClass?.name || pa.personClassId || 'N/A'}</TableCell>
+                              <TableCell>{employee?.employeeName || pa.employeeId || 'N/A'}</TableCell>
+                              <TableCell>{pa.actualQuantity}</TableCell>
+                              <TableCell>{pa.quantityUnitOfMeasure || 'Person'}</TableCell>
+                              <TableCell>
+                                <Chip label={pa.personnelUse} size="small" color="warning" />
+                              </TableCell>
+                              <TableCell>{pa.actualStartDateTime}</TableCell>
+                              <TableCell>{pa.actualEndDateTime}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  {personnelActuals.length > PREVIEW_ROW_LIMIT && (
+                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Preview limited to first {PREVIEW_ROW_LIMIT} rows.
                       </Typography>
                     </Box>
                   )}

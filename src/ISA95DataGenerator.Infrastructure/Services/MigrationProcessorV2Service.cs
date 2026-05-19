@@ -2051,6 +2051,13 @@ public class MigrationProcessorV2Service
             await writer.DisposeAsync();
         }
 
+        if (totalRecords == 0)
+        {
+            foreach (var f in files)
+                if (File.Exists(f)) File.Delete(f);
+            files.Clear();
+        }
+
         return (files, totalRecords, filteredSourceCount, sourceRowsRead);
     }
 
@@ -2261,6 +2268,13 @@ public class MigrationProcessorV2Service
         {
             await writer.FlushAsync(ct);
             await writer.DisposeAsync();
+        }
+
+        if (totalRecords == 0)
+        {
+            foreach (var f in files)
+                if (File.Exists(f)) File.Delete(f);
+            files.Clear();
         }
 
         return (files, totalRecords, filteredSourceCount, sourceRowsRead);
