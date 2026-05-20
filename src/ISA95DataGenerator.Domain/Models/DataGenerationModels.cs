@@ -28,6 +28,8 @@ public class DataGenerationRequest
     public List<string> ExcludedFields { get; set; } = new(); // Format: "EntityName.FieldName"
     public Dictionary<string, int>? EntityInstanceCounts { get; set; } // Per-entity instance counts
     public List<GraphRelationshipCardinality>? RelationshipCardinalities { get; set; } // Relationship cardinality rules
+    /// <summary>Skip mapping file generation (saves significant time when the caller won't use it).</summary>
+    public bool SkipMappingFile { get; set; } = false;
 }
 
 /// <summary>
@@ -39,4 +41,46 @@ public class DataGenerationResponse
     public MappingFile MappingFile { get; set; } = new();
     public int TotalInstancesGenerated { get; set; }
     public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Request to mass-generate dummy data and persist it to GenericDataStores for performance testing.
+/// </summary>
+public class MassPersistRequest
+{
+    public List<MassPersistEntityConfig> Entities { get; set; } = new();
+    public int? Seed { get; set; }
+    public List<PrimaryKeyRule> PrimaryKeyRules { get; set; } = new();
+    public List<FieldRule> FieldRules { get; set; } = new();
+}
+
+public class MassPersistEntityConfig
+{
+    public string EntityName { get; set; } = string.Empty;
+    public int Count { get; set; } = 100;
+    /// <summary>
+    /// Override the target store name. If null, derived automatically from EntityName (camelCase plural).
+    /// </summary>
+    public string? StoreName { get; set; }
+}
+
+/// <summary>
+/// Summary returned after mass persist completes.
+/// </summary>
+public class MassPersistResult
+{
+    public List<MassPersistEntityResult> Results { get; set; } = new();
+    public int TotalRecords { get; set; }
+    public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+    public long ElapsedMs { get; set; }
+}
+
+public class MassPersistEntityResult
+{
+    public string EntityName { get; set; } = string.Empty;
+    public string StoreName { get; set; } = string.Empty;
+    public int Generated { get; set; }
+    public int Added { get; set; }
+    public int Updated { get; set; }
+    public string? Error { get; set; }
 }

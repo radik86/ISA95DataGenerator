@@ -13,6 +13,7 @@ public class MetadataLoaderService : IMetadataLoaderService
     private readonly ILogger<MetadataLoaderService> _logger;
     private readonly string _metadataPath;
     private List<EntityDefinition>? _cachedEntities;
+    private Dictionary<string, EntityDefinition>? _entityByName;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
     public MetadataLoaderService(ILogger<MetadataLoaderService> logger, string metadataPath)
@@ -70,6 +71,7 @@ public class MetadataLoaderService : IMetadataLoaderService
             ResolveRelationshipTargetNames(entities);
 
             _cachedEntities = entities;
+            _entityByName = entities.ToDictionary(e => e.Name, e => e, StringComparer.OrdinalIgnoreCase);
             _logger.LogInformation("Loaded {Count} entities from metadata", entities.Count);
             return _cachedEntities;
         }
@@ -81,9 +83,9 @@ public class MetadataLoaderService : IMetadataLoaderService
 
     public async Task<EntityDefinition?> GetEntityByNameAsync(string entityName)
     {
-        var entities = await LoadAllEntitiesAsync();
-        return entities.FirstOrDefault(e => 
-            e.Name.Equals(entityName, StringComparison.OrdinalIgnoreCase));
+        await LoadAllEntitiesAsync();
+        _entityByName!.TryGetValue(entityName, out var entity);
+        return entity;
     }
 
     public async Task<EntityDefinition?> GetEntityByIdAsync(string entityId)
@@ -99,6 +101,7 @@ public class MetadataLoaderService : IMetadataLoaderService
         try
         {
             _cachedEntities = null;
+            _entityByName = null;
             await LoadAllEntitiesAsync();
         }
         finally

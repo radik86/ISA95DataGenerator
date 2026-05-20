@@ -1,8 +1,15 @@
+using System.Data;
+using System.Diagnostics;
 using System.IO.Compression;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using ISA95DataGenerator.Application.Interfaces;
+using ISA95DataGenerator.Domain.Entities;
 using ISA95DataGenerator.Domain.Models;
+using ISA95DataGenerator.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace ISA95DataGenerator.API.Controllers;
 
@@ -12,6 +19,7 @@ public class DataGenerationController : ControllerBase
 {
     private readonly ITestDataGeneratorService _generatorService;
     private readonly IMappingFileService _mappingFileService;
+    private readonly MigrationDbContext _dbContext;
     private readonly ILogger<DataGenerationController> _logger;
     private static readonly string[] Isa95Terms =
     {
@@ -25,10 +33,12 @@ public class DataGenerationController : ControllerBase
     public DataGenerationController(
         ITestDataGeneratorService generatorService,
         IMappingFileService mappingFileService,
+        MigrationDbContext dbContext,
         ILogger<DataGenerationController> logger)
     {
         _generatorService = generatorService;
         _mappingFileService = mappingFileService;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
@@ -194,5 +204,224 @@ public class DataGenerationController : ControllerBase
             _logger.LogError(ex, "Error preparing download");
             return StatusCode(500, new { error = "Failed to prepare download", message = ex.Message });
         }
+    }
+
+    // ─────────────────────── Mass persist ───────────────────────
+
+    /// <summary>
+    /// Generate large volumes of dummy data for selected entities based on the DTDL schema
+    /// and persist them directly to GenericDataStores for performance testing.
+    /// </summary>
+    [HttpPost("mass-persist")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<IActionResult> MassPersist([FromBody] MassPersistRequest request)
+    {
+        if (request.Entities == null || request.Entities.Count == 0)
+            return BadRequest("At least one entity must be specified.");
+
+        var sw = Stopwatch.StartNew();
+        var result = new MassPersistResult();
+
+        foreach (var cfg in request.Entities)
+        {
+            if (string.IsNullOrWhiteSpace(cfg.EntityName) || cfg.Count <= 0)
+                continue;
+
+            var storeName = cfg.StoreName ?? DeriveStoreName(cfg.EntityName);
+            var entityResult = new MassPersistEntityResult
+            {
+                EntityName = cfg.EntityName,
+                StoreName = storeName,
+            };
+
+            try
+            {
+                _logger.LogInformation("Mass-persist: generating {Count} records for entity '{Entity}' -> store '{Store}'",
+                    cfg.Count, cfg.EntityName, storeName);
+
+                var genRequest = new DataGenerationRequest
+                {
+                    RootEntityName = cfg.EntityName,
+                    IncludedRelatedEntities = new List<string>(),
+                    InstanceCount = cfg.Count,
+                    Seed = request.Seed,
+                    PrimaryKeyRules = request.PrimaryKeyRules,
+                    FieldRules = request.FieldRules,
+                    MaxDepth = 1,
+                    SkipMappingFile = true,
+                };
+
+                var genResponse = await _generatorService.GenerateDataAsync(genRequest);
+
+                // Get the records for this entity from the response
+                var records = genResponse.GeneratedData.TryGetValue(cfg.EntityName, out var found)
+                    ? found
+                    : genResponse.GeneratedData.Values.FirstOrDefault() ?? new();
+
+                entityResult.Generated = records.Count;
+
+                if (records.Count == 0)
+                {
+                    result.Results.Add(entityResult);
+                    continue;
+                }
+
+                var now = DateTime.UtcNow;
+                var incoming = records
+                    .Select(r =>
+                    {
+                        var json = JsonSerializer.Serialize(r);
+                        var recordId = r.TryGetValue("id", out var idVal) ? idVal?.ToString() : null;
+                        return (RecordId: recordId, Json: json);
+                    })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.RecordId))
+                    .ToList();
+
+                // Bulk-upsert via SqlBulkCopy into a temp staging table, then MERGE
+                var conn = (SqlConnection)_dbContext.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync();
+
+                // 1. Create temp table
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = """
+                        CREATE TABLE #MassInsertStage (
+                            StoreName   NVARCHAR(200)  NOT NULL,
+                            RecordId    NVARCHAR(400)  NOT NULL,
+                            DataJson    NVARCHAR(MAX)  NOT NULL,
+                            CreatedAt   DATETIME2      NOT NULL,
+                            UpdatedAt   DATETIME2      NOT NULL,
+                            IsMassData  BIT            NOT NULL
+                        );
+                        """;
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                // 2. Bulk-load into temp table
+                using (var dt = new DataTable())
+                {
+                    dt.Columns.Add("StoreName",  typeof(string));
+                    dt.Columns.Add("RecordId",   typeof(string));
+                    dt.Columns.Add("DataJson",   typeof(string));
+                    dt.Columns.Add("CreatedAt",  typeof(DateTime));
+                    dt.Columns.Add("UpdatedAt",  typeof(DateTime));
+                    dt.Columns.Add("IsMassData", typeof(bool));
+                    foreach (var (recordId, json) in incoming)
+                        dt.Rows.Add(storeName, recordId, json, now, now, true);
+
+                    using var bulkCopy = new SqlBulkCopy(conn)
+                    {
+                        DestinationTableName = "#MassInsertStage",
+                        BatchSize = 10_000,
+                    };
+                    await bulkCopy.WriteToServerAsync(dt);
+                }
+
+                // 3. MERGE into GenericDataStores
+                int added, updated;
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandTimeout = 300;
+                    cmd.CommandText = """
+                        MERGE GenericDataStores AS target
+                        USING #MassInsertStage AS src
+                            ON target.StoreName = src.StoreName AND target.RecordId = src.RecordId
+                        WHEN MATCHED THEN
+                            UPDATE SET target.DataJson   = src.DataJson,
+                                       target.UpdatedAt  = src.UpdatedAt
+                        WHEN NOT MATCHED BY TARGET THEN
+                            INSERT (StoreName, RecordId, DataJson, CreatedAt, UpdatedAt, LastDataMigrationAt, IsMassData)
+                            VALUES (src.StoreName, src.RecordId, src.DataJson, src.CreatedAt, src.UpdatedAt, NULL, 1)
+                        OUTPUT $action;
+                        """;
+                    added = 0; updated = 0;
+                    await using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        if (reader.GetString(0) == "INSERT") added++;
+                        else updated++;
+                    }
+                }
+
+                // 4. Drop temp table
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "DROP TABLE IF EXISTS #MassInsertStage;";
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                entityResult.Added   = added;
+                entityResult.Updated = updated;
+                result.TotalRecords += added + updated;
+                _logger.LogInformation("Mass-persist '{Entity}': {Added} added, {Updated} updated",
+                    cfg.EntityName, entityResult.Added, entityResult.Updated);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Mass-persist failed for entity '{Entity}'", cfg.EntityName);
+                entityResult.Error = ex.Message;
+            }
+
+            result.Results.Add(entityResult);
+        }
+
+        sw.Stop();
+        result.ElapsedMs = sw.ElapsedMilliseconds;
+        result.GeneratedAt = DateTime.UtcNow;
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Derives a camelCase plural store name from an entity name.
+    /// e.g. "MaterialLot" → "materialLots", "EquipmentClass" → "equipmentClasses"
+    /// </summary>
+    private static string DeriveStoreName(string entityName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName)) return entityName;
+        var camel = char.ToLower(entityName[0]) + entityName[1..];
+        if (camel.EndsWith("y") && camel.Length > 1 && !"aeiou".Contains(camel[^2]))
+            return camel[..^1] + "ies";
+        if (camel.EndsWith("s") || camel.EndsWith("x") || camel.EndsWith("z") ||
+            camel.EndsWith("sh") || camel.EndsWith("ch"))
+            return camel + "es";
+        return camel + "s";
+    }
+
+    // ─────────────────────── Cleanup ───────────────────────
+
+    /// <summary>
+    /// Returns the count of mass-generated records (optionally filtered by store name).
+    /// </summary>
+    [HttpGet("mass-persist/count")]
+    public async Task<IActionResult> GetMassDataCount([FromQuery] string? storeName = null)
+    {
+        var query = _dbContext.GenericDataStores.Where(r => r.IsMassData);
+        if (!string.IsNullOrWhiteSpace(storeName))
+            query = query.Where(r => r.StoreName == storeName);
+
+        var total = await query.CountAsync();
+        var byStore = await query
+            .GroupBy(r => r.StoreName)
+            .Select(g => new { storeName = g.Key, count = g.Count() })
+            .ToListAsync();
+
+        return Ok(new { total, byStore });
+    }
+
+    /// <summary>
+    /// Deletes all mass-generated records (optionally filtered by store name).
+    /// </summary>
+    [HttpDelete("mass-persist")]
+    public async Task<IActionResult> ClearMassData([FromQuery] string? storeName = null)
+    {
+        var query = _dbContext.GenericDataStores.Where(r => r.IsMassData);
+        if (!string.IsNullOrWhiteSpace(storeName))
+            query = query.Where(r => r.StoreName == storeName);
+
+        var deleted = await query.ExecuteDeleteAsync();
+        _logger.LogInformation("Cleared {Count} mass-generated records (store filter: {Store})", deleted, storeName ?? "all");
+        return Ok(new { deleted });
     }
 }

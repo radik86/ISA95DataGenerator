@@ -49,15 +49,11 @@ public class TestDataGeneratorService : ITestDataGeneratorService
 
         var random = new Random(request.Seed ?? 42);
 
-        foreach (var pkRule in request.PrimaryKeyRules)
-        {
-            await _pkRuleService.SaveRuleAsync(pkRule);
-        }
+        if (request.PrimaryKeyRules.Count > 0)
+            await _pkRuleService.SaveRulesBatchAsync(request.PrimaryKeyRules);
 
-        foreach (var fieldRule in request.FieldRules)
-        {
-            await _fieldRuleService.SaveRuleAsync(fieldRule);
-        }
+        if (request.FieldRules.Count > 0)
+            await _fieldRuleService.SaveRulesBatchAsync(request.FieldRules);
 
         var generatedData = new Dictionary<string, List<Dictionary<string, object>>>();
         var instanceCache = new Dictionary<string, List<Dictionary<string, object>>>();
@@ -146,7 +142,8 @@ public class TestDataGeneratorService : ITestDataGeneratorService
             GeneratedAt = DateTime.UtcNow
         };
 
-        response.MappingFile = await _mappingFileService.GenerateMappingFileAsync(request, response);
+        if (!request.SkipMappingFile)
+            response.MappingFile = await _mappingFileService.GenerateMappingFileAsync(request, response);
 
         _logger.LogInformation("\n========== DATA GENERATION COMPLETE: {Count} total instances ==========", response.TotalInstancesGenerated);
         
@@ -181,11 +178,16 @@ public class TestDataGeneratorService : ITestDataGeneratorService
 
         _logger.LogInformation("{EntityName}: Processing {AttributeCount} attributes...", 
             entity.Name, entity.Attributes.Count);
-        
-        // DIAGNOSTIC: Log all attribute names to find out if operationsType is in the list
-        _logger.LogInformation("{EntityName}: Attributes = [{AttributeNames}]", 
-            entity.Name, 
-            string.Join(", ", entity.Attributes.Select(a => a.Name)));
+
+        // Pre-fetch all rules once per entity (not once per instance × attribute)
+        var excludedFieldKeys = new HashSet<string>(excludedFields);
+        var fieldRuleCache = new Dictionary<string, ISA95DataGenerator.Domain.Rules.FieldRule?>();
+        foreach (var attribute in entity.Attributes)
+        {
+            if (!excludedFieldKeys.Contains($"{entity.Name}.{attribute.Name}"))
+                fieldRuleCache[attribute.Name] = await _fieldRuleService.GetRuleAsync(entity.Name, attribute.Name);
+        }
+        var pkRule = await _pkRuleService.GetRuleAsync(entity.Name);
 
         for (int i = 0; i < count; i++)
         {
@@ -194,39 +196,19 @@ public class TestDataGeneratorService : ITestDataGeneratorService
             foreach (var attribute in entity.Attributes)
             {
                 // Skip excluded fields based on checkbox selection
-                var fieldKey = $"{entity.Name}.{attribute.Name}";
-                if (excludedFields.Contains(fieldKey))
+                if (excludedFieldKeys.Contains($"{entity.Name}.{attribute.Name}"))
                 {
                     if (VerboseLogging)
                         _logger.LogInformation("{EntityName}: Skipping excluded field '{FieldName}'", entity.Name, attribute.Name);
                     continue;
                 }
 
-                var fieldRule = await _fieldRuleService.GetRuleAsync(entity.Name, attribute.Name);
-                
-                // DIAGNOSTIC: Check if we have a rule for operationsType (ANY entity)
-                if (attribute.Name == "operationsType")
-                {
-                    _logger.LogInformation("DIAGNOSTIC [{EntityName}]: operationsType field rule found: {HasRule}", 
-                        entity.Name, fieldRule != null);
-                    if (fieldRule != null)
-                    {
-                        _logger.LogInformation("DIAGNOSTIC [{EntityName}]: Rule type: {RuleType}, Parameters: {Params}", 
-                            entity.Name, fieldRule.RuleType, fieldRule.Parameters);
-                    }
-                }
+                var fieldRule = fieldRuleCache.GetValueOrDefault(attribute.Name);
                 
                 object value;
                 if (fieldRule != null)
                 {
                     value = _fieldRuleService.GenerateFieldValue(fieldRule, attribute, random);
-                    
-                    // DIAGNOSTIC: Log the value returned by the rule for operationsType
-                    if (attribute.Name == "operationsType")
-                    {
-                        _logger.LogInformation("DIAGNOSTIC [{EntityName}]: Rule returned value: '{Value}' (Type: {Type}, Length: {Length})",
-                            entity.Name, value, value?.GetType().Name ?? "null", value?.ToString()?.Length ?? 0);
-                    }
                 }
                 else
                 {
@@ -240,20 +222,8 @@ public class TestDataGeneratorService : ITestDataGeneratorService
                 }
                 
                 instance[attribute.Name] = value;
-                
-                // DIAGNOSTIC: Log operationsType specifically after setting it
-                if (attribute.Name == "operationsType")
-                {
-                    _logger.LogInformation("DIAGNOSTIC [{EntityName}]: Set instance['{Key}'] = '{Value}' (Type: {Type}, Length: {Length})", 
-                        entity.Name,
-                        attribute.Name, 
-                        value, 
-                        value?.GetType().Name ?? "null",
-                        value?.ToString()?.Length ?? 0);
-                }
             }
 
-            var pkRule = await _pkRuleService.GetRuleAsync(entity.Name);
             string primaryKey;
             
             if (pkRule != null)
@@ -267,18 +237,6 @@ public class TestDataGeneratorService : ITestDataGeneratorService
 
             instance["id"] = primaryKey;
             instance["_EntityType"] = entity.Name;
-
-            // DIAGNOSTIC: Check if operationsType is still in the instance before adding to list
-            if (entity.Name == "Operations Request" && instance.ContainsKey("operationsType"))
-            {
-                _logger.LogInformation("DIAGNOSTIC: Before adding to list, instance['operationsType'] = '{Value}'", 
-                    instance["operationsType"]);
-            }
-            else if (entity.Name == "Operations Request")
-            {
-                _logger.LogWarning("DIAGNOSTIC: operationsType key is MISSING from instance dictionary!");
-            }
-
             instances.Add(instance);
         }
 
@@ -442,13 +400,11 @@ public class TestDataGeneratorService : ITestDataGeneratorService
                 generatedData[targetEntity.Name] = new List<Dictionary<string, object>>();
             }
 
+            var seenIds = new HashSet<string>(generatedData[targetEntity.Name].Select(x => x["id"].ToString()!));
             foreach (var instance in relatedInstances)
             {
-                if (!generatedData[targetEntity.Name].Any(x => 
-                    x["id"].ToString() == instance["id"].ToString()))
-                {
+                if (seenIds.Add(instance["id"].ToString()!))
                     generatedData[targetEntity.Name].Add(instance);
-                }
             }
 
             for (int i = 0; i < parentInstances.Count; i++)
@@ -542,13 +498,11 @@ public class TestDataGeneratorService : ITestDataGeneratorService
                     generatedData[targetEntity.Name] = new List<Dictionary<string, object>>();
                 }
 
+                var seenCardIds = new HashSet<string>(generatedData[targetEntity.Name].Select(x => x["id"].ToString()!));
                 foreach (var instance in relatedInstances)
                 {
-                    if (!generatedData[targetEntity.Name].Any(x => 
-                        x["id"].ToString() == instance["id"].ToString()))
-                    {
+                    if (seenCardIds.Add(instance["id"].ToString()!))
                         generatedData[targetEntity.Name].Add(instance);
-                    }
                 }
 
                 // Create parent-child mappings

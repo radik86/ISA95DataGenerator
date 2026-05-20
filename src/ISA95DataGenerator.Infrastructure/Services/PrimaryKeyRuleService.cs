@@ -72,6 +72,25 @@ public class PrimaryKeyRuleService : IPrimaryKeyRuleService
         }
     }
 
+    public async Task SaveRulesBatchAsync(IEnumerable<PrimaryKeyRule> rules)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            foreach (var rule in rules)
+            {
+                _rules[rule.EntityName] = rule;
+                if (rule.UseSequence)
+                    _sequenceCounters[rule.EntityName] = rule.StartingSequence;
+            }
+            await SaveRulesToFileAsync(); // single disk write
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<PrimaryKeyRule?> GetRuleAsync(string entityName)
     {
         await _lock.WaitAsync();

@@ -8,6 +8,7 @@ namespace ISA95DataGenerator.Application.Interfaces;
 public interface IPrimaryKeyRuleService
 {
     Task SaveRuleAsync(PrimaryKeyRule rule);
+    Task SaveRulesBatchAsync(IEnumerable<PrimaryKeyRule> rules);
     Task<PrimaryKeyRule?> GetRuleAsync(string entityName);
     Task<List<PrimaryKeyRule>> GetAllRulesAsync();
     string GeneratePrimaryKey(PrimaryKeyRule rule, Dictionary<string, object> entityData, int sequenceNumber);

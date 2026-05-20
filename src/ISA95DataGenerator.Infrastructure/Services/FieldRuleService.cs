@@ -85,6 +85,32 @@ public class FieldRuleService : IFieldRuleService
         }
     }
 
+    public async Task SaveRulesBatchAsync(IEnumerable<FieldRule> rules)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            foreach (var rule in rules)
+            {
+                if (!_rules.ContainsKey(rule.EntityName))
+                    _rules[rule.EntityName] = new Dictionary<string, FieldRule>();
+                _rules[rule.EntityName][rule.FieldName] = rule;
+
+                if (rule.RuleType == FieldRuleType.Sequence)
+                {
+                    var key = $"{rule.EntityName}_{rule.FieldName}";
+                    var seqParams = DeserializeParameters<SequenceParameters>(rule.Parameters);
+                    _sequenceCounters[key] = seqParams?.Start ?? 1;
+                }
+            }
+            await SaveRulesToFileAsync(); // single disk write
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<FieldRule?> GetRuleAsync(string entityName, string fieldName)
     {
         await _lock.WaitAsync();

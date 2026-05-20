@@ -33,4 +33,10 @@ public class GenericDataStore
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastDataMigrationAt { get; set; }
+
+    /// <summary>
+    /// True when this record was created by the Mass Data Generator for performance testing.
+    /// Allows bulk-deleting all mass-generated data without touching real records.
+    /// </summary>
+    public bool IsMassData { get; set; } = false;
 }

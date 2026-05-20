@@ -9,6 +9,7 @@ namespace ISA95DataGenerator.Application.Interfaces;
 public interface IFieldRuleService
 {
     Task SaveRuleAsync(FieldRule rule);
+    Task SaveRulesBatchAsync(IEnumerable<FieldRule> rules);
     Task<FieldRule?> GetRuleAsync(string entityName, string fieldName);
     Task<List<FieldRule>> GetRulesForEntityAsync(string entityName);
     Task<List<FieldRule>> GetAllRulesAsync();

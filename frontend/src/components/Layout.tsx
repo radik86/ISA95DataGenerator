@@ -24,6 +24,7 @@ import {
   Transform as TransformIcon,
   Assessment as AssessmentIcon,
   FactCheck as QualityIcon,
+  Speed as SpeedIcon,
 } from '@mui/icons-material';
 
 const DRAWER_WIDTH = 240;
@@ -39,6 +40,7 @@ const menuItems = [
   { path: '/data-migration', label: 'Data Migration', icon: <TransformIcon /> },
   { path: '/enumeration-evaluations', label: 'Enumeration Evaluations', icon: <AssessmentIcon /> },
   { path: '/quality-checks', label: 'Quality Checks', icon: <QualityIcon /> },
+  { path: '/mass-generate', label: 'Mass Data Generator', icon: <SpeedIcon /> },
 ];
 
 const Layout: React.FC = () => {
