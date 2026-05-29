@@ -20,6 +20,7 @@ public class DataGenerationController : ControllerBase
     private readonly ITestDataGeneratorService _generatorService;
     private readonly IMappingFileService _mappingFileService;
     private readonly MigrationDbContext _dbContext;
+    private readonly IMetadataLoaderService _metadataLoader;
     private readonly ILogger<DataGenerationController> _logger;
     private static readonly string[] Isa95Terms =
     {
@@ -34,11 +35,13 @@ public class DataGenerationController : ControllerBase
         ITestDataGeneratorService generatorService,
         IMappingFileService mappingFileService,
         MigrationDbContext dbContext,
+        IMetadataLoaderService metadataLoader,
         ILogger<DataGenerationController> logger)
     {
         _generatorService = generatorService;
         _mappingFileService = mappingFileService;
         _dbContext = dbContext;
+        _metadataLoader = metadataLoader;
         _logger = logger;
     }
 
@@ -222,44 +225,57 @@ public class DataGenerationController : ControllerBase
         var sw = Stopwatch.StartNew();
         var result = new MassPersistResult();
 
+        // ── Pass 1: generate all entities (raw, _ keys still present) ──────────
+        var allGenerated = new List<(MassPersistEntityConfig Cfg, string StoreName, List<Dictionary<string, object>> Records)>();
+
         foreach (var cfg in request.Entities)
         {
             if (string.IsNullOrWhiteSpace(cfg.EntityName) || cfg.Count <= 0)
                 continue;
 
             var storeName = cfg.StoreName ?? DeriveStoreName(cfg.EntityName);
+            _logger.LogInformation("Mass-persist: generating {Count} records for entity '{Entity}' -> store '{Store}'",
+                cfg.Count, cfg.EntityName, storeName);
+
+            var genRequest = new DataGenerationRequest
+            {
+                RootEntityName = cfg.EntityName,
+                IncludedRelatedEntities = new List<string>(),
+                InstanceCount = cfg.Count,
+                Seed = request.Seed,
+                PrimaryKeyRules = request.PrimaryKeyRules,
+                FieldRules = request.FieldRules,
+                MaxDepth = 1,
+                SkipMappingFile = true,
+            };
+
+            var genResponse = await _generatorService.GenerateDataAsync(genRequest);
+            var records = genResponse.GeneratedData.TryGetValue(cfg.EntityName, out var found)
+                ? found
+                : genResponse.GeneratedData.Values.FirstOrDefault() ?? new();
+
+            allGenerated.Add((cfg, storeName, records));
+        }
+
+        // ── Pass 2: inject FK fields into child records ──────────────────────────
+        await InjectParentFkFieldsAsync(allGenerated);
+
+        // ── Pass 3: clean, metadata-inject, and bulk-save each entity ───────────
+        var conn = (SqlConnection)_dbContext.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync();
+
+        foreach (var (cfg, storeName, records) in allGenerated)
+        {
             var entityResult = new MassPersistEntityResult
             {
                 EntityName = cfg.EntityName,
                 StoreName = storeName,
+                Generated = records.Count,
             };
 
             try
             {
-                _logger.LogInformation("Mass-persist: generating {Count} records for entity '{Entity}' -> store '{Store}'",
-                    cfg.Count, cfg.EntityName, storeName);
-
-                var genRequest = new DataGenerationRequest
-                {
-                    RootEntityName = cfg.EntityName,
-                    IncludedRelatedEntities = new List<string>(),
-                    InstanceCount = cfg.Count,
-                    Seed = request.Seed,
-                    PrimaryKeyRules = request.PrimaryKeyRules,
-                    FieldRules = request.FieldRules,
-                    MaxDepth = 1,
-                    SkipMappingFile = true,
-                };
-
-                var genResponse = await _generatorService.GenerateDataAsync(genRequest);
-
-                // Get the records for this entity from the response
-                var records = genResponse.GeneratedData.TryGetValue(cfg.EntityName, out var found)
-                    ? found
-                    : genResponse.GeneratedData.Values.FirstOrDefault() ?? new();
-
-                entityResult.Generated = records.Count;
-
                 if (records.Count == 0)
                 {
                     result.Results.Add(entityResult);
@@ -267,20 +283,32 @@ public class DataGenerationController : ControllerBase
                 }
 
                 var now = DateTime.UtcNow;
+                var nowIso = now.ToString("o"); // ISO-8601
                 var incoming = records
                     .Select(r =>
                     {
-                        var json = JsonSerializer.Serialize(r);
                         var recordId = r.TryGetValue("id", out var idVal) ? idVal?.ToString() : null;
+
+                        // Strip internal graph-traversal keys (_EntityType, _*_References)
+                        // and inject process-data metadata fields to match the format
+                        // expected by data migration and CSV generation.
+                        var clean = new Dictionary<string, object?>(r.Count + 5);
+                        foreach (var kv in r)
+                        {
+                            if (!kv.Key.StartsWith('_'))
+                                clean[kv.Key] = kv.Value;
+                        }
+                        clean["createdAt"]          = nowIso;
+                        clean["updatedAt"]          = nowIso;
+                        clean["version"]            = 1;
+                        clean["DataGeneratedAt"]    = nowIso;
+                        clean["LastDataMigrationAt"] = null;
+
+                        var json = JsonSerializer.Serialize(clean);
                         return (RecordId: recordId, Json: json);
                     })
                     .Where(x => !string.IsNullOrWhiteSpace(x.RecordId))
                     .ToList();
-
-                // Bulk-upsert via SqlBulkCopy into a temp staging table, then MERGE
-                var conn = (SqlConnection)_dbContext.Database.GetDbConnection();
-                if (conn.State != System.Data.ConnectionState.Open)
-                    await conn.OpenAsync();
 
                 // 1. Create temp table
                 await using (var cmd = conn.CreateCommand())
@@ -328,8 +356,9 @@ public class DataGenerationController : ControllerBase
                         USING #MassInsertStage AS src
                             ON target.StoreName = src.StoreName AND target.RecordId = src.RecordId
                         WHEN MATCHED THEN
-                            UPDATE SET target.DataJson   = src.DataJson,
-                                       target.UpdatedAt  = src.UpdatedAt
+                            UPDATE SET target.DataJson            = src.DataJson,
+                                       target.UpdatedAt           = src.UpdatedAt,
+                                       target.LastDataMigrationAt = NULL
                         WHEN NOT MATCHED BY TARGET THEN
                             INSERT (StoreName, RecordId, DataJson, CreatedAt, UpdatedAt, LastDataMigrationAt, IsMassData)
                             VALUES (src.StoreName, src.RecordId, src.DataJson, src.CreatedAt, src.UpdatedAt, NULL, 1)
@@ -374,13 +403,77 @@ public class DataGenerationController : ControllerBase
     }
 
     /// <summary>
+    /// For each child entity in the batch, finds parent entities (via DTDL relationships)
+    /// and injects a FK field (e.g. "operationsEventId") into each child record, distributed
+    /// round-robin across parent IDs. This ensures bridge/mapping CSVs can resolve source PKs.
+    /// </summary>
+    private async Task InjectParentFkFieldsAsync(
+        List<(MassPersistEntityConfig Cfg, string StoreName, List<Dictionary<string, object>> Records)> allEntities)
+    {
+        // Build: entityName -> list of generated IDs
+        var entityIds = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (cfg, _, records) in allEntities)
+        {
+            entityIds[cfg.EntityName] = records
+                .Where(r => r.ContainsKey("id") && r["id"] != null)
+                .Select(r => r["id"]!.ToString()!)
+                .ToList();
+        }
+
+        foreach (var (childCfg, _, childRecords) in allEntities)
+        {
+            if (childRecords.Count == 0) continue;
+
+            foreach (var (parentCfg, _, _) in allEntities)
+            {
+                if (string.Equals(parentCfg.EntityName, childCfg.EntityName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var parentEntityDef = await _metadataLoader.GetEntityByNameAsync(parentCfg.EntityName);
+                if (parentEntityDef == null) continue;
+
+                // Check if parent has a relationship pointing at this child entity
+                var rel = parentEntityDef.Relationships.FirstOrDefault(r =>
+                    string.Equals(r.TargetEntityName, childCfg.EntityName, StringComparison.OrdinalIgnoreCase));
+                if (rel == null) continue;
+
+                var parentIds = entityIds[parentCfg.EntityName];
+                if (parentIds.Count == 0) continue;
+
+                // FK field name: camelCaseCompact(parentEntityName) + "Id"
+                // e.g. "Operations event" -> "operationsEvent" -> "operationsEventId"
+                var fkField = ToCamelCaseCompact(parentCfg.EntityName) + "Id";
+
+                _logger.LogInformation(
+                    "Mass-persist FK injection: '{Child}' <- '{FkField}' from '{Parent}' ({ParentCount} parent IDs)",
+                    childCfg.EntityName, fkField, parentCfg.EntityName, parentIds.Count);
+
+                for (int i = 0; i < childRecords.Count; i++)
+                    childRecords[i][fkField] = parentIds[i % parentIds.Count];
+            }
+        }
+    }
+
+    /// <summary>Converts a spaced entity name to a compact camelCase identifier, e.g. "Operations event" -> "operationsEvent".</summary>
+    private static string ToCamelCaseCompact(string entityName)
+    {
+        if (string.IsNullOrWhiteSpace(entityName)) return entityName;
+        var words = entityName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(words.Select((w, i) =>
+            i == 0 ? char.ToLower(w[0]) + w[1..] : char.ToUpper(w[0]) + w[1..]));
+    }
+
+    /// <summary>
     /// Derives a camelCase plural store name from an entity name.
     /// e.g. "MaterialLot" → "materialLots", "EquipmentClass" → "equipmentClasses"
     /// </summary>
     private static string DeriveStoreName(string entityName)
     {
         if (string.IsNullOrWhiteSpace(entityName)) return entityName;
-        var camel = char.ToLower(entityName[0]) + entityName[1..];
+        var words = entityName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var camel = string.Concat(words.Select((w, i) => i == 0
+            ? char.ToLower(w[0]) + w[1..]
+            : char.ToUpper(w[0]) + w[1..]));
         if (camel.EndsWith("y") && camel.Length > 1 && !"aeiou".Contains(camel[^2]))
             return camel[..^1] + "ies";
         if (camel.EndsWith("s") || camel.EndsWith("x") || camel.EndsWith("z") ||

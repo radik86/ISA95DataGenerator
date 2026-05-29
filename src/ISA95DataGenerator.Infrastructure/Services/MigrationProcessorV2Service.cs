@@ -925,7 +925,9 @@ public class MigrationProcessorV2Service
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandTimeout = DB_COMMAND_TIMEOUT_SECONDS;
-            cmd.CommandText = $"SELECT COUNT(*) FROM {qualifiedDedTable}";
+            cmd.CommandText = string.Equals(loadMode, "delta", StringComparison.OrdinalIgnoreCase)
+                ? $"SELECT COUNT(*) FROM {qualifiedDedTable} WHERE \"LastDataMigrationAt\" IS NULL OR \"UpdatedAt\" > \"LastDataMigrationAt\""
+                : $"SELECT COUNT(*) FROM {qualifiedDedTable}";
             var countObj = await cmd.ExecuteScalarAsync(ct);
             return Convert.ToInt32(countObj);
         }

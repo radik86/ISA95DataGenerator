@@ -75,7 +75,12 @@ const COUNT_PRESETS = [100, 1_000, 10_000, 100_000];
 
 function deriveStoreName(entityName: string): string {
   if (!entityName) return '';
-  const camel = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const words = entityName.trim().split(/\s+/);
+  const camel = words
+    .map((w, i) => i === 0
+      ? w.charAt(0).toLowerCase() + w.slice(1)
+      : w.charAt(0).toUpperCase() + w.slice(1))
+    .join('');
   if (camel.endsWith('y') && camel.length > 1 && !'aeiou'.includes(camel[camel.length - 2])) {
     return camel.slice(0, -1) + 'ies';
   }
