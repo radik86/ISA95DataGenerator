@@ -561,9 +561,18 @@ public class DataMigrationController : ControllerBase
     [HttpGet("session/{sessionId}/status")]
     public async Task<ActionResult<MigrationStatusResponse>> GetMigrationStatus(Guid sessionId)
     {
-        var session = await _dbContext.MigrationSessions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == sessionId);
+        // Use READ UNCOMMITTED so that concurrent SaveSession writes (which UPDATE this row frequently
+        // during migration) cannot block this progress-poll query.
+        _dbContext.Database.SetCommandTimeout(60);
+        MigrationSession? session;
+        using (var tx = await _dbContext.Database.BeginTransactionAsync(
+            System.Data.IsolationLevel.ReadUncommitted))
+        {
+            session = await _dbContext.MigrationSessions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == sessionId);
+            await tx.CommitAsync();
+        }
 
         if (session == null)
             return NotFound("Session not found");

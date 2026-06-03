@@ -30,6 +30,8 @@ import {
   Tooltip,
   FormControlLabel,
   Switch,
+  ListSubheader,
+  Checkbox,
 } from '@mui/material';
 import {
   PlayArrow as GenerateIcon,
@@ -197,6 +199,7 @@ interface OperationsEvent {
   equipmentId: string;
   hierarchyScope: string;
   operationsType?: 'Production' | 'Maintenance';
+  isActive?: boolean;
 }
 
 interface OperationsEventRecord {
@@ -393,6 +396,14 @@ const ProcessDataGenerator: React.FC = () => {
   const [batchMaxDailyOrders, setBatchMaxDailyOrders] = useState(3);
   const [batchTargetUtilizationPercent, setBatchTargetUtilizationPercent] = useState(100);
 
+  // Operations Event generation config (shared across single + batch)
+  // Empty = all definitions allowed; populated = only these can be generated
+  const [allowedEventDefinitionIds, setAllowedEventDefinitionIds] = useState<string[]>([]);
+  // Severity values that must be represented (at least one event with this severity forced in)
+  const [requiredSeverityLevels, setRequiredSeverityLevels] = useState<string[]>([]);
+  // Event definitions that must always appear (force-included regardless of random selection)
+  const [requiredEventDefinitionIds, setRequiredEventDefinitionIds] = useState<string[]>([]);
+
     // Main tab navigation
     const [mainTab, setMainTab] = useState(0); // 0=Production, 1=Maintenance
     const [maintenanceActiveTab, setMaintenanceActiveTab] = useState(0); // 0=Plan, 1=Actual
@@ -460,6 +471,12 @@ const ProcessDataGenerator: React.FC = () => {
     const [storedUnplannedOpsEventRecords, setStoredUnplannedOpsEventRecords] = useState<OperationsEventRecord[]>([]);
     const [storedUnplannedOpsEventEntries, setStoredUnplannedOpsEventEntries] = useState<OperationsEventEntry[]>([]);
     const [selectedStoredUnplannedResponseId, setSelectedStoredUnplannedResponseId] = useState('');
+
+    // Operations Events active/filter state (multi-select arrays)
+    const [opsEventFilterType, setOpsEventFilterType] = useState<string[]>([]);
+    const [opsEventFilterSeverity, setOpsEventFilterSeverity] = useState<string[]>([]);
+    const [opsEventFilterCategory, setOpsEventFilterCategory] = useState<string[]>([]);
+    const [opsEventFilterDefinition, setOpsEventFilterDefinition] = useState<string[]>([]);
 
     const filteredSavedMaintenanceRequests = savedMaintenanceRequests.filter((req) =>
       !maintenancePlanDataFilter ||
@@ -810,6 +827,7 @@ const ProcessDataGenerator: React.FC = () => {
       setEquipmentPropertyAssignments(epa);
       setEquipmentClassPropertyAssignments(ecpa);
       setOperationEventDefinitions(oed);
+      setAllowedEventDefinitionIds(oed.map((d: any) => d.id));
       setOperationEventDefSegmentAssignments(oedsa);
       setOperationEventDefinitionProperties(oedp);
       setOperationEventDefinitionPropertyAssignments(oedpa);
@@ -1269,8 +1287,13 @@ const ProcessDataGenerator: React.FC = () => {
         let segmentEventAssignments = operationEventDefSegmentAssignments.filter(
           oedsa => oedsa.processSegmentId === segReq.processSegmentId
         );
-        
-        console.log(`[Operations Events] Found ${segmentEventAssignments.length} event assignments for segment`);
+
+        // Apply event definition allow-list (if configured)
+        if (allowedEventDefinitionIds.length > 0) {
+          segmentEventAssignments = segmentEventAssignments.filter(
+            a => allowedEventDefinitionIds.includes(a.operationsEventDefinitionId)
+          );
+        }
         
         // Debug: Log all assignments with their isMandatory values
         segmentEventAssignments.forEach(a => {
@@ -1287,14 +1310,18 @@ const ProcessDataGenerator: React.FC = () => {
         
         console.log(`[Operations Events] ${mandatoryAssignments.length} mandatory, ${conditionalAssignments.length} conditional events`);
         
-        // Filter conditional events based on conditions (downtime, scrap)
+        // Filter conditional events based on conditions (downtime, scrap, event type)
         const filteredConditionalAssignments = conditionalAssignments.filter(assignment => {
           const eventDef = operationEventDefinitions.find(oed => oed.id === assignment.operationsEventDefinitionId);
           if (!eventDef) {
             console.log(`[Operations Events] Event definition not found for assignment ${assignment.id}`);
             return false;
           }
-          
+
+          // Event type: always include regardless of conditions
+          if (eventDef.eventType === 'Event') return true;
+
+          // Alarm/Alert type: only include when scrap or delay is configured
           // Include downtime events only if production delay is defined
           const includeForDowntime = productionDelayMinutes > 0 && eventDef.causesDowntime;
           
@@ -1320,8 +1347,43 @@ const ProcessDataGenerator: React.FC = () => {
           const selectedConditional = shuffled.slice(0, Math.min(numConditionalEvents, filteredConditionalAssignments.length));
           selectedAssignments = [...selectedAssignments, ...selectedConditional];
         }
-        
-        console.log(`[Operations Events] Total ${selectedAssignments.length} events to generate (${mandatoryAssignments.length} mandatory + ${selectedAssignments.length - mandatoryAssignments.length} conditional)`);
+
+        // Force-include assignments for required severity levels not yet covered
+        if (requiredSeverityLevels.length > 0) {
+          const coveredSeverities = new Set(
+            selectedAssignments.map(a => {
+              const pa = operationEventDefinitionPropertyAssignments.find(
+                p => p.operationsEventDefinitionId === a.operationsEventDefinitionId && p.operationsEventDefinitionPropertyId === 'Severity'
+              );
+              return pa?.value as string | undefined;
+            }).filter(Boolean)
+          );
+          for (const sev of requiredSeverityLevels) {
+            if (!coveredSeverities.has(sev)) {
+              // Find any assignment (not already selected) whose definition has this severity
+              const candidate = segmentEventAssignments.find(a =>
+                !selectedAssignments.includes(a) &&
+                operationEventDefinitionPropertyAssignments.some(
+                  p => p.operationsEventDefinitionId === a.operationsEventDefinitionId &&
+                       p.operationsEventDefinitionPropertyId === 'Severity' &&
+                       p.value === sev
+                )
+              );
+              if (candidate) {
+                selectedAssignments = [...selectedAssignments, candidate];
+                coveredSeverities.add(sev);
+              }
+            }
+          }
+        }
+
+        // Force-include required event definitions not yet covered (must-have)
+        for (const defId of requiredEventDefinitionIds) {
+          if (!selectedAssignments.some(a => a.operationsEventDefinitionId === defId)) {
+            const candidate = segmentEventAssignments.find(a => a.operationsEventDefinitionId === defId);
+            if (candidate) selectedAssignments = [...selectedAssignments, candidate];
+          }
+        }
         
         if (selectedAssignments.length > 0) {
           // Find segment responses for this segment requirement
@@ -2441,16 +2503,28 @@ const ProcessDataGenerator: React.FC = () => {
         await processDataApi.upsertStoreRecords('segmentPersonnelActuals', maintenancePersonnelActuals);
       }
       if (operationsEvents.length > 0) {
-        await processDataApi.upsertStoreRecords('operationsEvents', operationsEvents);
+        const eventsToSave = operationsEvents.map(({ isActive, ...e }) => e);
+        await processDataApi.upsertStoreRecords('operationsEvents', eventsToSave);
       }
       if (operationsEventRecords.length > 0) {
-        await processDataApi.upsertStoreRecords('operationsEventRecords', operationsEventRecords);
+        const activeEventIds = new Set(operationsEvents.filter(e => e.isActive).map(e => e.id));
+        const recordsToSave = operationsEventRecords.map(r =>
+          activeEventIds.has(r.operationsEventId) ? { ...r, status: 'Active' } : r
+        );
+        await processDataApi.upsertStoreRecords('operationsEventRecords', recordsToSave);
       }
       if (operationsEventEntries.length > 0) {
         await processDataApi.upsertStoreRecords('operationsEventEntries', operationsEventEntries);
       }
       if (operationsEventProperties.length > 0) {
-        await processDataApi.upsertStoreRecords('operationsEventProperties', operationsEventProperties);
+        const activeEventIds = new Set(operationsEvents.filter(e => e.isActive).map(e => e.id));
+        const propsToSave = activeEventIds.size === 0
+          ? operationsEventProperties
+          : operationsEventProperties.filter(prop => {
+              if (!activeEventIds.has(prop.operationsEventId)) return true;
+              return prop.operationsEventDefinitionPropertyId !== 'Duration';
+            });
+        await processDataApi.upsertStoreRecords('operationsEventProperties', propsToSave);
       }
       await loadStoredActualData();
       setLoading(false);
@@ -3321,11 +3395,20 @@ const ProcessDataGenerator: React.FC = () => {
         },
         {
           entity: 'OperationsEvent',
-          save: () => processDataApi.upsertStoreRecords('operationsEvents', operationsEvents),
+          save: () => {
+            const eventsToSave = operationsEvents.map(({ isActive, ...e }) => e);
+            return processDataApi.upsertStoreRecords('operationsEvents', eventsToSave);
+          },
         },
         {
           entity: 'OperationsEventRecord',
-          save: () => processDataApi.upsertStoreRecords('operationsEventRecords', operationsEventRecords),
+          save: () => {
+            const activeEventIds = new Set(operationsEvents.filter(e => e.isActive).map(e => e.id));
+            const recordsToSave = operationsEventRecords.map(r =>
+              activeEventIds.has(r.operationsEventId) ? { ...r, status: 'Active' } : r
+            );
+            return processDataApi.upsertStoreRecords('operationsEventRecords', recordsToSave);
+          },
         },
         {
           entity: 'OperationsEventEntry',
@@ -3333,7 +3416,16 @@ const ProcessDataGenerator: React.FC = () => {
         },
         {
           entity: 'OperationsEventProperty',
-          save: () => processDataApi.upsertStoreRecords('operationsEventProperties', operationsEventProperties),
+          save: () => {
+            const activeEventIds = new Set(operationsEvents.filter(e => e.isActive).map(e => e.id));
+            const propsToSave = activeEventIds.size === 0
+              ? operationsEventProperties
+              : operationsEventProperties.filter(prop => {
+                  if (!activeEventIds.has(prop.operationsEventId)) return true;
+                  return prop.operationsEventDefinitionPropertyId !== 'Duration';
+                });
+            return processDataApi.upsertStoreRecords('operationsEventProperties', propsToSave);
+          },
         },
         {
           entity: 'SegmentData',
@@ -4373,13 +4465,64 @@ const ProcessDataGenerator: React.FC = () => {
 
       if (assignments.length === 0) continue;
 
-      const mandatory = assignments.filter(
+      // Apply event definition allow-list (if configured)
+      const filteredAssignments = allowedEventDefinitionIds.length > 0
+        ? assignments.filter(a => allowedEventDefinitionIds.includes(a.operationsEventDefinitionId))
+        : assignments;
+
+      if (filteredAssignments.length === 0) continue;
+
+      const mandatory = filteredAssignments.filter(
         (a: any) => a.isMandatory === true || a.isMandatory === 'TRUE' || a.isMandatory === 'true' || a.isMandatory === 'True',
       );
-      const conditional = assignments.filter((a: any) => !mandatory.includes(a));
-      const selected = [...mandatory];
+      const allConditional = filteredAssignments.filter((a: any) => !mandatory.includes(a));
+      // Event type: always include; Alarm/Alert: only when scrap or delay is configured
+      const hasScrapOrDelay = scrapPercent > 0 || startDelayMinutes > 0 || downtimeDelayMinutes > 0;
+      const conditional = allConditional.filter((a: any) => {
+        const def = operationEventDefinitions.find((d: any) => d.id === a.operationsEventDefinitionId);
+        if (!def) return false;
+        if (def.eventType === 'Event') return true;
+        return hasScrapOrDelay;
+      });
+      let selected = [...mandatory];
       if (conditional.length > 0) {
         selected.push(conditional[Math.floor(Math.random() * conditional.length)]);
+      }
+
+      // Force-include assignments for required severity levels not yet covered
+      if (requiredSeverityLevels.length > 0) {
+        const coveredSeverities = new Set(
+          selected.map(a => {
+            const pa = operationEventDefinitionPropertyAssignments.find(
+              (p: any) => p.operationsEventDefinitionId === a.operationsEventDefinitionId && p.operationsEventDefinitionPropertyId === 'Severity'
+            );
+            return pa?.value as string | undefined;
+          }).filter(Boolean)
+        );
+        for (const sev of requiredSeverityLevels) {
+          if (!coveredSeverities.has(sev)) {
+            const candidate = filteredAssignments.find((a: any) =>
+              !selected.includes(a) &&
+              operationEventDefinitionPropertyAssignments.some(
+                (p: any) => p.operationsEventDefinitionId === a.operationsEventDefinitionId &&
+                     p.operationsEventDefinitionPropertyId === 'Severity' &&
+                     p.value === sev
+              )
+            );
+            if (candidate) {
+              selected = [...selected, candidate];
+              coveredSeverities.add(sev);
+            }
+          }
+        }
+      }
+
+      // Force-include required event definitions not yet covered (must-have)
+      for (const defId of requiredEventDefinitionIds) {
+        if (!selected.some((a: any) => a.operationsEventDefinitionId === defId)) {
+          const candidate = filteredAssignments.find((a: any) => a.operationsEventDefinitionId === defId);
+          if (candidate) selected = [...selected, candidate];
+        }
       }
 
       const segStart = new Date(segResp.actualStartDateTime.replace(' ', 'T') + 'Z');
@@ -6839,6 +6982,120 @@ const ProcessDataGenerator: React.FC = () => {
                           />
                         </Grid>
 
+                        {/* Operations Event Configuration */}
+                        {operationEventDefinitions.length > 0 && (
+                          <Grid size={12}>
+                            <Paper variant="outlined" sx={{ p: 1.5 }}>
+                              <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                                Operations Event Configuration
+                              </Typography>
+                              <Grid container spacing={2}>
+                                <Grid size={12}>
+                                  <FormControl fullWidth size="small">
+                                    <InputLabel>Allowed Event Definitions</InputLabel>
+                                    <Select
+                                      multiple
+                                      label="Allowed Event Definitions"
+                                      value={allowedEventDefinitionIds}
+                                      onChange={(e) => setAllowedEventDefinitionIds(
+                                        typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[]
+                                      )}
+                                      renderValue={(sel) => {
+                                        const ids = sel as string[];
+                                        const mustHave = requiredEventDefinitionIds.filter(id => ids.includes(id));
+                                        const base = ids.length === operationEventDefinitions.length ? `All (${ids.length})` : ids.length === 0 ? 'None' : `${ids.length} selected`;
+                                        return mustHave.length > 0 ? `${base} · ${mustHave.length} must-have` : base;
+                                      }}
+                                    >
+                                      {(['Event', 'Alarm', 'Alert'] as const).flatMap(type => {
+                                        const defsOfType = operationEventDefinitions.filter((d: any) => d.eventType === type);
+                                        if (defsOfType.length === 0) return [];
+                                        return [
+                                          <ListSubheader key={`header-${type}`} sx={{ lineHeight: '28px', fontSize: '0.75rem' }}>
+                                            {type === 'Event'
+                                              ? `Events — always active (${defsOfType.length})`
+                                              : `${type}s — active when scrap/delay > 0 (${defsOfType.length})`}
+                                          </ListSubheader>,
+                                          ...defsOfType.map((def: any) => (
+                                            <MenuItem key={def.id} value={def.id} sx={{ gap: 0.5 }}>
+                                              <Switch
+                                                size="small"
+                                                checked={allowedEventDefinitionIds.includes(def.id)}
+                                                sx={{ mr: 0.5 }}
+                                              />
+                                              <Box component="span" sx={{ flex: 1, fontSize: '0.875rem' }}>
+                                                {def.description || def.id}
+                                              </Box>
+                                              <Tooltip title="Must-have: force-include this event every run">
+                                                <Checkbox
+                                                  size="small"
+                                                  checked={requiredEventDefinitionIds.includes(def.id)}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setRequiredEventDefinitionIds(prev =>
+                                                      prev.includes(def.id) ? prev.filter(id => id !== def.id) : [...prev, def.id]
+                                                    );
+                                                    // Auto-enable in allowlist if marking as must-have
+                                                    if (!requiredEventDefinitionIds.includes(def.id) && !allowedEventDefinitionIds.includes(def.id)) {
+                                                      setAllowedEventDefinitionIds(prev => [...prev, def.id]);
+                                                    }
+                                                  }}
+                                                  sx={{ ml: 'auto', p: 0.25 }}
+                                                />
+                                              </Tooltip>
+                                            </MenuItem>
+                                          )),
+                                        ];
+                                      })}
+                                    </Select>
+                                    <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {allowedEventDefinitionIds.length} of {operationEventDefinitions.length} enabled
+                                      </Typography>
+                                      <Typography variant="caption" color="warning.main">
+                                        {requiredEventDefinitionIds.length > 0
+                                          ? `${requiredEventDefinitionIds.length} must-have (checkbox ☑)`
+                                          : 'Checkbox ☑ = must-have every run'}
+                                      </Typography>
+                                    </Box>
+                                  </FormControl>
+                                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                                  <FormControl fullWidth size="small">
+                                    <InputLabel>Required Severity Levels</InputLabel>
+                                    <Select
+                                      multiple
+                                      label="Required Severity Levels"
+                                      value={requiredSeverityLevels}
+                                      onChange={(e) => setRequiredSeverityLevels(
+                                        typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[]
+                                      )}
+                                      renderValue={(sel) =>
+                                        (sel as string[]).length === 0 ? 'None required' : (sel as string[]).join(', ')
+                                      }
+                                    >
+                                      {Array.from(new Set([
+                                        'Normal', 'Low', 'Medium', 'High', 'Critical',
+                                        ...operationEventDefinitionPropertyAssignments
+                                          .filter((p: any) => p.operationsEventDefinitionPropertyId === 'Severity' && p.value)
+                                          .map((p: any) => String(p.value)),
+                                      ])).map(sev => (
+                                        <MenuItem key={sev} value={sev}>
+                                          <Switch size="small" checked={requiredSeverityLevels.includes(sev)} sx={{ mr: 1 }} />
+                                          {sev}
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                      {requiredSeverityLevels.length === 0 ? 'No severity guaranteed' : `${requiredSeverityLevels.length} severity level(s) guaranteed`}
+                                    </Typography>
+                                  </FormControl>
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          </Grid>
+                        )}
+
                         <Grid size={12}>
                           <Button
                             fullWidth
@@ -7360,69 +7617,262 @@ const ProcessDataGenerator: React.FC = () => {
               )}
 
               {/* Operations Events Table */}
-              {operationsEvents.length > 0 && (
-                <Paper sx={{ mb: 2 }}>
-                  <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white' }}>
-                    <Typography variant="subtitle1">Operations Events</Typography>
-                  </Box>
-                  <TableContainer sx={{ maxHeight: 400 }}>
-                    <Table size="small" stickyHeader>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Event ID</TableCell>
-                          <TableCell>Segment Response</TableCell>
-                          <TableCell>Equipment ID</TableCell>
-                          <TableCell>Hierarchy Scope</TableCell>
-                          <TableCell>Event Definition</TableCell>
-                          <TableCell>Event Code</TableCell>
-                          <TableCell>Event Category</TableCell>
-                          <TableCell>Event Type</TableCell>
-                          <TableCell>Operations Type</TableCell>
-                          <TableCell>Effective Timestamp</TableCell>
-                          <TableCell>Notes</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {operationsEvents.slice(0, PREVIEW_ROW_LIMIT).map((event) => {
-                          const eventDef = operationEventDefinitions.find(oed => oed.id === event.operationsEventDefinitionId);
-                          return (
-                            <TableRow key={event.id}>
-                              <TableCell>{event.id}</TableCell>
-                              <TableCell>{event.segmentResponseId}</TableCell>
-                              <TableCell>{event.equipmentId}</TableCell>
-                              <TableCell>{event.hierarchyScope}</TableCell>
-                              <TableCell>{eventDef?.description || event.operationsEventDefinitionId}</TableCell>
-                              <TableCell>
-                                <Chip label={eventDef?.eventCode || 'N/A'} size="small" />
-                              </TableCell>
-                              <TableCell>
-                                <Chip 
-                                  label={eventDef?.eventCategory || 'N/A'} 
-                                  color={eventDef?.causesDowntime ? 'error' : 'warning'}
-                                  size="small"
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Chip label={event.eventType || 'N/A'} size="small" color="info" />
-                              </TableCell>
-                              <TableCell>{event.operationsType || 'N/A'}</TableCell>
-                              <TableCell>{event.effectiveTimestamp}</TableCell>
-                              <TableCell>{event.notes}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                  {operationsEvents.length > PREVIEW_ROW_LIMIT && (
-                    <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Preview limited to first {PREVIEW_ROW_LIMIT} rows. Export CSV for full dataset.
+              {operationsEvents.length > 0 && (() => {
+                // Severity: property id IS 'Severity' (description field is null in master data).
+                // Fall back to operationsEventRecords.severity when properties have not been generated yet.
+                const getEventSeverity = (eventId: string): string => {
+                  const prop = operationsEventProperties.find(
+                    p => p.operationsEventId === eventId && p.operationsEventDefinitionPropertyId === 'Severity'
+                  );
+                  if (prop) return String(prop.value);
+                  return operationsEventRecords.find(r => r.operationsEventId === eventId)?.severity || '';
+                };
+
+                // Derive filter options from data
+                const availableEventTypes = Array.from(new Set(operationsEvents.map(e => e.eventType).filter(Boolean))).sort() as string[];
+                const availableSeverities = Array.from(new Set([
+                  ...operationsEventProperties
+                    .filter(p => p.operationsEventDefinitionPropertyId === 'Severity')
+                    .map(p => String(p.value)),
+                  ...operationsEventRecords.map(r => r.severity),
+                ].filter(Boolean))).sort() as string[];
+                const availableCategories = Array.from(new Set(
+                  operationsEvents.map(e => {
+                    const def = operationEventDefinitions.find(d => d.id === e.operationsEventDefinitionId);
+                    return def?.eventCategory || '';
+                  }).filter(Boolean)
+                )).sort() as string[];
+                const availableDefinitions = Array.from(new Set(
+                  operationsEvents.map(e => e.operationsEventDefinitionId).filter(Boolean)
+                )).sort() as string[];
+
+                const clearAllFilters = () => {
+                  setOpsEventFilterType([]);
+                  setOpsEventFilterSeverity([]);
+                  setOpsEventFilterCategory([]);
+                  setOpsEventFilterDefinition([]);
+                };
+                const hasFilters = !!(opsEventFilterType.length || opsEventFilterSeverity.length || opsEventFilterCategory.length || opsEventFilterDefinition.length);
+
+                // Apply filters (each active filter is OR within itself, AND across filters)
+                const filteredEvents = operationsEvents.filter(event => {
+                  if (opsEventFilterType.length && !opsEventFilterType.includes(event.eventType || '')) return false;
+                  if (opsEventFilterSeverity.length && !opsEventFilterSeverity.includes(getEventSeverity(event.id))) return false;
+                  if (opsEventFilterCategory.length) {
+                    const def = operationEventDefinitions.find(d => d.id === event.operationsEventDefinitionId);
+                    if (!opsEventFilterCategory.includes(def?.eventCategory || '')) return false;
+                  }
+                  if (opsEventFilterDefinition.length && !opsEventFilterDefinition.includes(event.operationsEventDefinitionId || '')) return false;
+                  return true;
+                });
+
+                const activeCount = operationsEvents.filter(e => e.isActive).length;
+
+                const markFilteredActive = (isActive: boolean) => {
+                  const filteredIds = new Set(filteredEvents.map(e => e.id));
+                  setOperationsEvents(prev => prev.map(e => filteredIds.has(e.id) ? { ...e, isActive } : e));
+                };
+
+                return (
+                  <Paper sx={{ mb: 2 }}>
+                    {/* Header */}
+                    <Box sx={{ p: 2, bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                      <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        Operations Events
+                        <Chip label={operationsEvents.length} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: 'white' }} />
+                        {activeCount > 0 && (
+                          <Chip label={`${activeCount} active (no Duration)`} size="small" sx={{ bgcolor: 'success.dark', color: 'white' }} />
+                        )}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          sx={{ bgcolor: 'success.main', '&:hover': { bgcolor: 'success.dark' }, textTransform: 'none' }}
+                          onClick={() => markFilteredActive(true)}
+                        >
+                          Mark Filtered Active
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)', textTransform: 'none' }}
+                          onClick={() => markFilteredActive(false)}
+                        >
+                          Clear Filtered
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)', textTransform: 'none' }}
+                          onClick={() => setOperationsEvents(prev => prev.map(e => ({ ...e, isActive: false })))}
+                        >
+                          Clear All
+                        </Button>
+                      </Box>
+                    </Box>
+
+                    {/* Filter controls */}
+                    <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 2, borderBottom: '1px solid', borderColor: 'divider', flexWrap: 'wrap' }}>
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel>Event Type</InputLabel>
+                        <Select
+                          multiple
+                          label="Event Type"
+                          value={opsEventFilterType}
+                          onChange={(e) => setOpsEventFilterType(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[])}
+                          renderValue={(sel) => (sel as string[]).join(', ')}
+                        >
+                          {availableEventTypes.map(t => (
+                            <MenuItem key={t} value={t}>
+                              <Switch size="small" checked={opsEventFilterType.includes(t)} sx={{ mr: 1 }} />
+                              {t}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel>Severity</InputLabel>
+                        <Select
+                          multiple
+                          label="Severity"
+                          value={opsEventFilterSeverity}
+                          onChange={(e) => setOpsEventFilterSeverity(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[])}
+                          renderValue={(sel) => (sel as string[]).join(', ')}
+                        >
+                          {availableSeverities.map(s => (
+                            <MenuItem key={s} value={s}>
+                              <Switch size="small" checked={opsEventFilterSeverity.includes(s)} sx={{ mr: 1 }} />
+                              {s}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {availableCategories.length > 0 && (
+                        <FormControl size="small" sx={{ minWidth: 140 }}>
+                          <InputLabel>Category</InputLabel>
+                          <Select
+                            multiple
+                            label="Category"
+                            value={opsEventFilterCategory}
+                            onChange={(e) => setOpsEventFilterCategory(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[])}
+                            renderValue={(sel) => (sel as string[]).join(', ')}
+                          >
+                            {availableCategories.map(c => (
+                              <MenuItem key={c} value={c}>
+                                <Switch size="small" checked={opsEventFilterCategory.includes(c)} sx={{ mr: 1 }} />
+                                {c}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                      {availableDefinitions.length > 0 && (
+                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                          <InputLabel>Event Definition</InputLabel>
+                          <Select
+                            multiple
+                            label="Event Definition"
+                            value={opsEventFilterDefinition}
+                            onChange={(e) => setOpsEventFilterDefinition(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value as string[])}
+                            renderValue={(sel) => (sel as string[]).map(id => operationEventDefinitions.find(d => d.id === id)?.description || id).join(', ')}
+                          >
+                            {availableDefinitions.map(defId => {
+                              const def = operationEventDefinitions.find(d => d.id === defId);
+                              return (
+                                <MenuItem key={defId} value={defId}>
+                                  <Switch size="small" checked={opsEventFilterDefinition.includes(defId)} sx={{ mr: 1 }} />
+                                  {def?.description || defId}
+                                </MenuItem>
+                              );
+                            })}
+                          </Select>
+                        </FormControl>
+                      )}
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
+                        {filteredEvents.length} of {operationsEvents.length} shown
+                        {hasFilters && (
+                          <Button size="small" sx={{ ml: 1, textTransform: 'none', fontSize: '0.7rem' }} onClick={clearAllFilters}>
+                            Clear filters
+                          </Button>
+                        )}
                       </Typography>
                     </Box>
-                  )}
-                </Paper>
-              )}
+
+                    {/* Table */}
+                    <TableContainer sx={{ maxHeight: 440 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ width: 72 }}>Active</TableCell>
+                            <TableCell>Event ID</TableCell>
+                            <TableCell>Equipment ID</TableCell>
+                            <TableCell>Severity</TableCell>
+                            <TableCell>Event Type</TableCell>
+                            <TableCell>Category</TableCell>
+                            <TableCell>Event Definition</TableCell>
+                            <TableCell>Ops Type</TableCell>
+                            <TableCell>Effective Timestamp</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {filteredEvents.slice(0, PREVIEW_ROW_LIMIT).map((event) => {
+                            const eventDef = operationEventDefinitions.find(oed => oed.id === event.operationsEventDefinitionId);
+                            const severity = getEventSeverity(event.id);
+                            return (
+                              <TableRow
+                                key={event.id}
+                                sx={event.isActive ? { bgcolor: 'success.50', '&:hover': { bgcolor: 'success.100' } } : undefined}
+                              >
+                                <TableCell>
+                                  <Tooltip title={event.isActive ? 'Active: Duration property will be excluded on save' : 'Inactive: all properties included'}>
+                                    <Switch
+                                      size="small"
+                                      checked={!!event.isActive}
+                                      onChange={() => setOperationsEvents(prev => prev.map(e => e.id === event.id ? { ...e, isActive: !e.isActive } : e))}
+                                      color="success"
+                                    />
+                                  </Tooltip>
+                                </TableCell>
+                                <TableCell sx={{ fontSize: '0.7rem', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.id}</TableCell>
+                                <TableCell>{event.equipmentId}</TableCell>
+                                <TableCell>
+                                  {severity
+                                    ? <Chip label={severity} size="small" color={['high', 'critical'].includes(severity.toLowerCase()) ? 'error' : 'warning'} />
+                                    : <Typography variant="caption" color="text.disabled">—</Typography>
+                                  }
+                                </TableCell>
+                                <TableCell>
+                                  <Chip label={event.eventType || 'N/A'} size="small" color="info" />
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={eventDef?.eventCategory || 'N/A'}
+                                    color={eventDef?.causesDowntime ? 'error' : 'warning'}
+                                    size="small"
+                                  />
+                                </TableCell>
+                                <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {eventDef?.description || event.operationsEventDefinitionId}
+                                </TableCell>
+                                <TableCell>{event.operationsType || 'N/A'}</TableCell>
+                                <TableCell>{event.effectiveTimestamp}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                    {filteredEvents.length > PREVIEW_ROW_LIMIT && (
+                      <Box sx={{ p: 1.5, bgcolor: 'background.default', textAlign: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Showing first {PREVIEW_ROW_LIMIT} of {filteredEvents.length} filtered events. Use filters to narrow down.
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                );
+              })()}
 
               {/* Operations Event Records Table */}
               {operationsEventRecords.length > 0 && (
